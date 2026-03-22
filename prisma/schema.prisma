@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id            String   @id @default(uuid())
+  clerkUserId   String   @unique
+
+  // Identity (available at signup)
+  username      String  @unique
+  email         String?  @unique
+  mobile        String?  @unique
+
+  // Profile (filled during onboarding)
+  firstName     String?
+  lastName      String?
+  shopName      String?
+  address       String?
+  gender        Gender?
+  profileImageUrl String?
+
+  // Subscription (managed later)
+  subscriptionStatus   SubscriptionStatus @default(trial)
+  subscriptionEndDate  DateTime?
+
+  // System
+  isActive      Boolean  @default(true)
+  lastLoginAt   DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  customers     Customer[]
+
+  @@index([subscriptionStatus, isActive])
+  @@map("users")
+}
+
+
+model Customer {
+  id         String    @id @default(uuid())
+  userId     String
+  name       String
+  address    String
+  mobile     String?
+  idProofImg    String?
+  customerImg     String?
+  aadharNo     String?
+  remark     String?
+  deletedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  gender        Gender?
+  pledges    Pledge[]
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])                 
+  @@index([name])                      
+  @@map("customers")
+}
+
+model Pledge {
+  id            String   @id @default(uuid())
+  customerId    String
+
+  pledgeDate    DateTime
+  loanAmount    Decimal  @db.Decimal(12,2)
+
+  itemType      ItemType
+  itemName      String
+  purity        Decimal  @db.Decimal(5,2)
+
+  grossWeight   Decimal  @db.Decimal(10,3)
+  netWeight     Decimal  @db.Decimal(10,3)
+
+  interestRate  Decimal  @db.Decimal(5,2)
+  compoundingDuration CompoundingDuration
+
+  itemPhoto     String?
+  remark        String?
+
+  status        PledgeStatus
+  releaseDate   DateTime?
+
+  totalInterest     Decimal? @db.Decimal(12,2)
+  receivableAmount  Decimal? @db.Decimal(12,2)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([customerId])
+  @@map("pledges")
+}
+
+enum Gender {
+  Male
+  Female
+  Other
+}
+
+enum SubscriptionStatus {
+  trial
+  active
+  expired
+}
+
+enum ItemType {
+  GOLD
+  SILVER
+}
+
+enum PledgeStatus {
+  ACTIVE
+  RELEASED
+  OVERDUE
+}
+
+enum CompoundingDuration {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
