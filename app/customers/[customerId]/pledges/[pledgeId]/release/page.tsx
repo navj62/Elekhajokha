@@ -84,8 +84,8 @@ function calcSimpleInterest(
 
   if (roundHalfMonth) {
     // < 15 days leftover → +1 month, ≥ 15 days → +2 months
-    if (days > 0 && days < 15)  months += 1;
-    else if (days >= 15)         months += 2;
+    if (days > 0 && days < 15)  months += 0;
+    else if (days >= 15)         months += 1;
   } else {
     // Standard: count exact fractional months
     months = totalMonths + days / 30.4375;
