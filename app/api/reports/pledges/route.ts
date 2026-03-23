@@ -1,10 +1,10 @@
 // app/api/reports/pledges/route.ts
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { generatePDF } from "@/lib/generatePDF";
+import { generatePledgePDF } from "@/lib/generatePDF";
 import { auth } from "@clerk/nextjs/server";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const { userId: clerkUserId } = await auth();
     if (!clerkUserId)
@@ -14,24 +14,44 @@ export async function GET() {
     if (!user)
       return NextResponse.json({ error: "User not found" }, { status: 404 });
 
+    const format = req.nextUrl.searchParams.get("format");
+
     const pledges = await prisma.pledge.findMany({
       where: { customer: { userId: user.id, deletedAt: null } },
-      include: { customer: { select: { name: true, mobile: true } } },
-    });
-
-    const rows = pledges.map(
-      (p, i) => `${i + 1}. ${p.customer.name} | ₹${p.loanAmount} | ${p.status}`
-    );
-
-    const pdfBuffer = await generatePDF("Pledge Report", rows);
-    return new NextResponse(new Uint8Array(pdfBuffer), {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": "attachment; filename=pledges.pdf",
+      orderBy: { pledgeDate: "desc" },
+      include: {
+        customer: { select: { name: true, mobile: true } },
       },
     });
+
+    const result = pledges.map((p, i) => ({
+      index: i + 1,
+      customerName: p.customer?.name ?? "—",
+      pledgeDate: new Date(p.pledgeDate).toLocaleDateString("en-IN", {
+        day: "2-digit", month: "short", year: "numeric",
+      }),
+      itemType: p.itemType,
+      itemName: p.itemName,
+      loanAmount: Number(p.loanAmount),
+      status: p.status,
+      totalInterest: p.totalInterest ? Number(p.totalInterest) : null,
+      receivableAmount: p.receivableAmount ? Number(p.receivableAmount) : null,
+      itemPhoto: p.itemPhoto ?? null,
+    }));
+
+    if (format === "pdf") {
+      const pdfBuffer = await generatePledgePDF("Pledge Report", result);
+      return new NextResponse(new Uint8Array(pdfBuffer), {
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": "attachment; filename=pledges.pdf",
+        },
+      });
+    }
+
+    return NextResponse.json(result);
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Failed to generate PDF" }, { status: 500 });
+    return NextResponse.json({ error: "Failed" }, { status: 500 });
   }
 }
