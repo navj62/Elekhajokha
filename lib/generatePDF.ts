@@ -1,5 +1,7 @@
 // lib/generatePDF.ts
+import path from "path/win32";
 import PDFDocument from "pdfkit";
+const boldFont = path.join(process.cwd(), "public/fonts/NotoSansDevanagari-Bold.ttf");
 
 type Row = {
   index: number;
@@ -220,6 +222,166 @@ export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buf
       col.loan.x,     y + 9, { width: col.loan.w,     align: "right" });
     doc.text(`Rs.${totalReceivable.toLocaleString("en-IN")}`,
       col.receivable.x, y + 9, { width: col.receivable.w, align: "right" });
+
+    doc.end();
+  });
+}
+
+
+export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 0, size: "A4", layout: "landscape" });
+    const chunks: Buffer[] = [];
+
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    // ── Register Hindi font ──────────────────────────────
+    const fontPath = path.join(process.cwd(), "public/fonts/NotoSansDevanagari_Condensed-Bold.ttf");
+    // doc.registerFont("Hindi", fontPath);
+    doc.registerFont("HindiBold", fontPath); // same file, wght axis handles bold
+
+    const PW = doc.page.width;
+    const PH = doc.page.height;
+    const half = PW / 2;
+
+    const drawCopy = (offsetX: number, copyLabel: string) => {
+      const pad = 20;
+      const W = half - pad * 2;
+
+      doc.rect(offsetX + pad, 20, W, PH - 40).strokeColor("#000").lineWidth(1).stroke();
+
+      let y = 30;
+
+      // Receipt badge
+      const badgeW = 70;
+      const badgeX = offsetX + pad + W / 2 - badgeW / 2;
+      doc.rect(badgeX, y, badgeW, 16).fill("#000");
+      doc.fillColor("white").fontSize(9).font("Helvetica-Bold")
+        .text("Receipt", badgeX, y + 4, { width: badgeW, align: "center" });
+
+      y += 22;
+      doc.fillColor("#000").fontSize(11).font("Helvetica-Bold")
+        .text(`M/s ${data.userName}`, offsetX + pad, y, { width: W, align: "center" });
+
+      y += 15;
+      doc.fontSize(8).font("Helvetica")
+        .text(`${data.shopName} ${data.shopAddress}`, offsetX + pad, y, { width: W, align: "center" });
+
+      y += 12;
+      doc.text(`Mobile No. : ${data.shopMobile}`, offsetX + pad, y, { width: W, align: "center" });
+
+      y += 10;
+      doc.fontSize(7).fillColor("#555")
+        .text(`(${copyLabel})`, offsetX + pad, y, { width: W, align: "center" });
+
+      y += 10;
+      doc.moveTo(offsetX + pad, y).lineTo(offsetX + pad + W, y).strokeColor("#000").lineWidth(0.5).stroke();
+
+      y += 8;
+      doc.fillColor("#000").fontSize(8).font("Helvetica-Bold");
+      doc.text(`Transaction ID - ${data.transactionId}`, offsetX + pad + 5, y);
+      doc.text(`Pledge Date - ${data.pledgeDate}`, offsetX + pad + 5, y, { width: W - 10, align: "right" });
+
+      y += 14;
+      doc.font("Helvetica-Bold").text("Customer Name", offsetX + pad + 5, y);
+      doc.font("Helvetica").text(`: ${data.customerName}`, offsetX + pad + 85, y);
+
+      y += 12;
+      doc.font("Helvetica-Bold").text("Address", offsetX + pad + 5, y);
+      doc.font("Helvetica").text(`: ${data.customerAddress}`, offsetX + pad + 85, y);
+
+      y += 12;
+      doc.font("Helvetica-Bold").text("Loan Amount", offsetX + pad + 5, y);
+      doc.font("Helvetica").text(`: ${data.loanAmount.toLocaleString("en-IN")}`, offsetX + pad + 85, y);
+
+      // Items table
+      y += 14;
+      const tX = offsetX + pad + 5;
+      const tW = W - 10;
+      const col1 = tW * 0.5;
+      const col2 = tW * 0.25;
+      const col3 = tW * 0.25;
+
+      doc.rect(tX, y, tW, 14).fill("#000");
+      doc.fillColor("white").font("Helvetica-Bold").fontSize(8);
+      doc.text("Item Name", tX + 3, y + 3, { width: col1 });
+      doc.text("Weight",    tX + col1 + 3, y + 3, { width: col2 });
+      doc.text("Remark",    tX + col1 + col2 + 3, y + 3, { width: col3 });
+
+      y += 14;
+      doc.rect(tX, y, tW, 14).strokeColor("#000").lineWidth(0.5).stroke();
+      doc.fillColor("#000").font("Helvetica").fontSize(8);
+      doc.text(data.itemName,    tX + 3, y + 3, { width: col1 });
+      doc.text(data.itemWeight,  tX + col1 + 3, y + 3, { width: col2 });
+      doc.text(data.remark ?? "", tX + col1 + col2 + 3, y + 3, { width: col3 });
+
+      y += 14;
+      doc.rect(tX, y, tW, 14).strokeColor("#000").lineWidth(0.5).stroke();
+      y += 14;
+      doc.rect(tX, y, tW, 14).strokeColor("#000").lineWidth(0.5).stroke();
+
+      // ── Hindi terms ──────────────────────────────────────
+      y += 18;
+      const terms = copyLabel === "Shopowner Copy"
+        ? [
+            "• मेरे द्वारा गिरवी रखी गई उपरोक्त रकम मेरे स्वामित्व, पूर्ण प्रामाणिक, आविवादित संपत्ति है।",
+            "• मय ब्याज (प्रतिमाह/प्रति चौकडा) मूलधन को वापस लौटाने पर ही आपसे पुन: रकम लेने का मुझे अधिकार होगा।",
+            "• गिरवी रखी गयी रकम 1 वर्ष के अंतराल में ना छुड़ा पाने की दशा में हमारे द्वारा ब्याज का हिसाब अनिवार्य रूप से जमा कर दिया जाएगा।",
+            "• तय दिशा निर्देशों के अनुरूप मूलधन व ब्याज मेरे द्वारा अदा न कर पाने की स्थिति में आपको रकम बेच कर अपनी राशि पुन: वसूलने का पूर्ण अधिकार होगा।",
+            "• अपरिहार्य कारणों से किसी विवाद की स्थिति में न्याय क्षेत्र यहीं होगा।",
+          ]
+        : [
+            "• गिरवी रखी गयी रकम का 1 वर्ष मे हिसाब करना अनिवार्य है।",
+            "• रकम रखने वाले व्यक्ति को ही रकम वापस दी जायेगी।",
+            "• रकम छुडाते समय रसीद पुन: साथ लाये।",
+            "• रकम/लेनदेन/हिसाब काउंटर पर ही चेक कर तत्परचात हमारी कोई जवाबदारी नही होगी।",
+            "• असुविधा व समय के बचत हेतु रकम छुड़ाने से 1 घंटा पूर्व कृपया इस नंबर पर फोन करे।",
+          ];
+
+      // ← Use Hindi font here
+      doc.fontSize(6.5).font("HindiBold").fillColor("#000");
+      terms.forEach((line) => {
+        doc.text(line, tX, y, { width: tW });
+        y += doc.currentLineHeight() + 2;
+      });
+
+      // Signature boxes
+      y = PH - 75;
+      const sigW = tW / 2 - 5;
+
+      if (copyLabel === "Shopowner Copy") {
+        doc.rect(tX, y, tW / 2 - 3, 40).strokeColor("#000").lineWidth(0.5).stroke();
+        doc.rect(tX + tW / 2 + 3, y, tW / 2 - 3, 40).strokeColor("#000").lineWidth(0.5).stroke();
+        // ← Hindi font for Hindi sig labels
+        doc.fontSize(7).font("HindiBold").fillColor("#000");
+        doc.text("रूपये नगद प्राप्त किये", tX + 3, y + 3, { width: sigW });
+        doc.text("रकम पुन: प्राप्त की दिनांक:-", tX + tW / 2 + 6, y + 3, { width: sigW });
+
+        y += 42;
+        doc.rect(tX, y, tW / 2 - 3, 14).fill("#000");
+        doc.rect(tX + tW / 2 + 3, y, tW / 2 - 3, 14).fill("#000");
+        doc.fillColor("white").fontSize(7).font("HindiBold");
+        doc.text("रकम रखनेवाले के हस्ताक्षर/अंगूठा", tX + 3, y + 4, { width: sigW });
+        doc.text("रकम छुडाने वाले के हस्ताक्षर/अंगूठा", tX + tW / 2 + 6, y + 4, { width: sigW });
+      } else {
+        doc.rect(tX, y, tW / 2 - 3, 54).strokeColor("#000").lineWidth(0.5).stroke();
+        doc.rect(tX + tW / 2 + 3, y, tW / 2 - 3, 54).strokeColor("#000").lineWidth(0.5).stroke();
+        doc.fillColor("#000").fontSize(7).font("Helvetica-Bold");
+        doc.text("Shop Owner Signature", tX + 3, y + 3, { width: sigW });
+        doc.text("Customer Signature",   tX + tW / 2 + 6, y + 3, { width: sigW });
+      }
+    };
+
+    drawCopy(0, "Shopowner Copy");
+
+    doc.save();
+    doc.dash(4, { space: 3 });
+    doc.moveTo(half, 20).lineTo(half, PH - 20).strokeColor("#aaa").lineWidth(0.8).stroke();
+    doc.restore();
+
+    drawCopy(half, "Customer Copy");
 
     doc.end();
   });

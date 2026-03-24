@@ -24,7 +24,7 @@ const page = () => {
 
         <Link href="/customers">
           <button className="w-full bg-green-500 text-white p-3 rounded-xl hover:bg-green-600">
-            Customers
+            Customers and Pledges
           </button>
         </Link>
 
