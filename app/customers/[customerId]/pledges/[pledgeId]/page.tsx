@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import ReceiptModal from "@/components/ReceiptModal";
 
 type PledgeDetail = {
   id: string;
@@ -157,12 +158,7 @@ export default function PledgeDetailPage() {
                   Release
                 </button>
 
-                <button
-                  type="button"
-                  className="bg-gray-600 text-white px-4 py-2 rounded text-sm hover:bg-gray-700"
-                >
-                  View Receipt
-                </button>
+                <ReceiptModal customerId={customerId} pledgeId={pledgeId} />
               </div>
             </div>
           </section>
