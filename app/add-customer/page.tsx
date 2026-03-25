@@ -1,28 +1,31 @@
 "use client";
-
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export default function AddCustomerPage() {
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const form = e.currentTarget;
     setLoading(true);
 
-    const formData = new FormData(e.currentTarget);
+    const formData = new FormData(form);
 
     // Example: send to API
     const res = await fetch("/api/add-customer", {
-  method: "POST",
-  body: formData,
-});
-
+      method: "POST",
+      body: formData,
+    });
 
     setLoading(false);
 
     if (res.ok) {
       alert("Customer added successfully");
-      e.currentTarget.reset();
+      const data = await res.json();
+      const customerId = data.customer.id;
+      router.push(`/customers/${customerId}`);
     } else {
       alert("Something went wrong");
     }
@@ -67,11 +70,11 @@ export default function AddCustomerPage() {
           />
         </div>
 
-        {/* Aadhaar Number */}
+        {/* Aadhar Number */}
         <div>
-          <label className="block font-medium">Aadhaar Number</label>
+          <label className="block font-medium">Aadhar Number</label>
           <input
-            name="aadhaarNo"
+            name="aadharNo"
             maxLength={12}
             className="w-full border p-2 rounded"
             placeholder="XXXX XXXX XXXX"

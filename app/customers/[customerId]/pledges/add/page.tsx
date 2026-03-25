@@ -47,7 +47,7 @@ export default function AddPledgePage() {
     if (!customerId) return;
     fetch(`/api/customers/${customerId}`)
       .then((r) => r.json())
-      .then(setCustomer)
+      .then((data) => setCustomer(data.customer))
       .catch(() => {})
       .finally(() => setCustomerLoading(false));
   }, [customerId]);

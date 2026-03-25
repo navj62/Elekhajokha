@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { Gender } from "@prisma/client";
+import { uploadImage } from "@/lib/upload";
 
 export async function POST(req: Request) {
   try {
@@ -54,19 +55,29 @@ export async function POST(req: Request) {
         ? (rawGender as Gender)
         : null;
 
-    // 🖼️ FILE HANDLING (TEMP — replace with Cloudinary later)
+
+    // 🖼️ FILE HANDLING (Cloudinary)
     const customerImgFile = formData.get("userImg");
     const idProofImgFile = formData.get("idProofImg");
 
-    const customerImg =
-      customerImgFile instanceof File && customerImgFile.size > 0
-        ? customerImgFile.name
-        : null;
+    let customerImg: string | null = null;
+    let idProofImg: string | null = null;
 
-    const idProofImg =
-      idProofImgFile instanceof File && idProofImgFile.size > 0
-        ? idProofImgFile.name
-        : null;
+    // Upload customer image
+    if (customerImgFile instanceof File && customerImgFile.size > 0) {
+      customerImg = await uploadImage(
+        customerImgFile,
+        `ELEKHAJOKHA/customers/${user.id}`
+      );
+    }
+
+    // Upload ID proof
+    if (idProofImgFile instanceof File && idProofImgFile.size > 0) {
+      idProofImg = await uploadImage(
+        idProofImgFile,
+        `ELEKHAJOKHA/idProofs/${user.id}`
+      );
+    }
 
     // 💾 CREATE CUSTOMER
     const customer = await prisma.customer.create({

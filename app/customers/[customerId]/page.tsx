@@ -180,7 +180,7 @@ export default function CustomerDetailPage() {
                 <p className="font-medium text-gray-800">{customer.address}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-xs uppercase text-gray-400">Aadhaar</p>
+                <p className="text-xs uppercase text-gray-400">Aadhar</p>
                 <p className="font-medium text-gray-800">{customer.aadharNo || "—"}</p>
               </div>
               <div className="space-y-1 sm:col-span-2">
