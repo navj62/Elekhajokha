@@ -46,6 +46,7 @@ export async function GET(
       shopName: user.shopName ?? "Shop",
       shopAddress: user.address ?? "",
       shopMobile: user.mobile ?? "",
+      itemPhoto: pledge.itemPhoto ?? null,
     });
 
     return new NextResponse(new Uint8Array(pdfBuffer), {

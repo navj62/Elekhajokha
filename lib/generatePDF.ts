@@ -227,9 +227,38 @@ export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buf
   });
 }
 
+import https from "https";
+import http from "http";
+
+type ReceiptData = {
+  transactionId: string;
+  pledgeDate: string;
+  customerName: string;
+  customerAddress: string;
+  loanAmount: number;
+  itemName: string;
+  itemWeight: string;
+  remark: string | null;
+  shopName: string;
+  shopAddress: string;
+  shopMobile: string;
+  itemPhoto: string | null; // ← add this
+};
+function fetchImageBuffer(url: string): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const client = url.startsWith("https") ? https : http;
+    client.get(url, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk: Buffer) => chunks.push(chunk));
+      res.on("end", () => resolve(Buffer.concat(chunks)));
+      res.on("error", reject);
+    }).on("error", reject);
+  });
+}
 
 export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
+  
+  return new Promise(async (resolve, reject) => {
     const doc = new PDFDocument({ margin: 0, size: "A4", layout: "landscape" });
     const chunks: Buffer[] = [];
 
@@ -242,11 +271,21 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
     // doc.registerFont("Hindi", fontPath);
     doc.registerFont("HindiBold", fontPath); // same file, wght axis handles bold
 
+    // Pre-fetch image if available
+    let imageBuffer: Buffer | null = null;
+    if (data.itemPhoto) {
+      try {
+        imageBuffer = await fetchImageBuffer(data.itemPhoto);
+      } catch {
+        imageBuffer = null; // silently skip if fetch fails
+      }
+    }
+
     const PW = doc.page.width;
     const PH = doc.page.height;
     const half = PW / 2;
 
-    const drawCopy = (offsetX: number, copyLabel: string) => {
+    const drawCopy = (offsetX: number, copyLabel: string, img: Buffer | null) => {
       const pad = 20;
       const W = half - pad * 2;
 
@@ -321,6 +360,21 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
       doc.rect(tX, y, tW, 14).strokeColor("#000").lineWidth(0.5).stroke();
       y += 14;
       doc.rect(tX, y, tW, 14).strokeColor("#000").lineWidth(0.5).stroke();
+      y += 14;
+
+       // ── Item photo ───────────────────────────────────────
+      if (img) {
+        try {
+          doc.image(img, tX + 14, y + 14, {
+            fit: [80, 75],
+            align: "left",
+            valign: "top",
+          });
+        } catch {
+          // skip silently
+        }
+      }
+      y += 85; // free space height whether or not image rendered
 
       // ── Hindi terms ──────────────────────────────────────
       y += 18;
@@ -374,14 +428,14 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
       }
     };
 
-    drawCopy(0, "Shopowner Copy");
+    drawCopy(0, "Shopowner Copy", imageBuffer);
 
     doc.save();
     doc.dash(4, { space: 3 });
     doc.moveTo(half, 20).lineTo(half, PH - 20).strokeColor("#aaa").lineWidth(0.8).stroke();
     doc.restore();
 
-    drawCopy(half, "Customer Copy");
+    drawCopy(half, "Customer Copy", imageBuffer);
 
     doc.end();
   });
