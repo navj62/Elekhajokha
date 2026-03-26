@@ -106,21 +106,36 @@ export default function ProfilePage() {
   async function handleSave() {
     setSaveErr("");
     setSaving(true);
+
     try {
+      const fd = new FormData();
+
+      fd.append("firstName", form.firstName);
+      fd.append("lastName", form.lastName);
+      fd.append("mobile", form.mobile);
+      fd.append("shopName", form.shopName);
+      fd.append("address", form.address);
+      fd.append("gender", form.gender);
+
+      // if you add file input later:
+      // fd.append("profileImage", file);
+
       const res = await fetch("/api/profile", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: fd,
       });
+
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.error || "Failed to save");
       }
+
       const updated = await res.json();
-      setProfile((p) => p ? { ...p, ...updated } : p);
+
+      setProfile((p) => (p ? { ...p, ...updated } : p));
       setEditing(false);
       setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+
     } catch (e: any) {
       setSaveErr(e.message);
     } finally {
@@ -128,16 +143,28 @@ export default function ProfilePage() {
     }
   }
 
-  /* --- Profile image upload via Clerk --- */
   async function handleImageUpload(file: File) {
-    if (!user) return;
     setImgUploading(true);
     try {
-      await user.setProfileImage({ file });
-      // Refresh profile image from Clerk
-      setProfile((p) => p ? { ...p, profileImageUrl: user.imageUrl } : p);
+      const fd = new FormData();
+      fd.append("profileImage", file);
+
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        body: fd,
+      });
+
+      if (!res.ok) throw new Error("Upload failed");
+
+      const data = await res.json();
+
+      // ✅ update UI instantly
+      setProfile((p) =>
+        p ? { ...p, profileImageUrl: data.profileImageUrl } : p
+      );
+
     } catch {
-      // silently fail
+      alert("Failed to upload image");
     } finally {
       setImgUploading(false);
     }
@@ -191,7 +218,7 @@ export default function ProfilePage() {
     );
   }
 
-  const displayImage = user?.imageUrl || profile.profileImageUrl;
+  const displayImage = profile.profileImageUrl || user?.imageUrl;
   const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(" ") || profile.username;
   const memberSince = new Date(profile.createdAt).toLocaleDateString("en-IN", {
     month: "long", year: "numeric",
@@ -216,7 +243,9 @@ export default function ProfilePage() {
               <div className="h-24 w-24 rounded-full overflow-hidden bg-gray-100 border">
                 {displayImage ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={displayImage} alt={fullName}
+                  <img 
+                    src={`${displayImage}?t=${Date.now()}`}
+                    alt={fullName}
                     className="h-full w-full object-cover" />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center text-2xl font-bold text-gray-400">

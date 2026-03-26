@@ -26,10 +26,11 @@ export default function OnboardingPage() {
     shopName: "",
     address: "",
     mobile: "",
-    gender: "MALE",
+    gender: "Male",
   });
 
   const [imageUploading, setImageUploading] = useState(false);
+  const [profileImage, setProfileImage] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -47,17 +48,6 @@ export default function OnboardingPage() {
   const update = (key: string, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
-  async function handleProfileImageUpload(file: File) {
-    setImageUploading(true);
-    try {
-      await currentUser.setProfileImage({ file });
-    } catch {
-      setError("Failed to upload profile picture");
-    } finally {
-      setImageUploading(false);
-    }
-  }
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -70,10 +60,20 @@ export default function OnboardingPage() {
     setLoading(true);
 
     try {
+      const fd = new FormData();
+
+      fd.append("shopName", form.shopName);
+      fd.append("address", form.address);
+      fd.append("mobile", form.mobile);
+      fd.append("gender", form.gender);
+
+      if (profileImage) {
+        fd.append("profileImage", profileImage);
+      }
+
       const res = await fetch("/api/onboarding", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: fd,
       });
 
       if (!res.ok) {
@@ -107,7 +107,11 @@ export default function OnboardingPage() {
           <div className="flex flex-col items-center mb-6">
             <div className="relative">
               <img
-                src={currentUser.imageUrl}
+                src={
+                  profileImage
+                    ? URL.createObjectURL(profileImage)
+                    : currentUser.imageUrl
+                }
                 alt="Profile"
                 className="h-24 w-24 rounded-full object-cover border bg-white"
               />
@@ -118,10 +122,11 @@ export default function OnboardingPage() {
                   type="file"
                   accept="image/*"
                   hidden
-                  onChange={(e) =>
-                    e.target.files &&
-                    handleProfileImageUpload(e.target.files[0])
-                  }
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) {
+                      setProfileImage(e.target.files[0]);
+                    }
+                  }}
                 />
               </label>
             </div>
@@ -157,9 +162,9 @@ export default function OnboardingPage() {
                 value={form.gender}
                 onChange={(e) => update("gender", e.target.value)}
               >
-                <option value="MALE">Male</option>
-                <option value="FEMALE">Female</option>
-                <option value="OTHER">Other</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Other">Other</option>
               </select>
             </div>
 
