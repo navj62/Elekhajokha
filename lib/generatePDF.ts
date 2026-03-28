@@ -242,7 +242,8 @@ type ReceiptData = {
   shopName: string;
   shopAddress: string;
   shopMobile: string;
-  itemPhoto: string | null; // ← add this
+  itemPhoto: string | null;
+  username: string;
 };
 function fetchImageBuffer(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -302,7 +303,7 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
 
       y += 22;
       doc.fillColor("#000").fontSize(11).font("Helvetica-Bold")
-        .text(`M/s ${data.userName}`, offsetX + pad, y, { width: W, align: "center" });
+        .text(`M/s ${data.username}`, offsetX + pad, y, { width: W, align: "center" });
 
       y += 15;
       doc.fontSize(8).font("Helvetica")
@@ -365,16 +366,16 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
        // ── Item photo ───────────────────────────────────────
       if (img) {
         try {
-          doc.image(img, tX + 14, y + 14, {
-            fit: [80, 75],
-            align: "left",
-            valign: "top",
+          doc.image(img, tX + 44, y + 34, {
+            fit: [160, 150],
+            // align: "left",
+            // valign: "top",
           });
         } catch {
           // skip silently
         }
       }
-      y += 85; // free space height whether or not image rendered
+      y += 150; // free space height whether or not image rendered
 
       // ── Hindi terms ──────────────────────────────────────
       y += 18;
