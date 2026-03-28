@@ -302,7 +302,7 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
 
       y += 22;
       doc.fillColor("#000").fontSize(11).font("Helvetica-Bold")
-        .text(`M/s ${data.userName}`, offsetX + pad, y, { width: W, align: "center" });
+        .text(`M/s ${data.username}`, offsetX + pad, y, { width: W, align: "center" });
 
       y += 15;
       doc.fontSize(8).font("Helvetica")

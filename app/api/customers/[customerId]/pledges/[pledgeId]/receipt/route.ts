@@ -42,7 +42,7 @@ export async function GET(
       itemName: pledge.itemName,
       itemWeight: `${pledge.netWeight} gram`,
       remark: pledge.remark,
-      userName:user.username ?? "Name",
+      username:user.username ?? "Name",
       shopName: user.shopName ?? "Shop",
       shopAddress: user.address ?? "",
       shopMobile: user.mobile ?? "",
