@@ -242,7 +242,8 @@ type ReceiptData = {
   shopName: string;
   shopAddress: string;
   shopMobile: string;
-  itemPhoto: string | null; // ← add this
+  itemPhoto: string | null;
+  username: string;
 };
 function fetchImageBuffer(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -365,16 +366,16 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
        // ── Item photo ───────────────────────────────────────
       if (img) {
         try {
-          doc.image(img, tX + 14, y + 14, {
-            fit: [80, 75],
-            align: "left",
-            valign: "top",
+          doc.image(img, tX + 44, y + 34, {
+            fit: [160, 150],
+            // align: "left",
+            // valign: "top",
           });
         } catch {
           // skip silently
         }
       }
-      y += 85; // free space height whether or not image rendered
+      y += 150; // free space height whether or not image rendered
 
       // ── Hindi terms ──────────────────────────────────────
       y += 18;
