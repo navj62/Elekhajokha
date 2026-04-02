@@ -24,9 +24,13 @@ model User {
   profileImageUrl String?
 
   // Subscription (managed later)
-  subscriptionStatus   SubscriptionStatus @default(trial)
+  subscriptionStatus   SubscriptionStatus @default( created )
   subscriptionEndDate  DateTime?
-
+  razorpaySubscriptionId  String?            @unique   // ← ADD: links webhook to user
+  subscriptionPlan    SubscriptionPlan?                    // ← ADD: "halfyearly" | "yearly"
+   razorpayPaymentId  String? 
+   subscriptionCreatedAt DateTime? // set when create-subscription API is called
+   hadTrial                Boolean   @default(false)  // ← ADD THIS
   // System
   isActive      Boolean  @default(true)
   lastLoginAt   DateTime?
@@ -35,7 +39,7 @@ model User {
   updatedAt     DateTime @updatedAt
 
   customers     Customer[]
-
+   @@index([razorpaySubscriptionId])  
   @@index([subscriptionStatus, isActive])
   @@map("users")
 }
@@ -105,9 +109,15 @@ enum Gender {
   Other
 }
 
+enum SubscriptionPlan {
+  halfyearly
+  yearly
+}
 enum SubscriptionStatus {
   trial
+  created   // ← add this
   active
+  halted
   expired
 }
 

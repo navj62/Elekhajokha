@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import SubscriptionGuard from "@/components/SubscriptionGuard";
 
 export default function AddCustomerPage() {
   const [loading, setLoading] = useState(false);
@@ -29,6 +30,7 @@ export default function AddCustomerPage() {
   }
 
   return (
+    <SubscriptionGuard featureName="Add Customer">
     <div className="max-w-2xl mx-auto p-6">
       <h1 className="text-2xl font-bold mb-6">Add New Customer</h1>
 
@@ -136,5 +138,6 @@ export default function AddCustomerPage() {
         </button>
       </form>
     </div>
+    </SubscriptionGuard>
   );
 }

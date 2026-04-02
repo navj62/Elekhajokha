@@ -26,6 +26,7 @@ export async function GET() {
         gender: true,
         profileImageUrl: true,
         subscriptionStatus: true,
+         subscriptionPlan: true,  
         subscriptionEndDate: true,
         createdAt: true,
         _count: {

@@ -25,6 +25,21 @@ export async function POST(req: Request) {
 
     const genderEnum = Gender[gender as keyof typeof Gender];
 
+    // ✅ 🔥 FIX: Check duplicate mobile
+    const existingMobileUser = await prisma.user.findUnique({
+      where: { mobile },
+    });
+
+    if (
+      existingMobileUser &&
+      existingMobileUser.clerkUserId !== userId
+    ) {
+      return NextResponse.json(
+        { error: "Mobile number already in use" },
+        { status: 400 }
+      );
+    }
+
     const user = await prisma.user.upsert({
       where: { clerkUserId: userId },
       create: {
@@ -37,14 +52,14 @@ export async function POST(req: Request) {
         address,
         mobile,
         gender: genderEnum,
-        profileImageUrl: clerkUser.imageUrl, // ✅ SAVE IMAGE URL
+        profileImageUrl: clerkUser.imageUrl,
       },
       update: {
         shopName,
         address,
         mobile,
-        gender: genderEnum,                 // ✅ FORCE UPDATE
-        profileImageUrl: clerkUser.imageUrl, // ✅ FORCE UPDATE
+        gender: genderEnum,
+        profileImageUrl: clerkUser.imageUrl,
         firstName,
         lastName,
       },
@@ -53,6 +68,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, user });
   } catch (err) {
     console.error("🔥 ONBOARDING ERROR:", err);
+
+    // ✅ Optional: Better Prisma error handling
+    if (
+      err instanceof Error &&
+      "code" in err &&
+      (err as any).code === "P2002"
+    ) {
+      return NextResponse.json(
+        { error: "Duplicate field value (likely mobile)" },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Internal Server Error" },
       { status: 500 }
