@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useLanguage } from "@/components/providers/LanguageProvider";
+import { getStatusKey } from "@/lib/translations";
 
 type PledgeDetail = {
   id: string;
@@ -32,11 +34,12 @@ type PledgeResponse = {
 };
 
 export default function PledgeDetailPage() {
-  // ✅ Read both customerId and pledgeId from params
   const params = useParams<{ customerId: string; pledgeId: string }>();
   const customerId = params?.customerId;
   const pledgeId = params?.pledgeId;
   const router = useRouter();
+  const { language, t } = useLanguage();
+  const locale = language === "hi" ? "hi-IN" : "en-IN";
 
   const [data, setData] = useState<PledgeResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -53,7 +56,7 @@ export default function PledgeDetailPage() {
         const res = await fetch(`/api/pledges/${pledgeId}`);
         const payload = await res.json();
         if (!res.ok) {
-          throw new Error(payload?.error || "Unable to load pledge details.");
+          throw new Error(payload?.error || t("unable_to_load_pledge"));
         }
         setData(payload);
       } catch (err) {
@@ -75,18 +78,17 @@ export default function PledgeDetailPage() {
     if (!value) return "—";
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "—";
-    return date.toLocaleDateString();
+    return date.toLocaleDateString(locale);
   };
 
   if (!pledgeId) {
     return (
       <div className="max-w-5xl mx-auto p-6">
-        <p className="text-sm text-gray-500">Pledge ID not provided.</p>
+        <p className="text-sm text-gray-500">{t("pledge_id_missing")}</p>
       </div>
     );
   }
 
-  // ✅ Check if pledge is active
   const isActive = data?.pledge.status === "ACTIVE";
 
   return (
@@ -96,20 +98,47 @@ export default function PledgeDetailPage() {
           href={customerId ? `/customers/${customerId}` : "/customers"}
           className="text-sm text-gray-500 hover:underline"
         >
-          ← Back to Customer
+          {t("back_to_customer_arrow")}
         </Link>
-        <h1 className="text-2xl font-bold mt-2">Pledge Details</h1>
+        <h1 className="text-2xl font-bold mt-2">{t("pledge_details")}</h1>
       </div>
 
       {loading ? (
-        <p>Loading...</p>
+        <div className="space-y-6">
+          <section className="border rounded-2xl p-5 bg-white shadow-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="skeleton" style={{ width: "80px", height: "80px", borderRadius: "16px" }} />
+                <div>
+                  <div className="skeleton" style={{ width: "160px", height: "18px", marginBottom: "8px" }} />
+                  <div className="skeleton" style={{ width: "120px", height: "14px" }} />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <div className="skeleton" style={{ width: "70px", height: "36px", borderRadius: "4px" }} />
+                <div className="skeleton" style={{ width: "80px", height: "36px", borderRadius: "4px" }} />
+                <div className="skeleton" style={{ width: "100px", height: "36px", borderRadius: "4px" }} />
+              </div>
+            </div>
+          </section>
+          <section className="border rounded-2xl bg-white shadow-sm overflow-hidden">
+            <div className="divide-y">
+              {[...Array(14)].map((_, i) => (
+                <div key={i} className="grid grid-cols-2 gap-4 px-6 py-4">
+                  <div className="skeleton" style={{ width: "100px", height: "14px" }} />
+                  <div className="skeleton" style={{ width: "140px", height: "14px" }} />
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
       ) : error ? (
         <Alert variant="destructive">
-          <AlertTitle>Unable to load pledge</AlertTitle>
+          <AlertTitle>{t("unable_to_load_pledge")}</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : !data ? (
-        <p className="text-sm text-gray-500">Pledge not found.</p>
+        <p className="text-sm text-gray-500">{t("pledge_not_found")}</p>
       ) : (
         <div className="space-y-6">
           <section className="border rounded-2xl p-5 bg-white shadow-sm">
@@ -118,11 +147,7 @@ export default function PledgeDetailPage() {
                 <div className="h-20 w-20 rounded-2xl bg-gray-100 flex items-center justify-center overflow-hidden">
                   {data.pledge.itemPhoto ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={data.pledge.itemPhoto}
-                      alt={data.pledge.itemName}
-                      className="h-full w-full object-cover"
-                    />
+                    <img src={data.pledge.itemPhoto} alt={data.pledge.itemName} className="h-full w-full object-cover" />
                   ) : (
                     <span className="text-gray-400 text-xl font-semibold">
                       {data.pledge.itemName.charAt(0).toUpperCase()}
@@ -132,36 +157,25 @@ export default function PledgeDetailPage() {
                 <div>
                   <h2 className="text-lg font-semibold">{data.pledge.itemName}</h2>
                   <p className="text-sm text-gray-500">
-                    Customer: {data.pledge.customer.name}
+                    {t("customer_label")}: {data.pledge.customer.name} &bull; ID: #{data.pledge.customer.id.substring(0,8).toUpperCase()}
                   </p>
                 </div>
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="bg-yellow-600 text-white px-4 py-2 rounded text-sm hover:bg-yellow-700"
-                >
-                  Edit
+                <button type="button" className="bg-yellow-600 text-white px-4 py-2 rounded text-sm hover:bg-yellow-700">
+                  {t("edit")}
                 </button>
-
-                {/* ✅ Fixed release button — uses router, disabled when not ACTIVE */}
                 <button
                   type="button"
                   disabled={!isActive}
-                  onClick={() =>
-                    router.push(`/customers/${customerId}/pledges/${pledgeId}/release`)
-                  }
+                  onClick={() => router.push(`/customers/${customerId}/pledges/${pledgeId}/release`)}
                   className="bg-green-600 text-white px-4 py-2 rounded text-sm hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Release
+                  {t("release_label")}
                 </button>
-
-                <button
-                  type="button"
-                  className="bg-gray-600 text-white px-4 py-2 rounded text-sm hover:bg-gray-700"
-                >
-                  View Receipt
+                <button type="button" className="bg-gray-600 text-white px-4 py-2 rounded text-sm hover:bg-gray-700">
+                  {t("view_receipt")}
                 </button>
               </div>
             </div>
@@ -169,66 +183,21 @@ export default function PledgeDetailPage() {
 
           <section className="border rounded-2xl bg-white shadow-sm overflow-hidden">
             <div className="divide-y">
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">User Id</p>
-                <p className="font-medium text-gray-800">{data.user.id}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">User Name</p>
-                <p className="font-medium text-gray-800">{data.user.username || "—"}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Customer Name</p>
-                <p className="font-medium text-gray-800">{data.pledge.customer.name}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Address</p>
-                <p className="font-medium text-gray-800">{data.pledge.customer.address}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Loan Amount</p>
-                <p className="font-medium text-gray-800">₹ {data.pledge.loanAmount}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Pledge Date</p>
-                <p className="font-medium text-gray-800">{formatDate(data.pledge.pledgeDate)}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Release Date</p>
-                <p className="font-medium text-gray-800">{formatDate(data.pledge.releaseDate)}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Interest Rate</p>
-                <p className="font-medium text-gray-800">{data.pledge.interestRate}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Item Name</p>
-                <p className="font-medium text-gray-800">{data.pledge.itemName}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Item Type</p>
-                <p className="font-medium text-gray-800">{data.pledge.itemType}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Purity</p>
-                <p className="font-medium text-gray-800">{data.pledge.purity}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Gross Weight</p>
-                <p className="font-medium text-gray-800">{data.pledge.grossWeight}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Net Weight</p>
-                <p className="font-medium text-gray-800">{data.pledge.netWeight}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Status</p>
-                <p className="font-medium text-gray-800">{data.pledge.status}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
-                <p className="text-gray-500">Remark</p>
-                <p className="font-medium text-gray-800">{data.pledge.remark || "—"}</p>
-              </div>
+              <DetailRow label={t("user_id")} value={data.user.id} />
+              <DetailRow label={t("user_name")} value={data.user.username || "—"} />
+              <DetailRow label={t("customer_name_label")} value={data.pledge.customer.name} />
+              <DetailRow label={t("address")} value={data.pledge.customer.address} />
+              <DetailRow label={t("col_loan_amount")} value={`₹ ${data.pledge.loanAmount}`} />
+              <DetailRow label={t("col_pledge_date")} value={formatDate(data.pledge.pledgeDate)} />
+              <DetailRow label={t("col_release_date")} value={formatDate(data.pledge.releaseDate)} />
+              <DetailRow label={t("interest_rate")} value={data.pledge.interestRate} />
+              <DetailRow label={t("item_name")} value={data.pledge.itemName} />
+              <DetailRow label={t("item_type_label")} value={data.pledge.itemType} />
+              <DetailRow label={t("purity")} value={data.pledge.purity} />
+              <DetailRow label={t("gross_weight_label")} value={data.pledge.grossWeight} />
+              <DetailRow label={t("net_weight_label")} value={data.pledge.netWeight} />
+              <DetailRow label={t("status_label")} value={t(getStatusKey(data.pledge.status))} />
+              <DetailRow label={t("remark")} value={data.pledge.remark || "—"} />
             </div>
           </section>
         </div>
@@ -239,6 +208,15 @@ export default function PledgeDetailPage() {
           {toastMessage}
         </div>
       )}
+    </div>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-2 gap-4 px-6 py-4 text-sm">
+      <p className="text-gray-500">{label}</p>
+      <p className="font-medium text-gray-800">{value}</p>
     </div>
   );
 }

@@ -24,6 +24,8 @@ export async function GET(req: Request) {
     const search = searchParams.get("q")?.trim() || "";
     const filter = searchParams.get("filter") || "all";
     const pledgeStatusParam = searchParams.get("status");
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = 20;
 
     // ✅ SAFE ENUM CONVERSION
     const validStatus = Object.values(PledgeStatus).includes(
@@ -75,12 +77,14 @@ export async function GET(req: Request) {
     // 🚀 OPTIMIZED QUERY
     const customers = await prisma.customer.findMany({
       where: whereClause,
-      take: 20,
+      take: limit + 1,
+      skip: (page - 1) * limit,
       orderBy: { createdAt: "desc" },
 
       select: {
         id: true,
         name: true,
+        address: true,
 
         // ⚡ fast count
         _count: {
@@ -94,20 +98,28 @@ export async function GET(req: Request) {
           take: 1,
           select: {
             itemName: true,
+            loanAmount: true,
+            status: true,
           },
         },
       },
     });
 
     // ✅ FORMAT RESPONSE
-    const result = customers.map((cust) => ({
+    const hasMore = customers.length > limit;
+    const paginatedCustomers = customers.slice(0, limit);
+
+    const result = paginatedCustomers.map((cust) => ({
       id: cust.id,
       name: cust.name,
+      address: cust.address,
       pledgeCount: cust._count.pledges,
       latestItem: cust.pledges[0]?.itemName || null,
+      latestLoanAmount: cust.pledges[0]?.loanAmount || null,
+      latestStatus: cust.pledges[0]?.status || null,
     }));
 
-    return NextResponse.json({ customers: result });
+    return NextResponse.json({ customers: result, hasMore });
   } catch (err) {
     console.error("CUSTOMER SEARCH ERROR:", err);
     return NextResponse.json(
