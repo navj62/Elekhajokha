@@ -18,11 +18,10 @@ interface Plan {
   features: string[];
 }
 
-// Shape of /api/access response used on this page
 interface AccessInfo {
   hasAccess: boolean;
   status:    string | null;
-  hadTrial:  boolean; // returned by access route after adding hadTrial to select+response
+  hadTrial:  boolean;
 }
 
 declare global {
@@ -62,10 +61,11 @@ const TRIAL_FEATURES = [
   "No credit card required",
 ];
 
-// Statuses that mean "user already has or had access" — redirect away from /subscribe
-const REDIRECT_STATUSES = new Set(["active", "trial", "processing"]);
+// ✅ Only redirect active and mid-payment users
+// trial users CAN visit /subscribe to upgrade to a paid plan
+const REDIRECT_STATUSES = new Set(["active", "processing"]);
 
-// ── Razorpay SDK loader (idempotent) ──────────────────────────────────────────
+// ── Razorpay SDK loader ───────────────────────────────────────────────────────
 function loadRazorpay(): Promise<boolean> {
   return new Promise((resolve) => {
     if (typeof window.Razorpay !== "undefined") return resolve(true);
@@ -103,7 +103,6 @@ function TrialCheck() {
   );
 }
 
-// dark=true for use on light backgrounds (loading screen)
 function Spinner({ dark = false }: { dark?: boolean }) {
   const track  = dark ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.3)";
   const stroke = dark ? "#6b7280"          : "white";
@@ -137,24 +136,19 @@ export default function SubscribePage() {
   const [accessInfo,    setAccessInfo]    = useState<AccessInfo | null>(null);
   const [accessLoading, setAccessLoading] = useState(true);
 
-  // Separate refs — trial and payment handlers never block each other
   const isTrialProcessing   = useRef(false);
   const isPaymentProcessing = useRef(false);
-
-  // Snapshot of plan user actually paid for — immune to mid-checkout selection changes
-  const paidPlanRef = useRef<Plan | null>(null);
+  const paidPlanRef         = useRef<Plan | null>(null);
 
   const activePlan = PLANS.find((p) => p.id === selected)!;
 
   // Preload Razorpay SDK in background
   useEffect(() => { loadRazorpay().then(setSdkReady); }, []);
 
-  // Check current access on mount — redirect if already has access,
-  // populate hadTrial to disable trial button if already used
+  // Check access on mount
   useEffect(() => {
     fetch("/api/access")
       .then(async (r) => {
-        // ✅ Always check res.ok before parsing — a 500 body is not valid access data
         if (!r.ok) throw new Error("Access check failed");
         return r.json();
       })
@@ -162,25 +156,23 @@ export default function SubscribePage() {
         setAccessInfo({
           hasAccess: data.hasAccess ?? false,
           status:    data.status    ?? null,
-          // hadTrial must be returned by /api/access — add it to the route's
-          // select query and include it in every response that returns user data
           hadTrial:  data.hadTrial  ?? false,
         });
 
-        // Redirect if user already has access or is mid-payment
-        // "processing" → they just paid, send back to dashboard
-        if (data.hasAccess || REDIRECT_STATUSES.has(data.status)) {
+        // ✅ Only redirect based on STATUS — not hasAccess.
+        // trial users have hasAccess:true but should still see this page
+        // to upgrade. Only active and processing get redirected.
+        if (REDIRECT_STATUSES.has(data.status)) {
           router.replace("/dashboard");
         }
       })
       .catch(() => {
-        // On error, show the page — don't silently block access to /subscribe
         setAccessInfo({ hasAccess: false, status: null, hadTrial: false });
       })
       .finally(() => setAccessLoading(false));
   }, [router]);
 
-  // Auto-redirect 2s after trial success popup
+  // Auto-redirect 2s after trial success
   useEffect(() => {
     if (!trialSuccess) return;
     const t = setTimeout(() => router.push("/dashboard"), 2000);
@@ -245,9 +237,7 @@ export default function SubscribePage() {
         }),
       };
 
-      // Snapshot plan before opening modal — selection may change mid-checkout
       paidPlanRef.current = activePlan;
-
       let dismissed = false;
 
       const options = {
@@ -257,16 +247,11 @@ export default function SubscribePage() {
         description:     `${activePlan.label} — ${activePlan.duration}`,
         prefill,
         theme:           { color: "#16a34a" },
-
-        // Do NOT verify payment here — webhook is the source of truth.
-        // Redirect to dashboard; SubscriptionGuard shows "processing" and
-        // polls until webhook confirms active status.
         handler: function () {
           isPaymentProcessing.current = false;
           setLoading(false);
           router.push("/dashboard");
         },
-
         modal: {
           ondismiss: () => {
             dismissed = true;
@@ -278,7 +263,6 @@ export default function SubscribePage() {
       };
 
       const rzp = new window.Razorpay(options);
-
       rzp.on("payment.failed", (resp: { error?: { description?: string } }) => {
         if (!dismissed) {
           setLoading(false);
@@ -288,8 +272,6 @@ export default function SubscribePage() {
       });
 
       rzp.open();
-
-      // Return before finally — modal callbacks own state from here
       return;
 
     } catch (err: unknown) {
@@ -300,9 +282,11 @@ export default function SubscribePage() {
     }
   }
 
+  // ✅ Disable trial if: already used, OR currently on active trial
+  // hadTrial covers both — it's set to true when trial starts and never reset
   const trialAlreadyUsed = accessInfo?.hadTrial === true;
 
-  // ── Mount loading screen ──────────────────────────────────────────────────
+  // ── Mount loading ─────────────────────────────────────────────────────────
   if (accessLoading) {
     return (
       <div style={styles.page}>
@@ -324,8 +308,14 @@ export default function SubscribePage() {
           <p style={styles.subtitle}>All plans include full platform access. No hidden fees.</p>
         </div>
 
+        {/* Trial banner for current trial users */}
+        {accessInfo?.status === "trial" && (
+          <div style={styles.trialActiveBanner}>
+            ⏳ You&apos;re currently on a free trial. Upgrade below to get full access after it ends.
+          </div>
+        )}
+
         {/* Free Trial Card */}
-        {/* opacity on wrapper dims visually; disabled on button handles interaction */}
         <div style={{ ...styles.trialCard, opacity: trialAlreadyUsed ? 0.5 : 1 }}>
           <div style={styles.trialTop}>
             <div>
@@ -388,7 +378,7 @@ export default function SubscribePage() {
           <div style={styles.dividerLine} />
         </div>
 
-        {/* Paid Plan Cards */}
+        {/* Paid Plans */}
         <div style={styles.planList}>
           {PLANS.map((plan) => {
             const active = selected === plan.id;
@@ -434,7 +424,6 @@ export default function SubscribePage() {
           })}
         </div>
 
-        {/* Payment error — retry calls correct handler */}
         {paymentError && (
           <div role="alert" style={styles.errorBox}>
             <span>⚠</span>
@@ -445,7 +434,6 @@ export default function SubscribePage() {
           </div>
         )}
 
-        {/* Paid CTA */}
         <button
           onClick={handleSubscribe}
           disabled={loading || !sdkReady}
@@ -488,48 +476,49 @@ export default function SubscribePage() {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 const styles: Record<string, React.CSSProperties> = {
-  page:         { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem 1rem", background: "#f9fafb" },
-  card:         { width: "100%", maxWidth: 480, background: "#ffffff", borderRadius: 16, boxShadow: "0 4px 24px rgba(0,0,0,0.08)", padding: "2rem" },
-  header:       { marginBottom: "1.5rem" },
-  title:        { margin: 0, fontSize: "1.4rem", fontWeight: 700, color: "#111" },
-  subtitle:     { margin: "0.3rem 0 0", fontSize: "0.875rem", color: "#6b7280" },
-  trialCard:    { border: "1.5px solid #c7d2fe", background: "#f5f3ff", borderRadius: 12, padding: "14px 16px", marginBottom: "1.25rem", display: "flex", flexDirection: "column", gap: 10, transition: "opacity 0.2s" },
-  trialTop:     { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
-  trialBadge:   { fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "#6366f1", background: "#e0e7ff", padding: "2px 7px", borderRadius: 99 },
-  trialPrice:   { display: "block", fontSize: "1.1rem", fontWeight: 700, color: "#111" },
-  trialBtn:     { width: "100%", padding: "11px", background: "#6366f1", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: "0.95rem", cursor: "pointer", transition: "opacity 0.15s" },
-  divider:      { display: "flex", alignItems: "center", gap: 10, marginBottom: "1.25rem" },
-  dividerLine:  { flex: 1, height: 1, background: "#e5e7eb" },
-  dividerText:  { fontSize: "0.75rem", color: "#9ca3af", whiteSpace: "nowrap" },
-  planList:     { display: "flex", flexDirection: "column", gap: 10, marginBottom: "1.25rem" },
-  planBtn:      { width: "100%", padding: "14px 16px", borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#fff", textAlign: "left", cursor: "pointer", transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s" },
-  planBtnActive:{ border: "2px solid #16a34a", background: "#f0fdf4", boxShadow: "0 0 0 3px rgba(22,163,74,0.08)" },
-  planRow:      { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
-  planLabelRow: { display: "flex", alignItems: "center", gap: 8 },
-  planLabel:    { fontWeight: 600, fontSize: "0.95rem", color: "#111" },
-  badge:        { fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "#16a34a", background: "#dcfce7", padding: "2px 7px", borderRadius: 99 },
-  planMeta:     { fontSize: "0.78rem", color: "#6b7280", marginTop: 3 },
-  priceBlock:   { textAlign: "right" },
-  price:        { display: "block", fontSize: "1.1rem", fontWeight: 700, color: "#111" },
-  savings:      { fontSize: "0.72rem", color: "#16a34a", fontWeight: 600 },
-  featureList:  { listStyle: "none", margin: "12px 0 4px", padding: 0, display: "flex", flexDirection: "column", gap: 7 },
-  featureItem:  { display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem", color: "#374151" },
-  radioRow:     { display: "flex", alignItems: "center", gap: 7, marginTop: 12 },
-  radio:        { width: 16, height: 16, borderRadius: "50%", border: "1.5px solid #d1d5db", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  radioActive:  { border: "1.5px solid #16a34a" },
-  radioDot:     { width: 8, height: 8, borderRadius: "50%", background: "#16a34a" },
-  radioLabel:   { fontSize: "0.78rem", color: "#6b7280" },
-  errorBox:     { display: "flex", alignItems: "flex-start", gap: 8, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", padding: "10px 14px", borderRadius: 10, fontSize: "0.85rem", marginBottom: "1rem" },
-  cta:          { width: "100%", padding: "13px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: "1rem", cursor: "pointer", transition: "opacity 0.15s" },
-  ctaDisabled:  { opacity: 0.7, cursor: "not-allowed" },
-  ctaInner:     { display: "flex", alignItems: "center", justifyContent: "center", gap: 8 },
-  retryBtn:     { alignSelf: "flex-start", background: "none", border: "1px solid #fca5a5", borderRadius: 6, color: "#991b1b", fontSize: "0.78rem", fontWeight: 600, padding: "3px 10px", cursor: "pointer" },
-  trust:        { textAlign: "center", marginTop: 12, fontSize: "0.75rem", color: "#9ca3af" },
-  overlay:      { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
-  popup:        { background: "#fff", borderRadius: 20, padding: "2.5rem 2rem", maxWidth: 360, width: "90%", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 24px 64px rgba(0,0,0,0.18)" },
-  popupIcon:    { width: 60, height: 60, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.6rem", fontWeight: 700 },
-  popupTitle:   { margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111" },
-  popupDesc:    { margin: 0, fontSize: "0.875rem", color: "#6b7280", lineHeight: 1.7 },
-  popupDots:    { display: "flex", gap: 6, marginTop: 4 },
-  dot:          { width: 7, height: 7, borderRadius: "50%", animation: "rzp-bounce 1s infinite ease-in-out" },
+  page:             { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem 1rem", background: "#f9fafb" },
+  card:             { width: "100%", maxWidth: 480, background: "#ffffff", borderRadius: 16, boxShadow: "0 4px 24px rgba(0,0,0,0.08)", padding: "2rem" },
+  header:           { marginBottom: "1.5rem" },
+  title:            { margin: 0, fontSize: "1.4rem", fontWeight: 700, color: "#111" },
+  subtitle:         { margin: "0.3rem 0 0", fontSize: "0.875rem", color: "#6b7280" },
+  trialActiveBanner:{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", fontSize: "0.82rem", color: "#92400e", marginBottom: "1rem" },
+  trialCard:        { border: "1.5px solid #c7d2fe", background: "#f5f3ff", borderRadius: 12, padding: "14px 16px", marginBottom: "1.25rem", display: "flex", flexDirection: "column", gap: 10, transition: "opacity 0.2s" },
+  trialTop:         { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
+  trialBadge:       { fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "#6366f1", background: "#e0e7ff", padding: "2px 7px", borderRadius: 99 },
+  trialPrice:       { display: "block", fontSize: "1.1rem", fontWeight: 700, color: "#111" },
+  trialBtn:         { width: "100%", padding: "11px", background: "#6366f1", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: "0.95rem", cursor: "pointer", transition: "opacity 0.15s" },
+  divider:          { display: "flex", alignItems: "center", gap: 10, marginBottom: "1.25rem" },
+  dividerLine:      { flex: 1, height: 1, background: "#e5e7eb" },
+  dividerText:      { fontSize: "0.75rem", color: "#9ca3af", whiteSpace: "nowrap" },
+  planList:         { display: "flex", flexDirection: "column", gap: 10, marginBottom: "1.25rem" },
+  planBtn:          { width: "100%", padding: "14px 16px", borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#fff", textAlign: "left", cursor: "pointer", transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s" },
+  planBtnActive:    { border: "2px solid #16a34a", background: "#f0fdf4", boxShadow: "0 0 0 3px rgba(22,163,74,0.08)" },
+  planRow:          { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
+  planLabelRow:     { display: "flex", alignItems: "center", gap: 8 },
+  planLabel:        { fontWeight: 600, fontSize: "0.95rem", color: "#111" },
+  badge:            { fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "#16a34a", background: "#dcfce7", padding: "2px 7px", borderRadius: 99 },
+  planMeta:         { fontSize: "0.78rem", color: "#6b7280", marginTop: 3 },
+  priceBlock:       { textAlign: "right" },
+  price:            { display: "block", fontSize: "1.1rem", fontWeight: 700, color: "#111" },
+  savings:          { fontSize: "0.72rem", color: "#16a34a", fontWeight: 600 },
+  featureList:      { listStyle: "none", margin: "12px 0 4px", padding: 0, display: "flex", flexDirection: "column", gap: 7 },
+  featureItem:      { display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem", color: "#374151" },
+  radioRow:         { display: "flex", alignItems: "center", gap: 7, marginTop: 12 },
+  radio:            { width: 16, height: 16, borderRadius: "50%", border: "1.5px solid #d1d5db", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  radioActive:      { border: "1.5px solid #16a34a" },
+  radioDot:         { width: 8, height: 8, borderRadius: "50%", background: "#16a34a" },
+  radioLabel:       { fontSize: "0.78rem", color: "#6b7280" },
+  errorBox:         { display: "flex", alignItems: "flex-start", gap: 8, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", padding: "10px 14px", borderRadius: 10, fontSize: "0.85rem", marginBottom: "1rem" },
+  cta:              { width: "100%", padding: "13px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: "1rem", cursor: "pointer", transition: "opacity 0.15s" },
+  ctaDisabled:      { opacity: 0.7, cursor: "not-allowed" },
+  ctaInner:         { display: "flex", alignItems: "center", justifyContent: "center", gap: 8 },
+  retryBtn:         { alignSelf: "flex-start", background: "none", border: "1px solid #fca5a5", borderRadius: 6, color: "#991b1b", fontSize: "0.78rem", fontWeight: 600, padding: "3px 10px", cursor: "pointer" },
+  trust:            { textAlign: "center", marginTop: 12, fontSize: "0.75rem", color: "#9ca3af" },
+  overlay:          { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
+  popup:            { background: "#fff", borderRadius: 20, padding: "2.5rem 2rem", maxWidth: 360, width: "90%", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 24px 64px rgba(0,0,0,0.18)" },
+  popupIcon:        { width: 60, height: 60, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.6rem", fontWeight: 700 },
+  popupTitle:       { margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111" },
+  popupDesc:        { margin: 0, fontSize: "0.875rem", color: "#6b7280", lineHeight: 1.7 },
+  popupDots:        { display: "flex", gap: 6, marginTop: 4 },
+  dot:              { width: 7, height: 7, borderRadius: "50%", animation: "rzp-bounce 1s infinite ease-in-out" },
 };

@@ -393,7 +393,7 @@ export default function ProfilePage() {
       {/* ← NEW: Subscription card */}
       <SubscriptionCard
         profile={profile}
-        onUpgrade={() => router.push("/subscribe")}
+        onUpgrade={() => router.push("/subscription")}
       />
 
       {/* Shop & Personal Details */}

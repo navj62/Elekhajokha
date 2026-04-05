@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
     const itemType            = formData.get("itemType")            as string;
     const itemName            = formData.get("itemName")            as string;
     const grossWeight         = formData.get("grossWeight")         as string;
+   const netWeightOfMetal    = formData.get("netWeightOfMetal")    as string; // ← add this
     const netWeight           = formData.get("netWeight")           as string;
     const purity              = formData.get("purity")              as string;
     const interestRate        = formData.get("interestRate")        as string;
@@ -83,6 +84,7 @@ export async function POST(req: NextRequest) {
         itemName,
         grossWeight:          parseFloat(grossWeight),
         netWeight:            parseFloat(netWeight),
+         netWeightOfMetal:     parseFloat(netWeightOfMetal), // ← add this
         purity:               parseFloat(purity),
         interestRate:         parseFloat(interestRate),
         compoundingDuration:  compoundingDuration as any,

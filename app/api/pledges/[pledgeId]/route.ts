@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
-
+import { calculateHybridInterest } from "@/lib/interest";
 type RouteContext = {
   params: Promise<{ pledgeId: string }>;
 };
+
+
 export async function PATCH(req: Request, context: RouteContext) {
   try {
     const { userId: clerkUserId } = await auth();
@@ -16,6 +18,7 @@ export async function PATCH(req: Request, context: RouteContext) {
       where: { clerkUserId },
       select: { id: true },
     });
+
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
@@ -25,14 +28,15 @@ export async function PATCH(req: Request, context: RouteContext) {
       return NextResponse.json({ error: "Pledge ID required" }, { status: 400 });
     }
 
-    const existing = await prisma.pledge.findFirst({
+    const pledge = await prisma.pledge.findFirst({
       where: { id: pledgeId, customer: { userId: user.id } },
-      select: { id: true, status: true },
     });
-    if (!existing) {
+
+    if (!pledge) {
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
     }
-    if (existing.status !== "ACTIVE") {
+
+    if (pledge.status !== "ACTIVE") {
       return NextResponse.json(
         { error: "Only active pledges can be released" },
         { status: 400 }
@@ -40,19 +44,72 @@ export async function PATCH(req: Request, context: RouteContext) {
     }
 
     const body = await req.json();
-    const { releaseDate, totalInterest, receivableAmount, status } = body;
 
-    if (!releaseDate || totalInterest == null || receivableAmount == null) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    const {
+      releaseDate,
+      allowCompounding,
+      compoundingDuration,
+      calculationVersion,
+    } = body;
+
+    if (!releaseDate) {
+      return NextResponse.json(
+        { error: "Release date required" },
+        { status: 400 }
+      );
     }
 
+    // ✅ SAFE CALCULATION (backend only)
+    const principal = parseFloat(pledge.loanAmount.toString());
+    const rate = parseFloat(pledge.interestRate.toString());
+
+    const calc = calculateHybridInterest(
+      principal,
+      rate,
+      new Date(pledge.pledgeDate),
+      new Date(releaseDate),
+      allowCompounding,
+      compoundingDuration
+    );
+
+    // ✅ UPDATE PLEDGE
     const updated = await prisma.pledge.update({
       where: { id: pledgeId },
       data: {
-        status:          status ?? "RELEASED",
-        releaseDate:     new Date(releaseDate),
-        totalInterest,
-        receivableAmount,
+        status: "RELEASED",
+        releaseDate: new Date(releaseDate),
+
+        allowCompounding,
+        compoundingDuration,
+
+        durationMonths: calc.T,
+        calculationVersion: calculationVersion ?? 1,
+
+        totalInterest: calc.totalInterest,
+        receivableAmount: calc.receivableAmount,
+      },
+    });
+
+    // ✅ AUDIT LOG (VERY IMPORTANT)
+    await prisma.pledgeAudit.create({
+      data: {
+        pledgeId: pledge.id,
+
+        action: "RELEASED",
+
+        principal: pledge.loanAmount,
+        interestRate: pledge.interestRate,
+
+        allowCompounding,
+        compoundingDuration,
+
+        calculationVersion: calculationVersion ?? 1,
+        durationMonths: calc.T,
+
+        totalInterest: calc.totalInterest,
+        receivableAmount: calc.receivableAmount,
+
+        releaseDate: new Date(releaseDate),
       },
     });
 
