@@ -49,6 +49,7 @@ model Customer {
   id         String    @id @default(uuid())
   userId     String
   name       String
+   region    String   // city / area / locality
   address    String
   mobile     String?
   idProofImg    String?
@@ -76,23 +77,19 @@ model Pledge {
   pledgeDate    DateTime
   loanAmount    Decimal  @db.Decimal(12,2)
 
-  itemType      ItemType
-  itemName      String
-  purity        Decimal  @db.Decimal(5,2)
-
-  grossWeight   Decimal  @db.Decimal(10,3)
-  netWeight     Decimal  @db.Decimal(10,3)
-  netWeightOfMetal Decimal @db.Decimal(10,3)
-
   interestRate  Decimal  @db.Decimal(5,2)
   compoundingDuration CompoundingDuration
   allowCompounding Boolean @default(true)
   itemPhoto     String?
   remark        String?
-  durationMonths Decimal @db.Decimal(6,2)
+  durationMonths Decimal? @db.Decimal(6,2)
   pledgeAudits PledgeAudit[]
   status        PledgeStatus
   releaseDate   DateTime?
+
+  items             PledgeItem[]
+  netWeightOfGold   Decimal @db.Decimal(10,3) @default(0)
+  netWeightOfSilver Decimal @db.Decimal(10,3) @default(0)
 
   totalInterest     Decimal? @db.Decimal(12,2)
   receivableAmount  Decimal? @db.Decimal(12,2)
@@ -104,9 +101,30 @@ model Pledge {
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-
+  @@index([status, createdAt])
   @@index([customerId])
   @@map("pledges")
+}
+
+model PledgeItem {
+  id               String    @id @default(uuid())
+  pledgeId         String
+
+  itemType         ItemType   // NECKLACE, RING, BANGLE etc.
+  metalType        MetalType  // GOLD | SILVER  ← drives LTV price
+  itemName         String?    // optional custom name
+
+  quantity         Int        @default(1)  // informational only
+
+  grossWeight      Decimal    @db.Decimal(10,3)  // total for all pieces
+  netWeight        Decimal    @db.Decimal(10,3)  // total for all pieces
+  purity           Decimal    @db.Decimal(5,2)
+  netWeightOfMetal Decimal    @db.Decimal(10,3)  // auto = netWeight × (purity/100)
+
+  pledge Pledge @relation(fields: [pledgeId], references: [id], onDelete: Cascade)
+
+  @@index([pledgeId])
+  @@map("pledge_items")
 }
 
 model PledgeAudit {
@@ -127,14 +145,21 @@ model PledgeAudit {
   calculationVersion Int
 
   // Time calculation snapshot
-  durationMonths    Decimal @db.Decimal(6,2)
+  durationMonths    Decimal? @db.Decimal(6,2)
+
+   netWeightOfGold   Decimal @db.Decimal(10,3)
+  netWeightOfSilver Decimal @db.Decimal(10,3)
+  goldPricePerGram  Decimal? @db.Decimal(10,2)  // market price at release
+  silverPricePerGram Decimal? @db.Decimal(10,2) // market price at release
+  marketValueAtRelease Decimal? @db.Decimal(12,2)
+  ltvAtRelease         Decimal? @db.Decimal(5,2)
 
   // Final result
-  totalInterest     Decimal @db.Decimal(12,2)
-  receivableAmount  Decimal @db.Decimal(12,2)
+  totalInterest     Decimal? @db.Decimal(12,2)
+  receivableAmount  Decimal? @db.Decimal(12,2)
 
   // Context
-  releaseDate       DateTime
+  releaseDate       DateTime?
 
   createdAt         DateTime @default(now())
 
@@ -147,12 +172,12 @@ model MetalPrice {
   id              String    @id @default(cuid())
   metal           MetalType
 
-  usdPerOunce     Float     // source value
-  inrPerGram      Float     // user-friendly
+  usdPerOunce Decimal @db.Decimal(12,4)
+inrPerGram  Decimal @db.Decimal(10,2)
 
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-
+  @@index([createdAt])
   @@index([metal, createdAt(sort: Desc)])
 }
 
@@ -176,6 +201,7 @@ enum AuditAction {
   CREATED
   UPDATED
   RELEASED
+   DELETED  // ✅ ADD THIS
   RECALCULATED
 }
 enum SubscriptionPlan {
@@ -190,15 +216,26 @@ enum SubscriptionStatus {
   expired
 }
 
+// Rename/replace current ItemType enum
+enum ItemType {
+  NECKLACE
+  CHAIN
+  RING
+  BANGLE
+  BRACELET
+  EARRING
+  ANKLET
+  PENDANT
+  COIN
+  BAR
+  OTHER
+}
+
+// MetalType already exists — keep as is
 enum MetalType {
   GOLD
   SILVER
 }
-enum ItemType {
-  GOLD
-  SILVER
-}
-
 enum PledgeStatus {
   ACTIVE
   RELEASED
@@ -207,7 +244,7 @@ enum PledgeStatus {
 
 enum CompoundingDuration {
   MONTHLY
-  QUARTERLY
   HALFYEARLY
   YEARLY
+  
 }

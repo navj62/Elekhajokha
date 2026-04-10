@@ -25,9 +25,28 @@ export default function SubscriptionGuard({
   const router = useRouter();
   const { hasAccess, isLoading, status, reason, daysLeft, refetch } = useAccess();
 
-  // ── Fix 6: Safe polling with intervalRef — prevents multiple intervals ────
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  /* ── Refs ──────────────────────────────────────────────────────────
+   *
+   * intervalRef    — holds the polling interval during payment processing
+   * refetchRef     — always points to the latest refetch without being a
+   *                  dependency of the interval effect (prevents loop)
+   * hasRefreshed   — gates router.refresh() to fire exactly once when
+   *                  payment is confirmed (prevents infinite refresh loop)
+   *
+   * ----------------------------------------------------------------- */
+  const intervalRef  = useRef<NodeJS.Timeout | null>(null);
+  const refetchRef   = useRef(refetch);
+  const hasRefreshed = useRef(false);
 
+  // Keep refetchRef current on every render without adding refetch
+  // as a dependency of the interval effect
+  useEffect(() => {
+    refetchRef.current = refetch;
+  }, [refetch]);
+
+  /* ── Polling — only during payment processing ──────────────────── */
+  // refetch intentionally excluded from deps — accessed via refetchRef
+  // so the interval is never torn down and recreated due to refetch identity
   useEffect(() => {
     if (status !== "processing") {
       if (intervalRef.current) {
@@ -36,35 +55,46 @@ export default function SubscriptionGuard({
       }
       return;
     }
-    intervalRef.current = setInterval(refetch, 4000);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [status, refetch]);
 
-  // ── Fix 3: Auto-refresh page when webhook fires and access becomes true ───
-  // Stays on the same page — just re-renders with full access
+    intervalRef.current = setInterval(() => refetchRef.current(), 4000);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [status]); // ✅ only status — no refetch dep, render loop broken
+
+  /* ── One-time page refresh when payment confirmed ──────────────── */
+  // hasRefreshed.current gates this to fire exactly once —
+  // without it, router.refresh() → re-render → effect fires again → loop
   useEffect(() => {
-    if (hasAccess && status === "active") {
+    if (hasAccess && status === "active" && !hasRefreshed.current) {
+      hasRefreshed.current = true;
       router.refresh();
     }
-  }, [hasAccess, status, router]);
+  }, [hasAccess, status, router]); // ✅ safe — hasRefreshed.current prevents loop
 
-  // ── Fix 8: Lock documentElement not body — more reliable across browsers ──
+  /* ── Scroll lock when paywall is shown ────────────────────────── */
   useEffect(() => {
     const shouldLock =
-      !isLoading &&
-      !hasAccess &&
-      status !== "processing" &&
-      status !== "server_error" &&
-      status !== "error" &&
+      !isLoading         &&
+      !hasAccess         &&
+      status !== "processing"      &&
+      status !== "server_error"    &&
+      status !== "error"           &&
       status !== "account_suspended";
 
     document.documentElement.style.overflow = shouldLock ? "hidden" : "";
     return () => { document.documentElement.style.overflow = ""; };
   }, [isLoading, hasAccess, status]);
 
-  // ── 1. Loading ────────────────────────────────────────────────────────────
+  /* ================================================================ */
+  /*  Render                                                           */
+  /* ================================================================ */
+
+  // ── 1. Loading ────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -73,7 +103,7 @@ export default function SubscriptionGuard({
     );
   }
 
-  // ── 2. Server / network error ─────────────────────────────────────────────
+  // ── 2. Server / network error ─────────────────────────────────────
   if (status === "server_error" || status === "error") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-sm text-gray-500">
@@ -89,7 +119,7 @@ export default function SubscriptionGuard({
     );
   }
 
-  // ── 3. Account suspended ──────────────────────────────────────────────────
+  // ── 3. Account suspended ──────────────────────────────────────────
   if (status === "account_suspended") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-sm text-gray-500">
@@ -99,13 +129,13 @@ export default function SubscriptionGuard({
     );
   }
 
-  // ── Fix 5: Unauthenticated → redirect to sign-in ─────────────────────────
+  // ── 4. Unauthenticated → redirect ────────────────────────────────
   if (status === "unauthenticated") {
     router.push("/sign-in");
     return null;
   }
 
-  // ── 4. Payment processing — polling above transitions once webhook fires ──
+  // ── 5. Payment processing — polling transitions once webhook fires ─
   if (status === "processing") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-4">
@@ -118,7 +148,6 @@ export default function SubscriptionGuard({
             This usually takes a few seconds. Please don&apos;t close this tab.
           </p>
         </div>
-        {/* Fix 7: "Check again" disabled while polling is already running */}
         <button
           onClick={refetch}
           disabled={status === "processing"}
@@ -130,7 +159,7 @@ export default function SubscriptionGuard({
     );
   }
 
-  // ── 5. Has access → render children with contextual banners ──────────────
+  // ── 6. Has access → render children with contextual banners ──────
   if (hasAccess) {
     return (
       <div>
@@ -147,7 +176,7 @@ export default function SubscriptionGuard({
           </div>
         )}
 
-        {/* Fix 4: Stronger trial CTA when ≤5 days left */}
+        {/* Stronger trial CTA when ≤5 days left */}
         {status === "trial" && daysLeft !== null && daysLeft <= 5 && (
           <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2.5 flex items-center justify-between gap-3 text-sm">
             <div className="flex items-center gap-2 text-yellow-800">
@@ -172,14 +201,13 @@ export default function SubscriptionGuard({
     );
   }
 
-  // ── 6. No access → paywall ────────────────────────────────────────────────
+  // ── 7. No access → paywall ────────────────────────────────────────
   const isTrialExpired   = status === "trial_expired";
   const isExpired        = status === "expired";
   const isPaymentTimeout = status === "payment_timeout";
   const isHalted         = status === "inactive" && reason === "payment_failed";
 
-  // Fix 1: shouldBlur only when no access AND not halted
-  // Prevents any edge-case blur when hasAccess flickers
+  // shouldBlur only when no access AND not halted
   const shouldBlur = !hasAccess && !isHalted;
 
   const title = isHalted
@@ -192,7 +220,6 @@ export default function SubscriptionGuard({
     ? "Payment Session Expired"
     : "Subscription Required";
 
-  // Fix 2: Clearer payment timeout description with explicit action
   const description = isHalted
     ? "Your payment failed and access has been paused. Subscribe again to restore access to "
     : isTrialExpired
@@ -213,7 +240,6 @@ export default function SubscriptionGuard({
     ? "Try Again"
     : "View Plans";
 
-  // Fix 10: Richer feature list with value prop
   const FEATURES = [
     "Unlimited customers & pledges",
     "Interest calculator",
@@ -221,7 +247,7 @@ export default function SubscriptionGuard({
     "Save time managing finances",
   ];
 
-  // ── Halted: clean error screen, no blur ───────────────────────────────────
+  // ── Halted: clean error screen, no blur ──────────────────────────
   if (isHalted) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-5 px-4 text-center">
@@ -242,7 +268,6 @@ export default function SubscriptionGuard({
           <Sparkles size={15} />
           {ctaLabel}
         </button>
-        {/* Fix 9: Urgency line */}
         <p className="text-xs text-red-500">
           Access will be restricted until you upgrade
         </p>
@@ -253,10 +278,9 @@ export default function SubscriptionGuard({
     );
   }
 
-  // ── All others: blurred content + overlay ────────────────────────────────
+  // ── All others: blurred content + overlay ────────────────────────
   return (
     <div className="relative min-h-[60vh]">
-      {/* Fix 1: shouldBlur correctly scoped */}
       {shouldBlur && (
         <div className="pointer-events-none select-none blur-sm opacity-40 overflow-hidden max-h-[60vh]">
           {children}
@@ -278,7 +302,6 @@ export default function SubscriptionGuard({
             </p>
           </div>
 
-          {/* Fix 10: Richer features list */}
           <ul className="w-full space-y-2 text-left">
             {FEATURES.map((f) => (
               <li key={f} className="flex items-center gap-2.5 text-sm text-gray-600">
@@ -300,14 +323,13 @@ export default function SubscriptionGuard({
             {ctaLabel}
           </button>
 
-          {/* Fix 9: Urgency line */}
           <p className="text-xs text-red-500">
             Access will be restricted until you upgrade
           </p>
-
           <p className="text-xs text-gray-400">
             Starting at ₹999 · One-time payment · No auto-renewal
           </p>
+
         </div>
       </div>
     </div>

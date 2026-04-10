@@ -3,7 +3,9 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "@clerk/nextjs";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+/* ------------------------------------------------------------------ */
+/*  Types                                                               */
+/* ------------------------------------------------------------------ */
 type AccessStatus =
   | "active"
   | "trial"
@@ -44,17 +46,19 @@ const DEFAULT: AccessState = {
   endDate:   null,
 };
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
+/* ------------------------------------------------------------------ */
+/*  Hook                                                                */
+/* ------------------------------------------------------------------ */
 export function useAccess(): UseAccessReturn {
   const { userId, isLoaded } = useAuth();
   const [state, setState]    = useState<AccessState>(DEFAULT);
 
   const cancelledRef   = useRef(false);
   const isInitialFetch = useRef(true);
-  const fetchingRef    = useRef(false); // Fix 4: deduplication guard
+  const fetchingRef    = useRef(false);  // dedup guard — prevents race conditions
 
   const fetchAccess = useCallback(async () => {
-    // Fix 4: Skip if a fetch is already in-flight
+    // Skip if a fetch is already in-flight
     // Prevents race conditions when tab focus + manual refetch fire simultaneously
     if (fetchingRef.current) return;
     fetchingRef.current = true;
@@ -79,22 +83,21 @@ export function useAccess(): UseAccessReturn {
 
       if (!cancelledRef.current) {
         setState({
-          // Fix 2: Safe type checks instead of unsafe `as` casting
-          hasAccess: typeof data.hasAccess === "boolean" ? data.hasAccess              : false,
+          hasAccess: typeof data.hasAccess === "boolean" ? data.hasAccess             : false,
           isLoading: false,
-          status:    typeof data.status   === "string"  ? data.status as AccessStatus  : null,
-          reason:    typeof data.reason   === "string"  ? data.reason                  : null,
-          daysLeft:  typeof data.daysLeft === "number"  ? data.daysLeft                : null,
-          plan:      typeof data.plan     === "string"  ? data.plan                    : null,
-          endDate:   typeof data.endDate  === "string"  ? new Date(data.endDate)       : null,
+          status:    typeof data.status    === "string"  ? data.status as AccessStatus : null,
+          reason:    typeof data.reason    === "string"  ? data.reason                 : null,
+          daysLeft:  typeof data.daysLeft  === "number"  ? data.daysLeft               : null,
+          plan:      typeof data.plan      === "string"  ? data.plan                   : null,
+          endDate:   typeof data.endDate   === "string"  ? new Date(data.endDate)      : null,
         });
       }
     } catch {
       if (!cancelledRef.current) {
-        // Fix 1: Preserve previous hasAccess on network error
-        // Active paying user should NOT get blocked by a network blip
+        // Preserve previous hasAccess on network error —
+        // an active paying user should NOT get blocked by a network blip
         setState((s) => ({
-          ...s,          // preserves previous hasAccess — no override
+          ...s,
           isLoading: false,
           status:    "error",
           reason:    "network_error",
@@ -102,11 +105,11 @@ export function useAccess(): UseAccessReturn {
       }
     } finally {
       isInitialFetch.current = false;
-      fetchingRef.current    = false; // Fix 4: release lock
+      fetchingRef.current    = false;
     }
-  }, []);
+  }, []); // ✅ stable — no deps, never recreated
 
-  // ── Initial fetch + re-fetch on auth change ───────────────────────────────
+  /* ── Initial fetch + re-fetch on auth change ─────────────────────── */
   useEffect(() => {
     cancelledRef.current = false;
 
@@ -123,7 +126,7 @@ export function useAccess(): UseAccessReturn {
     return () => { cancelledRef.current = true; };
   }, [userId, isLoaded, fetchAccess]);
 
-  // ── Re-fetch when tab becomes visible ────────────────────────────────────
+  /* ── Re-fetch when tab becomes visible ───────────────────────────── */
   useEffect(() => {
     if (!userId) return;
 
