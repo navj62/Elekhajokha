@@ -61,8 +61,8 @@ interface ItemForm {
 }
 
 interface LivePrices {
-  gold:   number;   // ₹ per gram
-  silver: number;   // ₹ per gram
+  gold:   number;
+  silver: number;
 }
 
 /* ------------------------------------------------------------------ */
@@ -89,16 +89,10 @@ function defaultItem(): ItemForm {
   };
 }
 
-/* ------------------------------------------------------------------ */
-/*  FormField                                                           */
-/* ------------------------------------------------------------------ */
 function FormField({
   label, hint, required, children,
 }: {
-  label:     string;
-  hint?:     string;
-  required?: boolean;
-  children:  React.ReactNode;
+  label: string; hint?: string; required?: boolean; children: React.ReactNode;
 }) {
   return (
     <div className="space-y-1">
@@ -142,7 +136,6 @@ export default function AddPledgePage() {
       try {
         const res  = await fetch("/api/latest-prices");
         const data = await res.json();
-        // data.gold.perGram and data.silver.perGram — from our route
         setPrices({
           gold:   data.gold?.perGram   ?? 0,
           silver: data.silver?.perGram ?? 0,
@@ -158,6 +151,7 @@ export default function AddPledgePage() {
   }, []);
 
   /* ---- Loan state ------------------------------------------------ */
+  // ✅ allowCompounding and durationMonths removed — belong on release page
   const today = new Date().toISOString().split("T")[0];
 
   const [loan, setLoan] = useState({
@@ -165,12 +159,10 @@ export default function AddPledgePage() {
     loanAmount:          "",
     interestRate:        "",
     compoundingDuration: "YEARLY",
-    allowCompounding:    true,
-    durationMonths:      "12",
     remark:              "",
   });
 
-  const updateLoan = (k: string, v: string | boolean) =>
+  const updateLoan = (k: string, v: string) =>
     setLoan((prev) => ({ ...prev, [k]: v }));
 
   /* ---- Items ----------------------------------------------------- */
@@ -185,7 +177,7 @@ export default function AddPledgePage() {
   const removeItem = (index: number) =>
     setItems((prev) => prev.length === 1 ? prev : prev.filter((_, i) => i !== index));
 
-  /* ---- Metal aggregates — fully derived -------------------------- */
+  /* ---- Metal aggregates — derived -------------------------------- */
   const { netWeightOfGold, netWeightOfSilver } = useMemo(() => {
     let gold = 0, silver = 0;
     for (const item of items) {
@@ -200,19 +192,15 @@ export default function AddPledgePage() {
   }, [items]);
 
   /* ---- Loan insights — derived ----------------------------------- */
-  const loanAmountNum  = Number(loan.loanAmount)    || 0;
+  const loanAmountNum   = Number(loan.loanAmount)   || 0;
   const interestRateNum = Number(loan.interestRate) || 0;
-  const durationYears  = (Number(loan.durationMonths) || 0) / 12;
 
   const goldValue   = prices ? netWeightOfGold   * prices.gold   : 0;
   const silverValue = prices ? netWeightOfSilver * prices.silver : 0;
   const totalValue  = goldValue + silverValue;
+  const ltv         = totalValue > 0 ? (loanAmountNum / totalValue) * 100 : 0;
 
-  const ltv              = totalValue > 0 ? (loanAmountNum / totalValue) * 100 : 0;
-  const estimatedInterest = loanAmountNum * (interestRateNum / 100) * durationYears;
-  const totalRepayment   = loanAmountNum + estimatedInterest;
-
-  /* ---- Validation ------------------------------------------------ */
+  /* ---- Validation ----------------------------------------------- */
   const validationError = useMemo((): string | null => {
     if (!loan.loanAmount || loanAmountNum <= 0)
       return "Loan amount must be greater than 0";
@@ -222,8 +210,6 @@ export default function AddPledgePage() {
       return "Interest rate cannot exceed 100%";
     if (!loan.pledgeDate)
       return "Pledge date is required";
-    if (!loan.durationMonths || Number(loan.durationMonths) <= 0)
-      return "Duration must be greater than 0";
 
     for (let i = 0; i < items.length; i++) {
       const item  = items[i];
@@ -249,11 +235,10 @@ export default function AddPledgePage() {
   const isValid = validationError === null;
 
   /* ---- Image ----------------------------------------------------- */
-  const [imageFile,    setImageFile] = useState<File | null>(null);
-  const [imagePreview, setPreview]   = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Clean up object URL on unmount to avoid memory leaks
   useEffect(() => {
     return () => { if (imagePreview) URL.revokeObjectURL(imagePreview); };
   }, [imagePreview]);
@@ -279,7 +264,7 @@ export default function AddPledgePage() {
   /* ---- UI state -------------------------------------------------- */
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState("");
-  const [submitted, setSubmitted] = useState(false); // show errors only after first submit
+  const [submitted, setSubmitted] = useState(false);
 
   /* ---- Submit ---------------------------------------------------- */
   async function submit(e: React.FormEvent) {
@@ -305,15 +290,13 @@ export default function AddPledgePage() {
       fd.append("loanAmount",          loan.loanAmount);
       fd.append("interestRate",        loan.interestRate);
       fd.append("compoundingDuration", loan.compoundingDuration);
-      fd.append("allowCompounding",    String(loan.allowCompounding));
-      fd.append("durationMonths",      loan.durationMonths);
       fd.append("remark",              loan.remark);
 
       // Metal aggregates
       fd.append("netWeightOfGold",   netWeightOfGold.toFixed(3));
       fd.append("netWeightOfSilver", netWeightOfSilver.toFixed(3));
 
-      // Items — all numerics converted before sending
+      // Items
       const itemsPayload = items.map((item) => ({
         itemType:         item.itemType,
         metalType:        item.metalType,
@@ -371,10 +354,9 @@ export default function AddPledgePage() {
         </p>
       ) : null}
 
-      {/* Price source indicator */}
       {priceError && (
         <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded px-3 py-1.5">
-          ⚠ Live prices unavailable — loan insights hidden
+          ⚠ Live prices unavailable — LTV preview hidden
         </p>
       )}
 
@@ -414,16 +396,7 @@ export default function AddPledgePage() {
               />
             </FormField>
 
-            <FormField label="Duration (months)" required>
-              <Input
-                type="number" min="1" step="1"
-                placeholder="e.g. 12"
-                value={loan.durationMonths}
-                onChange={(e) => updateLoan("durationMonths", e.target.value)}
-                required
-              />
-            </FormField>
-
+            {/* ✅ Compounding duration kept — it's a pledge-level setting */}
             <FormField label="Compounding Duration" required>
               <select
                 className="w-full border rounded-md px-3 py-2 text-sm"
@@ -436,28 +409,8 @@ export default function AddPledgePage() {
               </select>
             </FormField>
 
-            {/* Allow Compounding toggle */}
-            <div className="flex items-center justify-between rounded-md border px-4 py-3">
-              <div>
-                <p className="text-sm font-medium">Allow Compounding</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {loan.allowCompounding
-                    ? "Hybrid: compound per cycle + simple for remainder"
-                    : "Pure simple interest — P × (1 + R × T)"}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => updateLoan("allowCompounding", !loan.allowCompounding)}
-                className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-                  loan.allowCompounding ? "bg-black" : "bg-gray-200"
-                }`}
-              >
-                <span className={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
-                  loan.allowCompounding ? "translate-x-6" : "translate-x-1"
-                }`} />
-              </button>
-            </div>
+            {/* ✅ allowCompounding removed — only shown on release page */}
+            {/* ✅ durationMonths removed — calculated automatically on release */}
 
           </CardContent>
         </Card>
@@ -477,7 +430,6 @@ export default function AddPledgePage() {
             {items.map((item, index) => (
               <div key={index} className="space-y-4">
 
-                {/* Item header */}
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                     Item {index + 1}
@@ -565,7 +517,6 @@ export default function AddPledgePage() {
                     />
                   </FormField>
 
-                  {/* Auto-calculated — derived, never stored in state */}
                   <FormField
                     label="Net Metal Weight (g)"
                     hint="Auto · Net Weight × (Purity ÷ 100)"
@@ -622,7 +573,7 @@ export default function AddPledgePage() {
           </Card>
         )}
 
-        {/* ── Loan Insights (only when live prices available) ───── */}
+        {/* ── Loan Insights (only when live prices available) ────── */}
         {prices && totalValue > 0 && (
           <Card>
             <CardHeader><CardTitle>Loan Insights</CardTitle></CardHeader>
@@ -644,11 +595,9 @@ export default function AddPledgePage() {
               </div>
 
               <div className={`rounded-lg border px-4 py-3 ${
-                ltv > 75
-                  ? "bg-red-50 border-red-200"
-                  : ltv > 60
-                  ? "bg-amber-50 border-amber-100"
-                  : "bg-green-50 border-green-100"
+                ltv > 75 ? "bg-red-50 border-red-200"
+                : ltv > 60 ? "bg-amber-50 border-amber-100"
+                : "bg-green-50 border-green-100"
               }`}>
                 <p className={`text-xs font-medium uppercase tracking-wide mb-1 ${
                   ltv > 75 ? "text-red-600" : ltv > 60 ? "text-amber-600" : "text-green-600"
@@ -666,32 +615,6 @@ export default function AddPledgePage() {
                   {ltv > 75 ? "⚠ High risk" : ltv > 60 ? "Moderate" : "Safe range"}
                 </p>
               </div>
-
-              {loan.durationMonths && loanAmountNum > 0 && interestRateNum > 0 && (
-                <>
-                  <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3">
-                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">
-                      Est. Interest
-                    </p>
-                    <p className="text-lg font-bold text-gray-800">
-                      ₹{estimatedInterest.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      over {loan.durationMonths} months
-                    </p>
-                  </div>
-
-                  <div className="rounded-lg bg-gray-50 border border-gray-200 px-4 py-3">
-                    <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">
-                      Total Repayment
-                    </p>
-                    <p className="text-lg font-bold text-gray-800">
-                      ₹{totalRepayment.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">Principal + interest</p>
-                  </div>
-                </>
-              )}
 
             </CardContent>
           </Card>
@@ -719,7 +642,6 @@ export default function AddPledgePage() {
                   type="button"
                   onClick={removeImage}
                   className="absolute -top-2 -right-2 bg-destructive text-white rounded-full p-0.5"
-                  aria-label="Remove image"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -750,7 +672,7 @@ export default function AddPledgePage() {
           </CardContent>
         </Card>
 
-        {/* ── Error — only after first submit attempt ───────────── */}
+        {/* ── Error ─────────────────────────────────────────────── */}
         {(error || (submitted && !isValid)) && (
           <Alert variant="destructive">
             <AlertDescription>

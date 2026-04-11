@@ -98,7 +98,9 @@ model Pledge {
   calculationVersion Int @default(1)
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-
+  
+  transactions Transaction[]
+  
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   @@index([status, createdAt])
@@ -181,6 +183,25 @@ inrPerGram  Decimal @db.Decimal(10,2)
   @@index([metal, createdAt(sort: Desc)])
 }
 
+model Transaction {
+  id        String          @id @default(uuid())
+  pledgeId  String
+  amount    Decimal         @db.Decimal(12,2)
+  type      TransactionType
+  note      String?
+  createdAt DateTime        @default(now())
+
+  pledge Pledge @relation(fields: [pledgeId], references: [id], onDelete: Cascade)
+
+  @@index([pledgeId, createdAt(sort: Desc)])
+  @@map("transactions")
+}
+
+enum TransactionType {
+  REPAYMENT_PRINCIPAL
+  REPAYMENT_INTEREST
+  TOPUP
+}
 model ExchangeRate {
   id        String   @id @default(cuid())
   from      String   // "USD"

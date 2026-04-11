@@ -1,503 +1,141 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import { useParams }                                          from "next/navigation";
+import Link                                                   from "next/link";
 import {
-  Loader2, RefreshCw, AlertTriangle,
-  ShieldCheck, Eye, Flame, Waves,
-  ArrowUpDown, ChevronRight, Search, X,
+  Loader2, ArrowLeft, User, Calendar, Tag,
+  Scale, TrendingUp, Receipt, Plus, ChevronUp, RefreshCw,
 } from "lucide-react";
 import {
-  PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
-} from "recharts";
+  Card, CardContent, CardHeader, CardTitle,
+} from "@/components/ui/card";
+import { Input }                from "@/components/ui/input";
+import { Button }               from "@/components/ui/button";
+import { Label }                from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { calculateLTV }            from "@/lib/calculateLTV";
+import { calculateHybridInterest } from "@/lib/interest";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
-type RiskTier  = "SAFE" | "WATCH" | "AT_RISK" | "UNDERWATER" | null;
-type FilterTab = "ALL" | RiskTier;
-
-interface PledgeRow {
-  pledgeId:          string;
-  customerId:        string;
-  customerName:      string;
-  pledgeDate:        string;
-  netWeightOfGold:   number;
-  netWeightOfSilver: number;
-  principal:         number;
-  accruedInterest:   number;
-  amountOwed:        number;
-  goldPpg:           number | null;
-  silverPpg:         number | null;
-  marketValue:       number | null;
-  ltv:               number | null;
-  riskTier:          RiskTier;
+interface PledgeItem {
+  id:               string;
+  itemType:         string;
+  metalType:        string;
+  itemName:         string | null;
+  quantity:         number;
+  grossWeight:      number;
+  netWeight:        number;
+  purity:           number;
+  netWeightOfMetal: number;
 }
 
-interface TierCounts {
-  SAFE:       number;
-  WATCH:      number;
-  AT_RISK:    number;
-  UNDERWATER: number;
-  NO_PRICE:   number;
+interface Transaction {
+  id:        string;
+  amount:    string;   // ✅ FIX 1 — keep as string, Prisma Decimal → string in JSON
+  type:      "REPAYMENT_PRINCIPAL" | "REPAYMENT_INTEREST" | "TOPUP";
+  note:      string | null;
+  createdAt: string;
 }
 
-interface Summary {
-  totalPledges:     number;
-  totalLent:        number;
-  totalOwed:        number;
-  totalMarketValue: number;
-  avgLtv:           number | null;
-  tierCounts:       TierCounts;
+interface PledgeDetail {
+  id:                  string;
+  pledgeDate:          string;
+  status:              string;
+  loanAmount:          number;
+  interestRate:        number;
+  compoundingDuration: "MONTHLY" | "HALFYEARLY" | "YEARLY";
+  allowCompounding:    boolean;
+  durationMonths:      number | null;
+  netWeightOfGold:     number;
+  netWeightOfSilver:   number;
+  totalInterest:       number | null;
+  receivableAmount:    number | null;
+  remark:              string | null;
+  itemPhoto:           string | null;
+  items:               PledgeItem[];
+  customer: {
+    id:      string;
+    name:    string;
+    mobile:  string | null;
+    address: string | null;
+    region:  string | null;
+  };
 }
 
-interface LtvData {
-  hasPrices:          boolean;
-  goldPricePerGram:   number | null;
-  silverPricePerGram: number | null;
-  priceUpdatedAt:     string | null;
-  summary:            Summary;
-  pledges:            PledgeRow[];
+interface MarketRates {
+  goldPerGram:   number | null;
+  silverPerGram: number | null;
+  updatedAt:     string | null;
 }
 
 /* ------------------------------------------------------------------ */
-/*  Tier config                                                         */
+/*  Constants                                                           */
 /* ------------------------------------------------------------------ */
-const TIER_CONFIG = {
-  SAFE: {
-    label:  "Safe",
-    range:  "0–65%",
-    icon:   ShieldCheck,
-    color:  "text-emerald-600",
-    bg:     "bg-emerald-50",
-    badge:  "bg-emerald-100 text-emerald-700",
-    dot:    "bg-emerald-500",
-    hex:    "#10b981",
-  },
-  WATCH: {
-    label:  "Watch",
-    range:  "66–75%",
-    icon:   Eye,
-    color:  "text-amber-600",
-    bg:     "bg-amber-50",
-    badge:  "bg-amber-100 text-amber-700",
-    dot:    "bg-amber-400",
-    hex:    "#f59e0b",
-  },
-  AT_RISK: {
-    label:  "At Risk",
-    range:  "76–90%",
-    icon:   Flame,
-    color:  "text-orange-600",
-    bg:     "bg-orange-50",
-    badge:  "bg-orange-100 text-orange-700",
-    dot:    "bg-orange-500",
-    hex:    "#f97316",
-  },
-  UNDERWATER: {
-    label:  "Underwater",
-    range:  "> 90%",
-    icon:   Waves,
-    color:  "text-red-600",
-    bg:     "bg-red-50",
-    badge:  "bg-red-100 text-red-700",
-    dot:    "bg-red-500",
-    hex:    "#ef4444",
-  },
-} as const;
+const TRANSACTION_TYPES = [
+  { value: "REPAYMENT_PRINCIPAL", label: "Principal Repayment" },
+  { value: "REPAYMENT_INTEREST",  label: "Interest Payment"    },
+  { value: "TOPUP",               label: "Top-Up"              },
+] as const;
+
+// ✅ FIX 9 — quick amount shortcuts
+const QUICK_AMOUNTS = [1000, 5000, 10000] as const;
 
 /* ------------------------------------------------------------------ */
-/*  Helpers                                                             */
+/*  Formatters                                                          */
 /* ------------------------------------------------------------------ */
-function fmt(n: number) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency", currency: "INR", maximumFractionDigits: 0,
-  }).format(n);
-}
-
-function fmtExact(n: number) {
+function fmtINR(n: number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency", currency: "INR", maximumFractionDigits: 2,
   }).format(n);
 }
 
-function timeAgo(dateStr: string) {
-  const diff  = Date.now() - new Date(dateStr).getTime();
-  const mins  = Math.floor(diff / 60000);
-  const hours = Math.floor(mins / 60);
-  if (mins  < 1)  return "just now";
-  if (mins  < 60) return `${mins}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "2-digit", month: "short", year: "numeric",
+  });
 }
 
-// ✅ FIX #3 — single source of truth for tier thresholds
-// Previously duplicated between LtvBar and the data layer
-function getTier(ltv: number): keyof typeof TIER_CONFIG {
-  if (ltv <= 65) return "SAFE";
-  if (ltv <= 75) return "WATCH";
-  if (ltv <= 90) return "AT_RISK";
-  return "UNDERWATER";
+function titleCase(str: string) {
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 }
 
-function LtvBar({ ltv }: { ltv: number }) {
-  const capped   = Math.min(ltv, 120);
-  const pct      = (capped / 120) * 100;
-  const tier     = getTier(ltv); // ✅ uses shared helper — no more duplicated thresholds
-  const barColor = {
-    SAFE:       "bg-emerald-400",
-    WATCH:      "bg-amber-400",
-    AT_RISK:    "bg-orange-500",
-    UNDERWATER: "bg-red-500",
-  }[tier];
-
+/* ------------------------------------------------------------------ */
+/*  UI helpers                                                          */
+/* ------------------------------------------------------------------ */
+function StatusBadge({ status }: { status: string }) {
+  const cfg: Record<string, string> = {
+    ACTIVE:   "bg-emerald-100 text-emerald-700",
+    RELEASED: "bg-gray-100   text-gray-600",
+    OVERDUE:  "bg-red-100    text-red-700",
+  };
   return (
-    <div className="flex items-center gap-2">
-      <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs font-mono font-medium tabular-nums">
-        {ltv.toFixed(1)}%
-      </span>
-    </div>
+    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${cfg[status] ?? "bg-gray-100 text-gray-500"}`}>
+      {titleCase(status)}
+    </span>
   );
 }
 
-function RiskBadge({ tier }: { tier: RiskTier }) {
-  if (!tier) return <span className="text-xs text-gray-400">—</span>;
-  const cfg  = TIER_CONFIG[tier];
-  const Icon = cfg.icon;
+function TxnBadge({ type }: { type: Transaction["type"] }) {
+  const cfg = {
+    REPAYMENT_PRINCIPAL: { label: "Principal", cls: "bg-emerald-100 text-emerald-700" },
+    REPAYMENT_INTEREST:  { label: "Interest",  cls: "bg-blue-100   text-blue-700"    },
+    TOPUP:               { label: "Top-Up",    cls: "bg-amber-100  text-amber-700"   },
+  }[type];
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.badge}`}>
-      <Icon size={10} />
+    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.cls}`}>
       {cfg.label}
     </span>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Risk Pie Chart                                                      */
-/* ------------------------------------------------------------------ */
-function RiskPieChart({ tierCounts }: { tierCounts: TierCounts }) {
-  const chartData = (["SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as const)
-    .map((tier) => ({
-      name:  TIER_CONFIG[tier].label,
-      value: tierCounts[tier],
-      hex:   TIER_CONFIG[tier].hex,
-    }))
-    .filter((d) => d.value > 0);
-
-  if (chartData.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-48 text-sm text-gray-400">
-        No data to display
-      </div>
-    );
-  }
-
+function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <ResponsiveContainer width="100%" height={220}>
-      <PieChart>
-        <Pie
-          data={chartData}
-          cx="50%"
-          cy="50%"
-          innerRadius={55}
-          outerRadius={85}
-          paddingAngle={3}
-          dataKey="value"
-        >
-          {chartData.map((entry, i) => (
-            <Cell key={i} fill={entry.hex} />
-          ))}
-        </Pie>
-        <Tooltip
-          formatter={(value, name) => [
-  `${Number(value)} pledge${Number(value) !== 1 ? "s" : ""}`,
-  String(name),
-]}
-          contentStyle={{
-            fontSize: 12,
-            borderRadius: 8,
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-          }}
-        />
-        <Legend
-          iconType="circle"
-          iconSize={8}
-          formatter={(value) => (
-            <span style={{ fontSize: 12, color: "#6b7280" }}>{value}</span>
-          )}
-        />
-      </PieChart>
-    </ResponsiveContainer>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Summary Cards                                                       */
-/* ------------------------------------------------------------------ */
-function SummaryCards({ summary, goldPpg, silverPpg, priceUpdatedAt }: {
-  summary:        Summary;
-  goldPpg:        number | null;
-  silverPpg:      number | null;
-  priceUpdatedAt: string | null;
-}) {
-  const exposure  = summary.totalOwed - summary.totalMarketValue;
-  const isExposed = exposure > 0;
-
-  return (
-    <div className="space-y-4">
-      {/* Live prices strip */}
-      <div className="flex items-center gap-4 text-xs text-gray-500 bg-white border rounded-lg px-4 py-2.5">
-        <span className="font-medium text-gray-700">Live Prices</span>
-        {goldPpg   && <span>🥇 Gold   <span className="font-semibold text-gray-900">{fmtExact(goldPpg)}/g</span></span>}
-        {silverPpg && <span>🥈 Silver <span className="font-semibold text-gray-900">{fmtExact(silverPpg)}/g</span></span>}
-        {priceUpdatedAt && (
-          <span className="ml-auto text-gray-400">Updated {timeAgo(priceUpdatedAt)}</span>
-        )}
-      </div>
-
-      {/* Stats + Pie chart side by side */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        {/* Stats — 2/3 width */}
-        <div className="lg:col-span-2 grid grid-cols-2 gap-3">
-          <div className="bg-white border rounded-xl p-4 space-y-1">
-            <p className="text-xs text-gray-400">Total Lent</p>
-            <p className="text-xl font-bold text-gray-900">{fmt(summary.totalLent)}</p>
-            <p className="text-xs text-gray-400">{summary.totalPledges} active pledges</p>
-          </div>
-          <div className="bg-white border rounded-xl p-4 space-y-1">
-            <p className="text-xs text-gray-400">Amount Owed Today</p>
-            <p className="text-xl font-bold text-gray-900">{fmt(summary.totalOwed)}</p>
-            <p className="text-xs text-gray-400">
-              +{fmt(summary.totalOwed - summary.totalLent)} interest
-            </p>
-          </div>
-          <div className="bg-white border rounded-xl p-4 space-y-1">
-            <p className="text-xs text-gray-400">Total Market Value</p>
-            <p className="text-xl font-bold text-gray-900">{fmt(summary.totalMarketValue)}</p>
-            <p className={`text-xs font-medium ${isExposed ? "text-red-500" : "text-emerald-600"}`}>
-              {isExposed
-                ? `⚠ Exposed by ${fmt(exposure)}`
-                : `Buffer ${fmt(Math.abs(exposure))}`}
-            </p>
-          </div>
-          <div className="bg-white border rounded-xl p-4 space-y-1">
-            <p className="text-xs text-gray-400">Avg LTV</p>
-            <p className={`text-xl font-bold ${
-              summary.avgLtv === null  ? "text-gray-400"   :
-              summary.avgLtv <= 65    ? "text-emerald-600" :
-              summary.avgLtv <= 75    ? "text-amber-600"   :
-              summary.avgLtv <= 90    ? "text-orange-600"  :
-              "text-red-600"
-            }`}>
-              {summary.avgLtv !== null ? `${summary.avgLtv}%` : "—"}
-            </p>
-            <p className="text-xs text-gray-400">across all pledges</p>
-          </div>
-        </div>
-
-        {/* Pie chart — 1/3 width */}
-        <div className="bg-white border rounded-xl p-4">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-            Risk Distribution
-          </p>
-          <RiskPieChart tierCounts={summary.tierCounts} />
-        </div>
-      </div>
-
-      {/* Portfolio breakdown bar */}
-      {summary.totalPledges > 0 && (
-        <div className="bg-white border rounded-xl p-4 space-y-3">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Portfolio Breakdown
-          </p>
-          <div className="flex rounded-full overflow-hidden h-3 gap-0.5">
-            {(["SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as const).map((tier) => {
-              const count = summary.tierCounts[tier];
-              const pct   = (count / summary.totalPledges) * 100;
-              if (pct === 0) return null;
-              return (
-                <div
-                  key={tier}
-                  className={`${TIER_CONFIG[tier].dot} transition-all`}
-                  style={{ width: `${pct}%` }}
-                  title={`${TIER_CONFIG[tier].label}: ${count}`}
-                />
-              );
-            })}
-          </div>
-          <div className="flex flex-wrap gap-4">
-            {(["SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as const).map((tier) => {
-              const cfg   = TIER_CONFIG[tier];
-              const count = summary.tierCounts[tier];
-              return (
-                <div key={tier} className="flex items-center gap-1.5 text-xs text-gray-600">
-                  <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
-                  <span>{cfg.label}</span>
-                  <span className="font-semibold text-gray-900">{count}</span>
-                </div>
-              );
-            })}
-            {/* ✅ FIX #6 — NO_PRICE pledges now shown in breakdown */}
-            {summary.tierCounts.NO_PRICE > 0 && (
-              <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                <div className="w-2 h-2 rounded-full bg-gray-300" />
-                <span>No Price</span>
-                <span className="font-semibold text-gray-900">{summary.tierCounts.NO_PRICE}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Pledge Table                                                        */
-/* ------------------------------------------------------------------ */
-function PledgeTable({
-  pledges,
-  sortDesc,
-  onSortToggle,
-  onRowClick,
-}: {
-  pledges:      PledgeRow[];
-  sortDesc:     boolean;           // ✅ FIX #5 — sort state lifted to page
-  onSortToggle: () => void;
-  onRowClick:   (row: PledgeRow) => void;
-}) {
-  const sorted = [...pledges].sort((a, b) => {
-    if (a.ltv === null && b.ltv === null) return 0;
-    if (a.ltv === null) return 1;
-    if (b.ltv === null) return -1;
-    return sortDesc ? b.ltv - a.ltv : a.ltv - b.ltv;
-  });
-
-  // ✅ FIX #10 — distinguish zero pledges vs no search matches
-  if (pledges.length === 0) {
-    return (
-      <div className="bg-white border rounded-xl px-6 py-12 text-center text-sm text-gray-400">
-        No pledges match your search or filter.
-      </div>
-    );
-  }
-
-  return (
-    <div className="bg-white border rounded-xl overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
-            <th className="text-left px-4 py-3 font-medium">Customer</th>
-            <th className="text-right px-4 py-3 font-medium">🥇 Gold Wt</th>
-            <th className="text-right px-4 py-3 font-medium">🥈 Silver Wt</th>
-            <th className="text-right px-4 py-3 font-medium">Principal</th>
-            <th className="text-right px-4 py-3 font-medium">Owed Today</th>
-            <th className="text-right px-4 py-3 font-medium">Market Value</th>
-            <th className="text-right px-4 py-3 font-medium">
-              <button
-                onClick={onSortToggle}
-                className="inline-flex items-center gap-1 hover:text-gray-800 transition-colors"
-              >
-                LTV <ArrowUpDown size={11} />
-              </button>
-            </th>
-            <th className="text-center px-4 py-3 font-medium">Risk</th>
-            <th className="px-4 py-3" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {sorted.map((row) => (
-            <tr
-              key={row.pledgeId}
-              onClick={() => onRowClick(row)}
-              className="hover:bg-gray-50 cursor-pointer transition-colors"
-            >
-              <td className="px-4 py-3">
-                <p className="font-medium text-gray-900">{row.customerName}</p>
-                <p className="text-xs text-gray-400">
-                  {new Date(row.pledgeDate).toLocaleDateString("en-IN", {
-                    day: "2-digit", month: "short", year: "numeric",
-                  })}
-                </p>
-              </td>
-
-              <td className="px-4 py-3 text-right">
-                {row.netWeightOfGold > 0 ? (
-                  <>
-                    <p className="font-medium text-amber-700 tabular-nums">
-                      {row.netWeightOfGold.toFixed(3)}g
-                    </p>
-                    {row.goldPpg && (
-                      <p className="text-xs text-gray-400 tabular-nums">
-                        @{fmtExact(row.goldPpg)}/g
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-gray-300 text-xs">—</span>
-                )}
-              </td>
-
-              <td className="px-4 py-3 text-right">
-                {row.netWeightOfSilver > 0 ? (
-                  <>
-                    <p className="font-medium text-gray-600 tabular-nums">
-                      {row.netWeightOfSilver.toFixed(3)}g
-                    </p>
-                    {row.silverPpg && (
-                      <p className="text-xs text-gray-400 tabular-nums">
-                        @{fmtExact(row.silverPpg)}/g
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-gray-300 text-xs">—</span>
-                )}
-              </td>
-
-              <td className="px-4 py-3 text-right">
-                <p className="font-medium text-gray-900 tabular-nums">{fmt(row.principal)}</p>
-              </td>
-
-              <td className="px-4 py-3 text-right">
-                <p className="font-medium text-gray-900 tabular-nums">{fmt(row.amountOwed)}</p>
-                <p className="text-xs text-orange-500 tabular-nums">
-                  +{fmt(row.accruedInterest)}
-                </p>
-              </td>
-
-              <td className="px-4 py-3 text-right">
-                {row.marketValue !== null ? (
-                  <p className="font-medium text-gray-900 tabular-nums">{fmt(row.marketValue)}</p>
-                ) : (
-                  <span className="text-gray-400 text-xs">No price</span>
-                )}
-              </td>
-
-              <td className="px-4 py-3 text-right">
-                {row.ltv !== null
-                  ? <LtvBar ltv={row.ltv} />
-                  : <span className="text-gray-400 text-xs">—</span>
-                }
-              </td>
-
-              <td className="px-4 py-3 text-center">
-                <RiskBadge tier={row.riskTier} />
-              </td>
-
-              <td className="px-4 py-3">
-                <ChevronRight size={14} className="text-gray-300" />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+      <span className="text-sm text-gray-500">{label}</span>
+      <span className="text-sm font-medium text-gray-900">{value}</span>
     </div>
   );
 }
@@ -505,235 +143,557 @@ function PledgeTable({
 /* ================================================================== */
 /*  Page                                                                */
 /* ================================================================== */
-export default function LtvPage() {
-  const router = useRouter();
+export default function PledgeDetailPage() {
+  const params = useParams<{ customerId: string; pledgeId: string }>();
 
-  const [data,       setData]       = useState<LtvData | null>(null);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState("");
-  const [refreshing, setRefreshing] = useState(false);
-  const [filter,     setFilter]     = useState<FilterTab>("ALL");
-  const [search,     setSearch]     = useState("");
-  const [sortDesc,   setSortDesc]   = useState(true); // ✅ FIX #5 — lifted from PledgeTable
+  const [pledge,       setPledge]       = useState<PledgeDetail | null>(null);
+  const [market,       setMarket]       = useState<MarketRates | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState<string | null>(null);
 
-  // ✅ FIX #1 — useCallback so useEffect dependency is stable
-  // search is a dep so backend gets the current search term on every call
-  const load = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    setError("");
+  /* ── Transaction form ─────────────────────────────────────────── */
+  const [txnAmount,  setTxnAmount]  = useState("");
+  const [txnType,    setTxnType]    = useState<Transaction["type"]>("REPAYMENT_PRINCIPAL");
+  const [txnNote,    setTxnNote]    = useState("");
+  const [txnLoading, setTxnLoading] = useState(false);
+  const [txnError,   setTxnError]   = useState("");
+  const [showForm,   setShowForm]   = useState(false);
+  const amountRef = useRef<HTMLInputElement>(null);
+
+  // ✅ FIX 7 — auto-focus amount input when form opens
+  useEffect(() => {
+    if (showForm) amountRef.current?.focus();
+  }, [showForm]);
+
+  /* ── Load ─────────────────────────────────────────────────────── */
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const params = new URLSearchParams({ t: String(Date.now()) });
-      if (search) params.set("search", search);
-      const res  = await fetch(`/api/ltv?${params.toString()}`);
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Failed to load");
-      setData(json);
+      const [pledgeRes, marketRes, txnRes] = await Promise.all([
+        fetch(`/api/pledges/${params.pledgeId}`),
+        fetch("/api/market-rates"),
+        fetch(`/api/pledges/${params.pledgeId}/transactions`),
+      ]);
+
+      if (!pledgeRes.ok) {
+        const d = await pledgeRes.json().catch(() => ({}));
+        throw new Error(d.error || `Failed to load pledge (${pledgeRes.status})`);
+      }
+
+      const pledgeRaw  = await pledgeRes.json();
+      const pledgeData = pledgeRaw?.pledge ?? pledgeRaw;
+
+      if (!pledgeData?.id) {
+        throw new Error("Invalid pledge data received from server");
+      }
+      setPledge(pledgeData);
+
+      if (marketRes.ok) {
+        const m = await marketRes.json();
+        setMarket({
+          goldPerGram:   m?.gold?.inrPerGram   ? Number(m.gold.inrPerGram)   : null,
+          silverPerGram: m?.silver?.inrPerGram ? Number(m.silver.inrPerGram) : null,
+          updatedAt:     m?.gold?.createdAt    ?? null,
+        });
+      }
+
+      // ✅ FIX 5 — log warning but don't silently swallow
+      if (txnRes.ok) {
+        const txns = await txnRes.json();
+        setTransactions(Array.isArray(txns) ? txns : []);
+      } else {
+        console.warn(`Transactions failed to load: ${txnRes.status}`);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
+      setError(err instanceof Error ? err.message : "Failed to load pledge");
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
-  }, [search]); // re-create when search changes
+  }, [params.pledgeId]);
 
-  // ✅ FIX #1 + #4 — re-fetch on search change + auto-refresh every 5 min
-  useEffect(() => {
-    load();
-    const id = setInterval(() => load(true), 5 * 60 * 1000);
-    return () => clearInterval(id);
-  }, [load]);
+  useEffect(() => { load(); }, [load]);
 
-  // ✅ FIX #8 — TABS memoized, not rebuilt on every render
-  const TABS = useMemo<{ key: FilterTab; label: string; count?: number }[]>(
-    () => [
-      { key: "ALL",        label: "All",          count: data?.summary.totalPledges },
-      { key: "SAFE",       label: "🟢 Safe",       count: data?.summary.tierCounts.SAFE },
-      { key: "WATCH",      label: "🟡 Watch",      count: data?.summary.tierCounts.WATCH },
-      { key: "AT_RISK",    label: "🔴 At Risk",    count: data?.summary.tierCounts.AT_RISK },
-      { key: "UNDERWATER", label: "🚨 Underwater", count: data?.summary.tierCounts.UNDERWATER },
-    ],
-    [data]
-  );
+  /* ── Calculations ─────────────────────────────────────────────── */
+  // ✅ FIX 3 — useMemo so calculations don't run on every render
+  const calculations = useMemo(() => {
+    if (!pledge) return null;
 
-  // ✅ Search handled by backend — only filter tab applied client-side
-  const filtered = useMemo(() => {
-    if (!data) return [];
-    return data.pledges.filter((p) =>
-      filter === "ALL" || p.riskTier === filter
+    const now        = new Date();
+    const pledgeDate = new Date(pledge.pledgeDate);
+
+    const interest = calculateHybridInterest(
+      pledge.loanAmount,
+      pledge.interestRate,
+      pledgeDate,
+      now,
+      pledge.allowCompounding,
+      pledge.compoundingDuration
     );
-  }, [data, filter]);
 
-  // ✅ FIX #9 — memoized so PledgeTable doesn't re-render on unrelated state changes
-  const handleRowClick = useCallback((row: PledgeRow) => {
-    router.push(`/customers/${row.customerId}/pledges/${row.pledgeId}`);
-  }, [router]);
+    const ltv = calculateLTV({
+      principal:           pledge.loanAmount,
+      rate:                pledge.interestRate,
+      pledgeDate,
+      currentDate:         now,
+      allowCompounding:    pledge.allowCompounding,
+      compoundingDuration: pledge.compoundingDuration,
+      goldWeight:          pledge.netWeightOfGold,
+      silverWeight:        pledge.netWeightOfSilver,
+      goldPrice:           market?.goldPerGram   ?? null,
+      silverPrice:         market?.silverPerGram ?? null,
+    });
 
-  const handleSortToggle = useCallback(() => setSortDesc((v) => !v), []);
+    return { interest, ltv };
+  }, [pledge, market]); // only recalculates when pledge or market prices change
 
+  /* ── Add transaction ──────────────────────────────────────────── */
+  async function submitTransaction(e: React.FormEvent) {
+    e.preventDefault();
+    setTxnError("");
+
+    const amount = parseFloat(txnAmount);
+    if (!txnAmount || isNaN(amount) || amount <= 0) {
+      setTxnError("Enter a valid amount greater than 0");
+      amountRef.current?.focus();
+      return;
+    }
+
+    setTxnLoading(true);
+    try {
+      const res = await fetch(`/api/pledges/${params.pledgeId}/transactions`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          amount,
+          type: txnType,
+          note: txnNote.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to add transaction");
+
+      // ✅ FIX 2 — no Number() conversion, keep amount as string from API
+      setTransactions((prev) => [data, ...prev]);
+      setTxnAmount("");
+      setTxnNote("");
+      setShowForm(false);
+    } catch (err) {
+      setTxnError(err instanceof Error ? err.message : "Unexpected error");
+    } finally {
+      setTxnLoading(false);
+    }
+  }
+
+  /* ================================================================ */
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="animate-spin text-gray-300" size={32} />
+        <Loader2 className="animate-spin text-gray-300" size={28} />
       </div>
     );
   }
 
-  if (error) {
+  // ✅ FIX 6 — retry button on error
+  if (error || !pledge) {
     return (
-      <div className="max-w-5xl mx-auto p-6">
-        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
+      <div className="max-w-3xl mx-auto p-6 space-y-3">
+        <Alert variant="destructive">
+          <AlertDescription>{error ?? "Pledge not found"}</AlertDescription>
+        </Alert>
+        <Button variant="outline" onClick={load} className="flex items-center gap-2">
+          <RefreshCw size={13} /> Retry
+        </Button>
       </div>
     );
   }
 
+  const { interest, ltv: ltvResult } = calculations!;
+
+  /* ================================================================ */
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+    <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
 
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <Link href="/dashboard" className="text-xs text-gray-400 hover:text-gray-600">
-            ← Dashboard
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-900 mt-1">Portfolio Risk</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            LTV = Amount Owed ÷ Market Value × 100
-          </p>
-        </div>
-        <button
-          onClick={() => load(true)}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 border rounded-lg px-3 py-2 transition-colors disabled:opacity-50"
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <div>
+        <Link
+          href={`/customers/${params.customerId}`}
+          className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 mb-3"
         >
-          <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
-          {refreshing ? "Refreshing..." : "Refresh"}
-        </button>
-      </div>
-
-      {/* No price warning */}
-      {data && !data.hasPrices && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+          <ArrowLeft size={14} /> Back to customer
+        </Link>
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="font-medium">No market prices available</p>
-            <p className="text-xs mt-0.5 text-amber-600">
-              LTV cannot be calculated until the cron job runs. Market values will show as — until then.
+            <h1 className="text-2xl font-bold text-gray-900">Pledge Details</h1>
+            <p className="text-xs text-gray-400 mt-0.5">
+              #{pledge.id.slice(0, 8).toUpperCase()}
             </p>
           </div>
+          <StatusBadge status={pledge.status} />
         </div>
-      )}
+      </div>
 
-      {/* Summary + Pie */}
-      {data && (
-        <SummaryCards
-          summary={data.summary}
-          goldPpg={data.goldPricePerGram}
-          silverPpg={data.silverPricePerGram}
-          priceUpdatedAt={data.priceUpdatedAt}
-        />
-      )}
+      {/* ── Customer ───────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
+            <User size={14} /> Customer
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-0">
+          <InfoRow label="Name" value={
+            <Link href={`/customers/${pledge.customer.id}`} className="text-blue-600 hover:underline">
+              {pledge.customer.name}
+            </Link>
+          } />
+          {pledge.customer.mobile  && <InfoRow label="Mobile"  value={pledge.customer.mobile}  />}
+          {pledge.customer.address && <InfoRow label="Address" value={pledge.customer.address} />}
+          {pledge.customer.region  && <InfoRow label="Region"  value={pledge.customer.region}  />}
+        </CardContent>
+      </Card>
 
-      {/* ✅ Search + Filter row */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        {/* Search bar */}
-        <div className="relative flex-1 max-w-xs">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+      {/* ── Loan details ───────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
+            <Calendar size={14} /> Loan Details
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-0">
+          <InfoRow label="Pledge Date"   value={fmtDate(pledge.pledgeDate)} />
+          <InfoRow label="Loan Amount"   value={<span className="tabular-nums">{fmtINR(pledge.loanAmount)}</span>} />
+          <InfoRow label="Interest Rate" value={`${pledge.interestRate}% p.a.`} />
+          <InfoRow
+            label="Compounding"
+            value={`${titleCase(pledge.compoundingDuration)}${pledge.allowCompounding ? "" : " (Simple)"}`}
           />
-          <input
-            type="text"
-            placeholder="Search by customer name…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-8 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-200"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X size={13} />
-            </button>
+          {pledge.durationMonths !== null && (
+            <InfoRow label="Duration" value={`${pledge.durationMonths} months`} />
           )}
-        </div>
+          {pledge.remark && <InfoRow label="Remark" value={pledge.remark} />}
+        </CardContent>
+      </Card>
 
-        {/* Risk filter tabs */}
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setFilter(tab.key)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                filter === tab.key
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {tab.label}
-              {tab.count !== undefined && tab.count > 0 && (
-                <span className={`ml-1.5 tabular-nums ${
-                  filter === tab.key ? "text-gray-500" : "text-gray-400"
-                }`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Search result count */}
-      {search && (
-        <p className="text-xs text-gray-400 -mt-3">
-          {filtered.length} result{filtered.length !== 1 ? "s" : ""} for &ldquo;{search}&rdquo;
-        </p>
-      )}
-
-      {/* ✅ FIX #10 — true empty state when no pledges at all */}
-      {data && data.pledges.length === 0 ? (
-        <div className="bg-white border rounded-xl px-6 py-12 text-center text-sm text-gray-400">
-          No active pledges yet.
-        </div>
-      ) : (
-        data && (
-          <PledgeTable
-            pledges={filtered}
-            sortDesc={sortDesc}
-            onSortToggle={handleSortToggle}
-            onRowClick={handleRowClick}
-          />
-        )
-      )}
-
-      {/* LTV reference */}
-      <div className="bg-white border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b bg-gray-50">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            LTV Reference
-          </p>
-        </div>
-        <div className="divide-y">
-          {(["SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as const).map((tier) => {
-            const cfg  = TIER_CONFIG[tier];
-            const Icon = cfg.icon;
-            return (
-              <div key={tier} className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-2.5">
-                  <div className={`p-1.5 rounded-md ${cfg.bg}`}>
-                    <Icon size={13} className={cfg.color} />
-                  </div>
-                  <span className="text-sm font-medium text-gray-700">{cfg.label}</span>
+      {/* ── Items ──────────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
+            <Tag size={14} /> Pledged Items ({pledge.items.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {pledge.items.map((item, i) => (
+            <div key={item.id} className="rounded-lg border bg-gray-50 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Item {i + 1}
+                  </span>
+                  <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-md">
+                    {titleCase(item.itemType)}
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${
+                    item.metalType === "GOLD"
+                      ? "bg-amber-50 text-amber-700"
+                      : "bg-slate-100 text-slate-600"
+                  }`}>
+                    {titleCase(item.metalType)}
+                  </span>
                 </div>
-                <span className="text-sm text-gray-500 tabular-nums">{cfg.range}</span>
+                <span className="text-xs text-gray-400 shrink-0">
+                  {item.quantity} pc{item.quantity !== 1 ? "s" : ""}
+                </span>
               </div>
-            );
-          })}
-        </div>
-      </div>
+
+              {item.itemName && (
+                <p className="text-sm text-gray-700 font-medium">{item.itemName}</p>
+              )}
+
+              <div className="grid grid-cols-4 gap-2 text-xs">
+                <div>
+                  <p className="text-gray-400">Gross Wt</p>
+                  <p className="font-medium tabular-nums">{Number(item.grossWeight).toFixed(3)}g</p>
+                </div>
+                <div>
+                  <p className="text-gray-400">Net Wt</p>
+                  <p className="font-medium tabular-nums">{Number(item.netWeight).toFixed(3)}g</p>
+                </div>
+                <div>
+                  <p className="text-gray-400">Purity</p>
+                  <p className="font-medium tabular-nums">{Number(item.purity).toFixed(2)}%</p>
+                </div>
+                <div>
+                  <p className="text-gray-400">Net Metal</p>
+                  <p className="font-semibold tabular-nums">{Number(item.netWeightOfMetal).toFixed(3)}g</p>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* Metal totals */}
+          <div className="grid grid-cols-2 gap-3 pt-1">
+            {pledge.netWeightOfGold > 0 && (
+              <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
+                <p className="text-xs text-amber-500 flex items-center gap-1 mb-1">
+                  <Scale size={10} /> Total Gold
+                </p>
+                <p className="text-base font-bold text-amber-800 tabular-nums">
+                  {Number(pledge.netWeightOfGold).toFixed(3)}g
+                </p>
+              </div>
+            )}
+            {pledge.netWeightOfSilver > 0 && (
+              <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+                <p className="text-xs text-slate-500 flex items-center gap-1 mb-1">
+                  <Scale size={10} /> Total Silver
+                </p>
+                <p className="text-base font-bold text-slate-700 tabular-nums">
+                  {Number(pledge.netWeightOfSilver).toFixed(3)}g
+                </p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Financials ─────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
+            <TrendingUp size={14} /> Financials
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-0">
+          {ltvResult.marketValue !== null ? (
+            <>
+              {market?.goldPerGram && pledge.netWeightOfGold > 0 && (
+                <InfoRow
+                  label="Gold Value"
+                  value={
+                    <span className="text-amber-700 font-semibold tabular-nums">
+                      {fmtINR(pledge.netWeightOfGold * market.goldPerGram)}
+                      <span className="text-xs text-gray-400 ml-1 font-normal">
+                        @{fmtINR(market.goldPerGram)}/g
+                      </span>
+                    </span>
+                  }
+                />
+              )}
+              {market?.silverPerGram && pledge.netWeightOfSilver > 0 && (
+                <InfoRow
+                  label="Silver Value"
+                  value={
+                    <span className="text-slate-700 font-semibold tabular-nums">
+                      {fmtINR(pledge.netWeightOfSilver * market.silverPerGram)}
+                      <span className="text-xs text-gray-400 ml-1 font-normal">
+                        @{fmtINR(market.silverPerGram)}/g
+                      </span>
+                    </span>
+                  }
+                />
+              )}
+              <InfoRow
+                label="Total Market Value"
+                value={<span className="text-blue-700 font-bold tabular-nums">{fmtINR(ltvResult.marketValue)}</span>}
+              />
+              {ltvResult.ltv !== null && (
+                <InfoRow
+                  label="LTV"
+                  value={
+                    <span className={`font-bold tabular-nums ${
+                      ltvResult.ltv > 90 ? "text-red-600"
+                      : ltvResult.ltv > 75 ? "text-orange-600"
+                      : ltvResult.ltv > 65 ? "text-amber-600"
+                      : "text-emerald-600"
+                    }`}>
+                      {ltvResult.ltv.toFixed(1)}%
+                      {ltvResult.riskTier && (
+                        <span className="text-xs font-normal text-gray-400 ml-1.5">
+                          ({ltvResult.riskTier.replace("_", " ")})
+                        </span>
+                      )}
+                    </span>
+                  }
+                />
+              )}
+              <div className="border-t border-gray-100 my-1" />
+            </>
+          ) : (
+            <p className="text-xs text-gray-400 py-2 pb-3">
+              Market value unavailable — run the cron job first.
+            </p>
+          )}
+
+          <InfoRow
+            label="Principal"
+            value={<span className="tabular-nums">{fmtINR(pledge.loanAmount)}</span>}
+          />
+          <InfoRow
+            label={`Interest Till Today (${interest.T.toFixed(1)} months)`}
+            value={
+              <span className="text-orange-600 font-semibold tabular-nums">
+                {fmtINR(interest.totalInterest)}
+              </span>
+            }
+          />
+          <InfoRow
+            label="Total Amount Due"
+            value={
+              <span className="text-gray-900 font-bold tabular-nums text-base">
+                {fmtINR(interest.receivableAmount)}
+              </span>
+            }
+          />
+        </CardContent>
+      </Card>
+
+      {/* ── Transactions ───────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
+              <Receipt size={14} /> Transactions ({transactions.length})
+            </CardTitle>
+            {/* ✅ FIX 4 — guard toggle during loading */}
+            <button
+              onClick={() => {
+                if (txnLoading) return;
+                setShowForm((v) => !v);
+                setTxnError("");
+              }}
+              disabled={txnLoading}
+              className="flex items-center gap-1 text-xs font-medium text-gray-600 hover:text-gray-900 border rounded-md px-2.5 py-1.5 transition-colors disabled:opacity-40"
+            >
+              {showForm
+                ? <><ChevronUp size={12} /> Cancel</>
+                : <><Plus size={12} /> Add</>}
+            </button>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+
+          {/* ── Form ── */}
+          {showForm && (
+            <form
+              onSubmit={submitTransaction}
+              className="rounded-lg border bg-gray-50 p-4 space-y-3"
+            >
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                New Transaction
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">
+                    Amount (₹) <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    ref={amountRef}
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    placeholder="e.g. 5000"
+                    value={txnAmount}
+                    onChange={(e) => setTxnAmount(e.target.value)}
+                    required
+                  />
+                  {/* ✅ FIX 9 — quick amount buttons */}
+                  <div className="flex gap-1.5 pt-0.5">
+                    {QUICK_AMOUNTS.map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setTxnAmount(String(amt))}
+                        className="text-xs text-gray-500 border rounded px-2 py-0.5 hover:border-gray-400 hover:text-gray-800 transition-colors"
+                      >
+                        ₹{(amt / 1000).toFixed(0)}k
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs">Type</Label>
+                  <select
+                    className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+                    value={txnType}
+                    onChange={(e) => setTxnType(e.target.value as Transaction["type"])}
+                  >
+                    {TRANSACTION_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Note (optional)</Label>
+                <Input
+                  type="text"
+                  placeholder="e.g. Partial repayment by customer"
+                  value={txnNote}
+                  onChange={(e) => setTxnNote(e.target.value)}
+                />
+              </div>
+
+              {txnError && (
+                <Alert variant="destructive" className="py-2">
+                  <AlertDescription className="text-xs">{txnError}</AlertDescription>
+                </Alert>
+              )}
+
+              <Button type="submit" disabled={txnLoading} size="sm">
+                {txnLoading
+                  ? <><Loader2 className="animate-spin mr-1.5 w-3 h-3" />Saving…</>
+                  : "Save Transaction"}
+              </Button>
+            </form>
+          )}
+
+          {/* ── History ── */}
+          {transactions.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">
+              No transactions recorded yet.
+            </p>
+          ) : (
+            <div className="rounded-lg border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
+                    <th className="text-left px-3 py-2.5 font-medium">Date</th>
+                    <th className="text-left px-3 py-2.5 font-medium">Type</th>
+                    <th className="text-right px-3 py-2.5 font-medium">Amount</th>
+                    <th className="text-left px-3 py-2.5 font-medium">Note</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {transactions.map((txn) => (
+                    <tr key={txn.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-3 py-2.5 text-gray-500 whitespace-nowrap text-xs">
+                        {fmtDate(txn.createdAt)}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <TxnBadge type={txn.type} />
+                      </td>
+                      {/* ✅ FIX 8 — direction colour: TOPUP = red (money out), repayments = green */}
+                      <td className={`px-3 py-2.5 text-right font-semibold tabular-nums ${
+                        txn.type === "TOPUP" ? "text-red-600" : "text-emerald-600"
+                      }`}>
+                        {/* ✅ FIX 1 — Number(txn.amount) only at display time, not stored as number */}
+                        {fmtINR(Number(txn.amount))}
+                      </td>
+                      <td className="px-3 py-2.5 text-gray-500 max-w-[160px] truncate text-xs">
+                        {txn.note ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
     </div>
   );
