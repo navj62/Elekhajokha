@@ -202,7 +202,7 @@ export default function PledgeDetailPage() {
       // ✅ FIX 5 — log warning but don't silently swallow
       if (txnRes.ok) {
         const txns = await txnRes.json();
-        setTransactions(Array.isArray(txns) ? txns : []);
+        setTransactions(Array.isArray(txns.transactions) ? txns.transactions : []);
       } else {
         console.warn(`Transactions failed to load: ${txnRes.status}`);
       }
@@ -275,7 +275,7 @@ export default function PledgeDetailPage() {
       if (!res.ok) throw new Error(data.error || "Failed to add transaction");
 
       // ✅ FIX 2 — no Number() conversion, keep amount as string from API
-      setTransactions((prev) => [data, ...prev]);
+      setTransactions((prev) => [data.transaction, ...prev]);
       setTxnAmount("");
       setTxnNote("");
       setShowForm(false);
@@ -324,15 +324,31 @@ export default function PledgeDetailPage() {
           <ArrowLeft size={14} /> Back to customer
         </Link>
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Pledge Details</h1>
-            <p className="text-xs text-gray-400 mt-0.5">
-              #{pledge.id.slice(0, 8).toUpperCase()}
-            </p>
-          </div>
-          <StatusBadge status={pledge.status} />
+          <div className="flex items-start justify-between gap-3">
+  <div>
+    <h1 className="text-2xl font-bold text-gray-900">Pledge Details</h1>
+    <p className="text-xs text-gray-400 mt-0.5">
+      #{pledge.id.slice(0, 8).toUpperCase()}
+    </p>
+  </div>
+
+  <div className="flex items-center gap-2">
+    <StatusBadge status={pledge.status} />
+
+    {pledge.status === "ACTIVE" && (
+      <Link href={`/customers/${params.customerId}/pledges/${params.pledgeId}/release`}>
+        <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white">
+          Release
+        </Button>
+      </Link>
+    )}
+  </div>
+</div>
+          
         </div>
       </div>
+
+      
 
       {/* ── Customer ───────────────────────────────────────────── */}
       <Card>

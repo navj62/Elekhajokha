@@ -5,6 +5,9 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { Gender } from "@prisma/client";
 import { uploadImage } from "@/lib/upload";
+import crypto from "crypto";
+
+const token = crypto.randomBytes(32).toString("hex");
 
 // ✅ Matches schema enum exactly: Male | Female | Other
 const VALID_GENDERS: Gender[] = ["Male", "Female", "Other"];
@@ -98,6 +101,7 @@ export async function POST(req: Request) {
         customerImg,
         idProofImg,
         userId: userId,
+        viewToken: token,// to genrate link for cutomers
       },
     });
 

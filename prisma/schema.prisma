@@ -52,6 +52,7 @@ model Customer {
    region    String   // city / area / locality
   address    String
   mobile     String?
+   viewToken String   @unique   // ✅ important
   idProofImg    String?
   customerImg     String?
   aadharNo     String?
