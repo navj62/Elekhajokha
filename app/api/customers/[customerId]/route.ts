@@ -80,7 +80,7 @@ export async function GET(_req: Request, context: RouteContext) {
       remark:      customer.remark,
       customerImg: customer.customerImg,
       idProofImg:  customer.idProofImg,
-
+      viewToken:   customer.viewToken,
       pledges: customer.pledges.map((pledge) => {
   const firstItem = pledge.items[0];
 

@@ -21,15 +21,16 @@
     "clsx": "2.1.1",
     "lucide-react": "0.563.0",
     "next": "16.1.4",
-    "pdfkit": "^0.18.0",
     "ngrok": "^5.0.0-beta.2",
+    "pdfkit": "^0.18.0",
     "pg": "^8.20.0",
+    "qrcode.react": "^4.2.0",
     "radix-ui": "^1.4.3",
     "razorpay": "^2.9.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "svix": "^1.89.0",
     "recharts": "^3.8.1",
+    "svix": "^1.89.0",
     "tailwind-merge": "3.4.0"
   },
   "devDependencies": {

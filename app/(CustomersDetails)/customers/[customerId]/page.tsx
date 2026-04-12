@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-
+import { QRCodeCanvas } from "qrcode.react";
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
@@ -29,6 +29,7 @@ type CustomerDetail = {
   customerImg: string | null;
   idProofImg:  string | null;
   pledges:     Pledge[];
+  viewToken: string; // ✅ ADD THIS
 };
 
 
@@ -78,8 +79,9 @@ export default function CustomerDetailPage() {
   const [error,      setError]      = useState<string | null>(null);
   const [toastMsg,   setToastMsg]   = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showQR, setShowQR] = useState(false);
   const toastRef = useRef<NodeJS.Timeout | null>(null);
-
+  
   function showToast(msg: string) {
     setToastMsg(msg);
     if (toastRef.current) clearTimeout(toastRef.current);
@@ -183,11 +185,51 @@ export default function CustomerDetailPage() {
                   </span>
                 )}
               </div>
-              <div>
-                <h2 className="text-lg font-semibold">{customer.name}</h2>
-                {/* ✅ Show region as subtitle under name */}
-                <p className="text-sm text-gray-500">{customer.region}</p>
-              </div>
+             <div className="w-full">
+  <h2 className="text-lg font-semibold">{customer.name}</h2>
+  <p className="text-sm text-gray-500">{customer.region}</p>
+
+  {/* 🔗 Customer View Link */}
+  <div className="flex items-center gap-2 mt-1 flex-wrap">
+  <input
+    value={`${process.env.NEXT_PUBLIC_BASE_URL}/view/${customer.viewToken}`}
+    readOnly
+    className="border px-2 py-1 rounded text-xs w-full bg-gray-50"
+  />
+
+  <button
+    onClick={() =>
+      navigator.clipboard.writeText(
+        `${process.env.NEXT_PUBLIC_BASE_URL}/view/${customer.viewToken}`
+      )
+    }
+    className="bg-blue-500 text-white px-3 py-1 rounded text-xs hover:bg-blue-600"
+  >
+    Copy
+  </button>
+
+  {/* 🔥 View QR Button */}
+  <button
+    onClick={() => setShowQR(!showQR)}
+    className="bg-gray-800 text-white px-3 py-1 rounded text-xs hover:bg-gray-900"
+  >
+    {showQR ? "Hide QR" : "View QR"}
+  </button>
+</div>
+
+{/* 🔥 QR Code (Toggle) */}
+{showQR && (
+  <div className="mt-3 flex flex-col items-start gap-2">
+    <div className="p-2 bg-white border rounded-lg">
+      <QRCodeCanvas
+        value={`${process.env.NEXT_PUBLIC_BASE_URL}/view/${customer.viewToken}`}
+        size={120}
+      />
+      <p className="text-xs text-gray-400">Scan to open customer page</p>
+    </div>
+  </div>
+)}
+</div>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
