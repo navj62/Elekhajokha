@@ -12,7 +12,7 @@ const createPrismaClient = () => {
   
   return new PrismaClient({
     adapter,
-    log: ["query"],
+    log: ["error"], // ← only log errors, not every query
   });
 };
 
