@@ -1,4 +1,4 @@
-import { PrismaClient } from "../src/generated/prisma";
+import { PrismaClient } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
 
 const globalForPrisma = global as unknown as {
@@ -12,7 +12,7 @@ const createPrismaClient = () => {
   
   return new PrismaClient({
     adapter,
-    log: ["query"],
+    log: ["error"], // ← only log errors, not every query
   });
 };
 
