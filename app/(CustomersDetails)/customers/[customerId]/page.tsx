@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { QRCodeCanvas } from "qrcode.react";
+import { Switch } from "@/components/ui/switch";
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
@@ -30,6 +31,7 @@ type CustomerDetail = {
   idProofImg:  string | null;
   pledges:     Pledge[];
   viewToken: string; // ✅ ADD THIS
+  isPortalBlocked: boolean;
 };
 
 
@@ -229,6 +231,55 @@ export default function CustomerDetailPage() {
     </div>
   </div>
 )}
+
+<div className="mt-3 flex items-center gap-3">
+  <Switch
+    checked={!Boolean(customer.isPortalBlocked)}
+    onCheckedChange={async () => {
+  try {
+    const res = await fetch(
+      `/api/customers/${customer.id}/toggle-portal`,
+      {
+        method: "PATCH",
+      }
+    );
+
+    const data = await res.json();
+
+    console.log("TOGGLE RESPONSE:", data);
+
+    if (!res.ok) {
+      throw new Error(data.error || "Failed");
+    }
+
+    setCustomer((prev) =>
+      prev
+        ? {
+            ...prev,
+            isPortalBlocked: data.isPortalBlocked,
+          }
+        : prev
+    );
+
+    showToast(
+      data.isPortalBlocked
+        ? "Portal access blocked"
+        : "Portal access enabled"
+    );
+
+  } catch (err) {
+    console.error(err);
+    showToast("Failed to update portal access");
+  }
+}}
+  />
+
+  <span className="text-sm text-gray-600">
+    {!customer.isPortalBlocked
+      ? "Portal Enabled"
+      : "Portal Blocked"}
+  </span>
+</div>
 </div>
             </div>
             <div className="flex flex-wrap gap-2">
