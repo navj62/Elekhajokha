@@ -29,7 +29,7 @@ export async function GET() {
         profileImageUrl: true,
         subscriptionStatus: true,
         subscriptionPlan: true,  
-         subscriptionPlan: true,  
+        subscriptionPlan: true,  
         subscriptionEndDate: true,
         shopownerTerms: true,
         customerTerms: true,
