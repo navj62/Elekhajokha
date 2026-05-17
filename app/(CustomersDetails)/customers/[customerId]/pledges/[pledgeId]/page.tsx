@@ -16,6 +16,7 @@ import { Label }                from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { calculateLTV }            from "@/lib/calculateLTV";
 import { calculateHybridInterest } from "@/lib/interest";
+import ReceiptModal from "@/components/ReceiptModal";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -342,6 +343,7 @@ export default function PledgeDetailPage() {
         </Button>
       </Link>
     )}
+    <ReceiptModal customerId={params.customerId} pledgeId={pledge.id} />
   </div>
 </div>
           

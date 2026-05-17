@@ -28,8 +28,11 @@ export async function GET() {
         gender: true,
         profileImageUrl: true,
         subscriptionStatus: true,
+        subscriptionPlan: true,  
          subscriptionPlan: true,  
         subscriptionEndDate: true,
+        shopownerTerms: true,
+        customerTerms: true,
         createdAt: true,
         _count: {
           select: {
@@ -92,6 +95,8 @@ export async function PATCH(req: Request) {
     const address   = formData.get("address")?.toString();
     const gender    = formData.get("gender")?.toString();
     const imageFile = formData.get("profileImage");
+    const shopownerTerms = formData.get("shopownerTerms")?.toString();
+    const customerTerms  = formData.get("customerTerms")?.toString();
 
     /* ✅ Gender mapping */
     const genderMap = {
@@ -134,6 +139,8 @@ export async function PATCH(req: Request) {
         ...(address   !== undefined && { address }),
         ...(gender    !== undefined && { gender: genderEnum }),
         ...(profileImageUrl && { profileImageUrl }), // ✅ only if uploaded
+        ...(shopownerTerms !== undefined && { shopownerTerms: shopownerTerms }),
+        ...(customerTerms  !== undefined && { customerTerms: customerTerms }),
       },
     });
 
