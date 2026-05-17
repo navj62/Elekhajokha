@@ -154,6 +154,7 @@ exports.Prisma.CustomerScalarFieldEnum = {
   address: 'address',
   mobile: 'mobile',
   viewToken: 'viewToken',
+  isPortalBlocked: 'isPortalBlocked',
   idProofImg: 'idProofImg',
   customerImg: 'customerImg',
   aadharNo: 'aadharNo',

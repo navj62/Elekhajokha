@@ -3072,6 +3072,7 @@ export namespace Prisma {
     address: string | null
     mobile: string | null
     viewToken: string | null
+    isPortalBlocked: boolean | null
     idProofImg: string | null
     customerImg: string | null
     aadharNo: string | null
@@ -3090,6 +3091,7 @@ export namespace Prisma {
     address: string | null
     mobile: string | null
     viewToken: string | null
+    isPortalBlocked: boolean | null
     idProofImg: string | null
     customerImg: string | null
     aadharNo: string | null
@@ -3108,6 +3110,7 @@ export namespace Prisma {
     address: number
     mobile: number
     viewToken: number
+    isPortalBlocked: number
     idProofImg: number
     customerImg: number
     aadharNo: number
@@ -3128,6 +3131,7 @@ export namespace Prisma {
     address?: true
     mobile?: true
     viewToken?: true
+    isPortalBlocked?: true
     idProofImg?: true
     customerImg?: true
     aadharNo?: true
@@ -3146,6 +3150,7 @@ export namespace Prisma {
     address?: true
     mobile?: true
     viewToken?: true
+    isPortalBlocked?: true
     idProofImg?: true
     customerImg?: true
     aadharNo?: true
@@ -3164,6 +3169,7 @@ export namespace Prisma {
     address?: true
     mobile?: true
     viewToken?: true
+    isPortalBlocked?: true
     idProofImg?: true
     customerImg?: true
     aadharNo?: true
@@ -3255,6 +3261,7 @@ export namespace Prisma {
     address: string
     mobile: string | null
     viewToken: string
+    isPortalBlocked: boolean
     idProofImg: string | null
     customerImg: string | null
     aadharNo: string | null
@@ -3290,6 +3297,7 @@ export namespace Prisma {
     address?: boolean
     mobile?: boolean
     viewToken?: boolean
+    isPortalBlocked?: boolean
     idProofImg?: boolean
     customerImg?: boolean
     aadharNo?: boolean
@@ -3311,6 +3319,7 @@ export namespace Prisma {
     address?: boolean
     mobile?: boolean
     viewToken?: boolean
+    isPortalBlocked?: boolean
     idProofImg?: boolean
     customerImg?: boolean
     aadharNo?: boolean
@@ -3330,6 +3339,7 @@ export namespace Prisma {
     address?: boolean
     mobile?: boolean
     viewToken?: boolean
+    isPortalBlocked?: boolean
     idProofImg?: boolean
     customerImg?: boolean
     aadharNo?: boolean
@@ -3349,6 +3359,7 @@ export namespace Prisma {
     address?: boolean
     mobile?: boolean
     viewToken?: boolean
+    isPortalBlocked?: boolean
     idProofImg?: boolean
     customerImg?: boolean
     aadharNo?: boolean
@@ -3359,7 +3370,7 @@ export namespace Prisma {
     gender?: boolean
   }
 
-  export type CustomerOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "name" | "region" | "address" | "mobile" | "viewToken" | "idProofImg" | "customerImg" | "aadharNo" | "remark" | "deletedAt" | "createdAt" | "updatedAt" | "gender", ExtArgs["result"]["customer"]>
+  export type CustomerOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "userId" | "name" | "region" | "address" | "mobile" | "viewToken" | "isPortalBlocked" | "idProofImg" | "customerImg" | "aadharNo" | "remark" | "deletedAt" | "createdAt" | "updatedAt" | "gender", ExtArgs["result"]["customer"]>
   export type CustomerInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     pledges?: boolean | Customer$pledgesArgs<ExtArgs>
     user?: boolean | UserDefaultArgs<ExtArgs>
@@ -3386,6 +3397,7 @@ export namespace Prisma {
       address: string
       mobile: string | null
       viewToken: string
+      isPortalBlocked: boolean
       idProofImg: string | null
       customerImg: string | null
       aadharNo: string | null
@@ -3826,6 +3838,7 @@ export namespace Prisma {
     readonly address: FieldRef<"Customer", 'String'>
     readonly mobile: FieldRef<"Customer", 'String'>
     readonly viewToken: FieldRef<"Customer", 'String'>
+    readonly isPortalBlocked: FieldRef<"Customer", 'Boolean'>
     readonly idProofImg: FieldRef<"Customer", 'String'>
     readonly customerImg: FieldRef<"Customer", 'String'>
     readonly aadharNo: FieldRef<"Customer", 'String'>
@@ -11417,6 +11430,7 @@ export namespace Prisma {
     address: 'address',
     mobile: 'mobile',
     viewToken: 'viewToken',
+    isPortalBlocked: 'isPortalBlocked',
     idProofImg: 'idProofImg',
     customerImg: 'customerImg',
     aadharNo: 'aadharNo',
@@ -11922,6 +11936,7 @@ export namespace Prisma {
     address?: StringFilter<"Customer"> | string
     mobile?: StringNullableFilter<"Customer"> | string | null
     viewToken?: StringFilter<"Customer"> | string
+    isPortalBlocked?: BoolFilter<"Customer"> | boolean
     idProofImg?: StringNullableFilter<"Customer"> | string | null
     customerImg?: StringNullableFilter<"Customer"> | string | null
     aadharNo?: StringNullableFilter<"Customer"> | string | null
@@ -11942,6 +11957,7 @@ export namespace Prisma {
     address?: SortOrder
     mobile?: SortOrderInput | SortOrder
     viewToken?: SortOrder
+    isPortalBlocked?: SortOrder
     idProofImg?: SortOrderInput | SortOrder
     customerImg?: SortOrderInput | SortOrder
     aadharNo?: SortOrderInput | SortOrder
@@ -11965,6 +11981,7 @@ export namespace Prisma {
     region?: StringFilter<"Customer"> | string
     address?: StringFilter<"Customer"> | string
     mobile?: StringNullableFilter<"Customer"> | string | null
+    isPortalBlocked?: BoolFilter<"Customer"> | boolean
     idProofImg?: StringNullableFilter<"Customer"> | string | null
     customerImg?: StringNullableFilter<"Customer"> | string | null
     aadharNo?: StringNullableFilter<"Customer"> | string | null
@@ -11985,6 +12002,7 @@ export namespace Prisma {
     address?: SortOrder
     mobile?: SortOrderInput | SortOrder
     viewToken?: SortOrder
+    isPortalBlocked?: SortOrder
     idProofImg?: SortOrderInput | SortOrder
     customerImg?: SortOrderInput | SortOrder
     aadharNo?: SortOrderInput | SortOrder
@@ -12009,6 +12027,7 @@ export namespace Prisma {
     address?: StringWithAggregatesFilter<"Customer"> | string
     mobile?: StringNullableWithAggregatesFilter<"Customer"> | string | null
     viewToken?: StringWithAggregatesFilter<"Customer"> | string
+    isPortalBlocked?: BoolWithAggregatesFilter<"Customer"> | boolean
     idProofImg?: StringNullableWithAggregatesFilter<"Customer"> | string | null
     customerImg?: StringNullableWithAggregatesFilter<"Customer"> | string | null
     aadharNo?: StringNullableWithAggregatesFilter<"Customer"> | string | null
@@ -12732,6 +12751,7 @@ export namespace Prisma {
     address: string
     mobile?: string | null
     viewToken?: string
+    isPortalBlocked?: boolean
     idProofImg?: string | null
     customerImg?: string | null
     aadharNo?: string | null
@@ -12752,6 +12772,7 @@ export namespace Prisma {
     address: string
     mobile?: string | null
     viewToken?: string
+    isPortalBlocked?: boolean
     idProofImg?: string | null
     customerImg?: string | null
     aadharNo?: string | null
@@ -12770,6 +12791,7 @@ export namespace Prisma {
     address?: StringFieldUpdateOperationsInput | string
     mobile?: NullableStringFieldUpdateOperationsInput | string | null
     viewToken?: StringFieldUpdateOperationsInput | string
+    isPortalBlocked?: BoolFieldUpdateOperationsInput | boolean
     idProofImg?: NullableStringFieldUpdateOperationsInput | string | null
     customerImg?: NullableStringFieldUpdateOperationsInput | string | null
     aadharNo?: NullableStringFieldUpdateOperationsInput | string | null
@@ -12790,6 +12812,7 @@ export namespace Prisma {
     address?: StringFieldUpdateOperationsInput | string
     mobile?: NullableStringFieldUpdateOperationsInput | string | null
     viewToken?: StringFieldUpdateOperationsInput | string
+    isPortalBlocked?: BoolFieldUpdateOperationsInput | boolean
     idProofImg?: NullableStringFieldUpdateOperationsInput | string | null
     customerImg?: NullableStringFieldUpdateOperationsInput | string | null
     aadharNo?: NullableStringFieldUpdateOperationsInput | string | null
@@ -12809,6 +12832,7 @@ export namespace Prisma {
     address: string
     mobile?: string | null
     viewToken?: string
+    isPortalBlocked?: boolean
     idProofImg?: string | null
     customerImg?: string | null
     aadharNo?: string | null
@@ -12826,6 +12850,7 @@ export namespace Prisma {
     address?: StringFieldUpdateOperationsInput | string
     mobile?: NullableStringFieldUpdateOperationsInput | string | null
     viewToken?: StringFieldUpdateOperationsInput | string
+    isPortalBlocked?: BoolFieldUpdateOperationsInput | boolean
     idProofImg?: NullableStringFieldUpdateOperationsInput | string | null
     customerImg?: NullableStringFieldUpdateOperationsInput | string | null
     aadharNo?: NullableStringFieldUpdateOperationsInput | string | null
@@ -12844,6 +12869,7 @@ export namespace Prisma {
     address?: StringFieldUpdateOperationsInput | string
     mobile?: NullableStringFieldUpdateOperationsInput | string | null
     viewToken?: StringFieldUpdateOperationsInput | string
+    isPortalBlocked?: BoolFieldUpdateOperationsInput | boolean
     idProofImg?: NullableStringFieldUpdateOperationsInput | string | null
     customerImg?: NullableStringFieldUpdateOperationsInput | string | null
     aadharNo?: NullableStringFieldUpdateOperationsInput | string | null
@@ -13739,6 +13765,7 @@ export namespace Prisma {
     address?: SortOrder
     mobile?: SortOrder
     viewToken?: SortOrder
+    isPortalBlocked?: SortOrder
     idProofImg?: SortOrder
     customerImg?: SortOrder
     aadharNo?: SortOrder
@@ -13757,6 +13784,7 @@ export namespace Prisma {
     address?: SortOrder
     mobile?: SortOrder
     viewToken?: SortOrder
+    isPortalBlocked?: SortOrder
     idProofImg?: SortOrder
     customerImg?: SortOrder
     aadharNo?: SortOrder
@@ -13775,6 +13803,7 @@ export namespace Prisma {
     address?: SortOrder
     mobile?: SortOrder
     viewToken?: SortOrder
+    isPortalBlocked?: SortOrder
     idProofImg?: SortOrder
     customerImg?: SortOrder
     aadharNo?: SortOrder
@@ -15150,6 +15179,7 @@ export namespace Prisma {
     address: string
     mobile?: string | null
     viewToken?: string
+    isPortalBlocked?: boolean
     idProofImg?: string | null
     customerImg?: string | null
     aadharNo?: string | null
@@ -15168,6 +15198,7 @@ export namespace Prisma {
     address: string
     mobile?: string | null
     viewToken?: string
+    isPortalBlocked?: boolean
     idProofImg?: string | null
     customerImg?: string | null
     aadharNo?: string | null
@@ -15216,6 +15247,7 @@ export namespace Prisma {
     address?: StringFilter<"Customer"> | string
     mobile?: StringNullableFilter<"Customer"> | string | null
     viewToken?: StringFilter<"Customer"> | string
+    isPortalBlocked?: BoolFilter<"Customer"> | boolean
     idProofImg?: StringNullableFilter<"Customer"> | string | null
     customerImg?: StringNullableFilter<"Customer"> | string | null
     aadharNo?: StringNullableFilter<"Customer"> | string | null
@@ -15538,6 +15570,7 @@ export namespace Prisma {
     address: string
     mobile?: string | null
     viewToken?: string
+    isPortalBlocked?: boolean
     idProofImg?: string | null
     customerImg?: string | null
     aadharNo?: string | null
@@ -15557,6 +15590,7 @@ export namespace Prisma {
     address: string
     mobile?: string | null
     viewToken?: string
+    isPortalBlocked?: boolean
     idProofImg?: string | null
     customerImg?: string | null
     aadharNo?: string | null
@@ -15689,6 +15723,7 @@ export namespace Prisma {
     address?: StringFieldUpdateOperationsInput | string
     mobile?: NullableStringFieldUpdateOperationsInput | string | null
     viewToken?: StringFieldUpdateOperationsInput | string
+    isPortalBlocked?: BoolFieldUpdateOperationsInput | boolean
     idProofImg?: NullableStringFieldUpdateOperationsInput | string | null
     customerImg?: NullableStringFieldUpdateOperationsInput | string | null
     aadharNo?: NullableStringFieldUpdateOperationsInput | string | null
@@ -15708,6 +15743,7 @@ export namespace Prisma {
     address?: StringFieldUpdateOperationsInput | string
     mobile?: NullableStringFieldUpdateOperationsInput | string | null
     viewToken?: StringFieldUpdateOperationsInput | string
+    isPortalBlocked?: BoolFieldUpdateOperationsInput | boolean
     idProofImg?: NullableStringFieldUpdateOperationsInput | string | null
     customerImg?: NullableStringFieldUpdateOperationsInput | string | null
     aadharNo?: NullableStringFieldUpdateOperationsInput | string | null
@@ -16089,6 +16125,7 @@ export namespace Prisma {
     address: string
     mobile?: string | null
     viewToken?: string
+    isPortalBlocked?: boolean
     idProofImg?: string | null
     customerImg?: string | null
     aadharNo?: string | null
@@ -16106,6 +16143,7 @@ export namespace Prisma {
     address?: StringFieldUpdateOperationsInput | string
     mobile?: NullableStringFieldUpdateOperationsInput | string | null
     viewToken?: StringFieldUpdateOperationsInput | string
+    isPortalBlocked?: BoolFieldUpdateOperationsInput | boolean
     idProofImg?: NullableStringFieldUpdateOperationsInput | string | null
     customerImg?: NullableStringFieldUpdateOperationsInput | string | null
     aadharNo?: NullableStringFieldUpdateOperationsInput | string | null
@@ -16124,6 +16162,7 @@ export namespace Prisma {
     address?: StringFieldUpdateOperationsInput | string
     mobile?: NullableStringFieldUpdateOperationsInput | string | null
     viewToken?: StringFieldUpdateOperationsInput | string
+    isPortalBlocked?: BoolFieldUpdateOperationsInput | boolean
     idProofImg?: NullableStringFieldUpdateOperationsInput | string | null
     customerImg?: NullableStringFieldUpdateOperationsInput | string | null
     aadharNo?: NullableStringFieldUpdateOperationsInput | string | null
@@ -16142,6 +16181,7 @@ export namespace Prisma {
     address?: StringFieldUpdateOperationsInput | string
     mobile?: NullableStringFieldUpdateOperationsInput | string | null
     viewToken?: StringFieldUpdateOperationsInput | string
+    isPortalBlocked?: BoolFieldUpdateOperationsInput | boolean
     idProofImg?: NullableStringFieldUpdateOperationsInput | string | null
     customerImg?: NullableStringFieldUpdateOperationsInput | string | null
     aadharNo?: NullableStringFieldUpdateOperationsInput | string | null

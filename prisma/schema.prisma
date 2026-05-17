@@ -1,6 +1,5 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 
@@ -55,6 +54,7 @@ model Customer {
   address    String
   mobile     String?
   viewToken String  @unique @default(uuid())
+  isPortalBlocked Boolean @default(false) //customer link toggle
   idProofImg    String?
   customerImg     String?
   aadharNo     String?

@@ -5,34 +5,54 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/",
-  "/api/webhook(.*)", // 👈 Changed: removed the '/' before (.*) to be safer
+  "/api/webhook(.*)",
   "/api/cron(.*)",
 ]);
 
-export default clerkMiddleware(async (auth, req) => {
-  // 1. Check if it's a public route first
-  const isPublic = isPublicRoute(req);
+const isOnboardingRoute = createRouteMatcher(["/onboarding(.*)"]);
+const isApiRoute = createRouteMatcher(["/api(.*)"]);
 
-  // 2. Optimization: If it's a webhook, let it through immediately
+export default clerkMiddleware(async (auth, req) => {
+  const authObject = await auth();
+  const { userId, sessionClaims } = authObject; 
+  
+  const isPublic = isPublicRoute(req);
+  const isVisitingOnboarding = isOnboardingRoute(req);
+  const isApi = isApiRoute(req);
+
   if (req.nextUrl.pathname.startsWith("/api/webhook")) {
     return NextResponse.next();
   }
 
-  const { userId } = await auth();
-
-  // 3. Prevent logged-in users from seeing sign-in/up pages
-  if (
-    userId &&
-    (req.nextUrl.pathname.startsWith("/sign-in") ||
-      req.nextUrl.pathname.startsWith("/sign-up"))
-  ) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+  if (!isPublic && !userId) {
+    await auth.protect(); 
   }
 
-  // 4. Protect everything else that isn't public
-  if (!isPublic) {
-    await auth.protect();
+  if (userId) {
+    const hasOnboarded = (sessionClaims?.metadata as any)?.onboardingComplete === true;
+
+    if (
+      req.nextUrl.pathname.startsWith("/sign-in") ||
+      req.nextUrl.pathname.startsWith("/sign-up")
+    ) {
+      const redirectUrl = hasOnboarded ? "/dashboard" : "/onboarding";
+      return NextResponse.redirect(new URL(redirectUrl, req.url));
+    }
+
+    if (isApi) {
+      return NextResponse.next();
+    }
+
+    if (hasOnboarded && isVisitingOnboarding) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+
+    if (!hasOnboarded && !isVisitingOnboarding && !isPublic) {
+      return NextResponse.redirect(new URL("/onboarding", req.url));
+    }
   }
+
+  return NextResponse.next();
 });
 
 export const config = {

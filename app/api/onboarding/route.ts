@@ -1,7 +1,7 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { Gender } from "@prisma/client";
+import { Gender } from "@/src/generated/prisma"
 import { uploadImage } from "@/lib/upload";
 
 export async function POST(req: Request) {
@@ -42,10 +42,9 @@ export async function POST(req: Request) {
     let genderEnum: Gender | null = null;
 
     if (gender === "Male" || gender === "Female" || gender === "Other") {
-      genderEnum = gender;
+      genderEnum = gender as Gender;
     }
 
-    /* ☁️ Upload image to Cloudinary */
     let profileImageUrl: string | null = null;
 
     if (imageFile instanceof File && imageFile.size > 0) {
@@ -55,7 +54,6 @@ export async function POST(req: Request) {
       );
     }
 
-    /* 💾 Save user */
     const user = await prisma.user.upsert({
       where: { clerkUserId: userId },
       create: {
@@ -81,10 +79,18 @@ export async function POST(req: Request) {
       },
     });
 
+    // 👇 ADDED THIS: Tell Clerk the onboarding is finished
+    await client.users.updateUserMetadata(userId, {
+      publicMetadata: {
+        onboardingComplete: true,
+      },
+    });
+    // 👆 ================================================
+
     return NextResponse.json({ success: true, user });
 
   } catch (err) {
-    console.error("🔥 ONBOARDING ERROR:", err);
+    console.error(err);
 
     return NextResponse.json(
       { error: "Internal Server Error" },

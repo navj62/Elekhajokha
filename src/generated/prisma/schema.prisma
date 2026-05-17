@@ -47,22 +47,23 @@ model User {
 }
 
 model Customer {
-  id          String    @id @default(uuid())
-  userId      String
-  name        String
-  region      String // city / area / locality
-  address     String
-  mobile      String?
-  viewToken   String    @unique @default(uuid())
-  idProofImg  String?
-  customerImg String?
-  aadharNo    String?
-  remark      String?
-  deletedAt   DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  gender      Gender?
-  pledges     Pledge[]
+  id              String    @id @default(uuid())
+  userId          String
+  name            String
+  region          String // city / area / locality
+  address         String
+  mobile          String?
+  viewToken       String    @unique @default(uuid())
+  isPortalBlocked Boolean   @default(false) //customer link toggle
+  idProofImg      String?
+  customerImg     String?
+  aadharNo        String?
+  remark          String?
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  gender          Gender?
+  pledges         Pledge[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
