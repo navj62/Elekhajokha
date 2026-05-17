@@ -1,6 +1,5 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 
@@ -39,6 +38,9 @@ model User {
   deletedAt     DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  shopownerTerms  String?  // custom T&C for shopowner copy
+  customerTerms   String?  // custom T&C for customer copy
 
   customers     Customer[]
    @@index([razorpaySubscriptionId])  
