@@ -22,32 +22,45 @@ export async function GET(
     if (!user)
       return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-    const pledge = await prisma.pledge.findFirst({
-      where: { id: pledgeId, customerId: customerId }, // ← now uses correct values
-      include: { customer: { select: { name: true, address: true } } },
-    });
-    if (!pledge)
-      return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
+const pledge = await prisma.pledge.findFirst({
+  where: { id: pledgeId, customerId: customerId },
+  include: {
+    customer: { select: { name: true, address: true } },
+    items: true, // ← fetch pledge items
+  },
+});
+if (!pledge)
+  return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
+
+const itemSummary = pledge.items
+  .map((item) => item.itemName ?? item.itemType)
+  .join(", ");
+
+const totalNetWeight = pledge.items
+  .reduce((sum, item) => sum + Number(item.netWeight), 0)
+  .toFixed(3);
 
     console.log("RECEIPT pledge:", pledge.id, pledge.customer.name); // ← verify in terminal
 
-    const pdfBuffer = await generateReceiptPDF({
-      transactionId: pledge.id.slice(-6).toUpperCase(),
-      pledgeDate: new Date(pledge.pledgeDate).toLocaleDateString("en-IN", {
-        day: "2-digit", month: "2-digit", year: "numeric",
-      }),
-      customerName: pledge.customer.name,
-      customerAddress: pledge.customer.address,
-      loanAmount: Number(pledge.loanAmount),
-      itemName: pledge.itemName,
-      itemWeight: `${pledge.netWeight} gram`,
-      remark: pledge.remark,
-      username:user.username ?? "Name",
-      shopName: user.shopName ?? "Shop",
-      shopAddress: user.address ?? "",
-      shopMobile: user.mobile ?? "",
-      itemPhoto: pledge.itemPhoto ?? null,
-    });
+const pdfBuffer = await generateReceiptPDF({
+  transactionId: pledge.id.slice(-6).toUpperCase(),
+  pledgeDate: new Date(pledge.pledgeDate).toLocaleDateString("en-IN", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+  }),
+  customerName: pledge.customer.name,
+  customerAddress: pledge.customer.address,
+  loanAmount: Number(pledge.loanAmount),
+  itemName: itemSummary || "—",           // ← from items
+  itemWeight: `${totalNetWeight} gram`,   // ← from items
+  remark: pledge.remark,
+  username: user.username ?? "Name",
+  shopName: user.shopName ?? "Shop",
+  shopAddress: user.address ?? "",
+  shopMobile: user.mobile ?? "",
+  itemPhoto: pledge.itemPhoto ?? null,
+  shopownerTerms: null, // ← will add after profile update
+  customerTerms: null,
+});
 
     return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
