@@ -234,36 +234,44 @@ export default function CustomerDetailPage() {
 
 <div className="mt-3 flex items-center gap-3">
   <Switch
-    checked={!customer.isPortalBlocked}
+    checked={!Boolean(customer.isPortalBlocked)}
     onCheckedChange={async () => {
-      try {
-        const res = await fetch(
-          `/api/customers/${customer.id}/toggle-portal`,
-          {
-            method: "PATCH",
-          }
-        );
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.error || "Failed");
-        }
-
-        setCustomer({
-          ...customer,
-          isPortalBlocked: data.isPortalBlocked,
-        });
-
-        showToast(
-          data.isPortalBlocked
-            ? "Portal access blocked"
-            : "Portal access enabled"
-        );
-      } catch (err) {
-        showToast("Failed to update portal access");
+  try {
+    const res = await fetch(
+      `/api/customers/${customer.id}/toggle-portal`,
+      {
+        method: "PATCH",
       }
-    }}
+    );
+
+    const data = await res.json();
+
+    console.log("TOGGLE RESPONSE:", data);
+
+    if (!res.ok) {
+      throw new Error(data.error || "Failed");
+    }
+
+    setCustomer((prev) =>
+      prev
+        ? {
+            ...prev,
+            isPortalBlocked: data.isPortalBlocked,
+          }
+        : prev
+    );
+
+    showToast(
+      data.isPortalBlocked
+        ? "Portal access blocked"
+        : "Portal access enabled"
+    );
+
+  } catch (err) {
+    console.error(err);
+    showToast("Failed to update portal access");
+  }
+}}
   />
 
   <span className="text-sm text-gray-600">
