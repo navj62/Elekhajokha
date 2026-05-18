@@ -1,92 +1,82 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { useParams }                                          from "next/navigation";
-import Link                                                   from "next/link";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import {
   Loader2, ArrowLeft, User, Calendar, Tag,
-  Scale, TrendingUp, Receipt, Plus, ChevronUp, RefreshCw,
+  Scale, TrendingUp, Receipt, Plus, ChevronUp, RefreshCw, ImageIcon
 } from "lucide-react";
 import {
   Card, CardContent, CardHeader, CardTitle,
 } from "@/components/ui/card";
-import { Input }                from "@/components/ui/input";
-import { Button }               from "@/components/ui/button";
-import { Label }                from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { calculateLTV }            from "@/lib/calculateLTV";
+import { calculateLTV } from "@/lib/calculateLTV";
 import { calculateHybridInterest } from "@/lib/interest";
 import ReceiptModal from "@/components/ReceiptModal";
 
-/* ------------------------------------------------------------------ */
-/*  Types                                                               */
-/* ------------------------------------------------------------------ */
 interface PledgeItem {
-  id:               string;
-  itemType:         string;
-  metalType:        string;
-  itemName:         string | null;
-  quantity:         number;
-  grossWeight:      number;
-  netWeight:        number;
-  purity:           number;
+  id: string;
+  itemType: string;
+  metalType: string;
+  itemName: string | null;
+  quantity: number;
+  grossWeight: number;
+  netWeight: number;
+  purity: number;
   netWeightOfMetal: number;
+  itemPhoto: string | null;
 }
 
 interface Transaction {
-  id:        string;
-  amount:    string;   // ✅ FIX 1 — keep as string, Prisma Decimal → string in JSON
-  type:      "REPAYMENT_PRINCIPAL" | "REPAYMENT_INTEREST" | "TOPUP";
-  note:      string | null;
+  id: string;
+  amount: string;
+  type: "REPAYMENT_PRINCIPAL" | "REPAYMENT_INTEREST" | "TOPUP";
+  note: string | null;
   createdAt: string;
 }
 
 interface PledgeDetail {
-  id:                  string;
-  pledgeDate:          string;
-  status:              string;
-  loanAmount:          number;
-  interestRate:        number;
+  id: string;
+  pledgeDate: string;
+  status: string;
+  loanAmount: number;
+  interestRate: number;
   compoundingDuration: "MONTHLY" | "HALFYEARLY" | "YEARLY";
-  allowCompounding:    boolean;
-  durationMonths:      number | null;
-  netWeightOfGold:     number;
-  netWeightOfSilver:   number;
-  totalInterest:       number | null;
-  receivableAmount:    number | null;
-  remark:              string | null;
-  itemPhoto:           string | null;
-  items:               PledgeItem[];
+  allowCompounding: boolean;
+  durationMonths: number | null;
+  netWeightOfGold: number;
+  netWeightOfSilver: number;
+  totalInterest: number | null;
+  receivableAmount: number | null;
+  remark: string | null;
+  items: PledgeItem[];
   customer: {
-    id:      string;
-    name:    string;
-    mobile:  string | null;
+    id: string;
+    name: string;
+    mobile: string | null;
     address: string | null;
-    region:  string | null;
+    region: string | null;
   };
 }
 
 interface MarketRates {
-  goldPerGram:   number | null;
+  goldPerGram: number | null;
   silverPerGram: number | null;
-  updatedAt:     string | null;
+  updatedAt: string | null;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Constants                                                           */
-/* ------------------------------------------------------------------ */
 const TRANSACTION_TYPES = [
   { value: "REPAYMENT_PRINCIPAL", label: "Principal Repayment" },
   { value: "REPAYMENT_INTEREST",  label: "Interest Payment"    },
   { value: "TOPUP",               label: "Top-Up"              },
 ] as const;
 
-// ✅ FIX 9 — quick amount shortcuts
 const QUICK_AMOUNTS = [1000, 5000, 10000] as const;
 
-/* ------------------------------------------------------------------ */
-/*  Formatters                                                          */
-/* ------------------------------------------------------------------ */
 function fmtINR(n: number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency", currency: "INR", maximumFractionDigits: 2,
@@ -103,9 +93,6 @@ function titleCase(str: string) {
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 }
 
-/* ------------------------------------------------------------------ */
-/*  UI helpers                                                          */
-/* ------------------------------------------------------------------ */
 function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, string> = {
     ACTIVE:   "bg-emerald-100 text-emerald-700",
@@ -141,9 +128,6 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-/* ================================================================== */
-/*  Page                                                                */
-/* ================================================================== */
 export default function PledgeDetailPage() {
   const params = useParams<{ customerId: string; pledgeId: string }>();
 
@@ -153,7 +137,6 @@ export default function PledgeDetailPage() {
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState<string | null>(null);
 
-  /* ── Transaction form ─────────────────────────────────────────── */
   const [txnAmount,  setTxnAmount]  = useState("");
   const [txnType,    setTxnType]    = useState<Transaction["type"]>("REPAYMENT_PRINCIPAL");
   const [txnNote,    setTxnNote]    = useState("");
@@ -162,20 +145,18 @@ export default function PledgeDetailPage() {
   const [showForm,   setShowForm]   = useState(false);
   const amountRef = useRef<HTMLInputElement>(null);
 
-  // ✅ FIX 7 — auto-focus amount input when form opens
   useEffect(() => {
     if (showForm) amountRef.current?.focus();
   }, [showForm]);
 
-  /* ── Load ─────────────────────────────────────────────────────── */
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const [pledgeRes, marketRes, txnRes] = await Promise.all([
-        fetch(`/api/pledges/${params.pledgeId}`),
+        fetch(`/api/customers/${params.customerId}/pledges/${params.pledgeId}`),
         fetch("/api/market-rates"),
-        fetch(`/api/pledges/${params.pledgeId}/transactions`),
+        fetch(`/api/customers/${params.customerId}/pledges/${params.pledgeId}/transactions`),
       ]);
 
       if (!pledgeRes.ok) {
@@ -200,7 +181,6 @@ export default function PledgeDetailPage() {
         });
       }
 
-      // ✅ FIX 5 — log warning but don't silently swallow
       if (txnRes.ok) {
         const txns = await txnRes.json();
         setTransactions(Array.isArray(txns.transactions) ? txns.transactions : []);
@@ -212,12 +192,10 @@ export default function PledgeDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [params.pledgeId]);
+  }, [params.customerId, params.pledgeId]);
 
   useEffect(() => { load(); }, [load]);
 
-  /* ── Calculations ─────────────────────────────────────────────── */
-  // ✅ FIX 3 — useMemo so calculations don't run on every render
   const calculations = useMemo(() => {
     if (!pledge) return null;
 
@@ -247,9 +225,8 @@ export default function PledgeDetailPage() {
     });
 
     return { interest, ltv };
-  }, [pledge, market]); // only recalculates when pledge or market prices change
+  }, [pledge, market]); 
 
-  /* ── Add transaction ──────────────────────────────────────────── */
   async function submitTransaction(e: React.FormEvent) {
     e.preventDefault();
     setTxnError("");
@@ -263,7 +240,7 @@ export default function PledgeDetailPage() {
 
     setTxnLoading(true);
     try {
-      const res = await fetch(`/api/pledges/${params.pledgeId}/transactions`, {
+      const res = await fetch(`/api/customers/${params.customerId}/pledges/${params.pledgeId}/transactions`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
@@ -275,7 +252,6 @@ export default function PledgeDetailPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to add transaction");
 
-      // ✅ FIX 2 — no Number() conversion, keep amount as string from API
       setTransactions((prev) => [data.transaction, ...prev]);
       setTxnAmount("");
       setTxnNote("");
@@ -287,7 +263,6 @@ export default function PledgeDetailPage() {
     }
   }
 
-  /* ================================================================ */
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -296,7 +271,6 @@ export default function PledgeDetailPage() {
     );
   }
 
-  // ✅ FIX 6 — retry button on error
   if (error || !pledge) {
     return (
       <div className="max-w-3xl mx-auto p-6 space-y-3">
@@ -312,11 +286,9 @@ export default function PledgeDetailPage() {
 
   const { interest, ltv: ltvResult } = calculations!;
 
-  /* ================================================================ */
   return (
     <div className="max-w-3xl mx-auto px-4 py-6 space-y-5">
 
-      {/* ── Header ─────────────────────────────────────────────── */}
       <div>
         <Link
           href={`/customers/${params.customerId}`}
@@ -325,157 +297,149 @@ export default function PledgeDetailPage() {
           <ArrowLeft size={14} /> Back to customer
         </Link>
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start justify-between gap-3">
-  <div>
-    <h1 className="text-2xl font-bold text-gray-900">Pledge Details</h1>
-    <p className="text-xs text-gray-400 mt-0.5">
-      #{pledge.id.slice(0, 8).toUpperCase()}
-    </p>
-  </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Pledge Details</h1>
+            <p className="text-xs text-gray-400 mt-0.5">
+              #{pledge.id.slice(0, 8).toUpperCase()}
+            </p>
+          </div>
 
-  <div className="flex items-center gap-2">
-    <StatusBadge status={pledge.status} />
+          <div className="flex items-center gap-2">
+            <StatusBadge status={pledge.status} />
 
-    {pledge.status === "ACTIVE" && (
-      <Link href={`/customers/${params.customerId}/pledges/${params.pledgeId}/release`}>
-        <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white">
-          Release
-        </Button>
-      </Link>
-    )}
-    <ReceiptModal customerId={params.customerId} pledgeId={pledge.id} />
-  </div>
-</div>
-          
+            {pledge.status === "ACTIVE" && (
+              <Link href={`/customers/${params.customerId}/pledges/${params.pledgeId}/release`}>
+                <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white">
+                  Release
+                </Button>
+              </Link>
+            )}
+            <ReceiptModal customerId={params.customerId} pledgeId={pledge.id} />
+          </div>
         </div>
       </div>
 
-      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
+              <User size={14} /> Customer
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-0">
+            <InfoRow label="Name" value={
+              <Link href={`/customers/${pledge.customer.id}`} className="text-blue-600 hover:underline">
+                {pledge.customer.name}
+              </Link>
+            } />
+            {pledge.customer.mobile  && <InfoRow label="Mobile"  value={pledge.customer.mobile}  />}
+            {pledge.customer.address && <InfoRow label="Address" value={pledge.customer.address} />}
+            {pledge.customer.region  && <InfoRow label="Region"  value={pledge.customer.region}  />}
+          </CardContent>
+        </Card>
 
-      {/* ── Customer ───────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
-            <User size={14} /> Customer
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-0">
-          <InfoRow label="Name" value={
-            <Link href={`/customers/${pledge.customer.id}`} className="text-blue-600 hover:underline">
-              {pledge.customer.name}
-            </Link>
-          } />
-          {pledge.customer.mobile  && <InfoRow label="Mobile"  value={pledge.customer.mobile}  />}
-          {pledge.customer.address && <InfoRow label="Address" value={pledge.customer.address} />}
-          {pledge.customer.region  && <InfoRow label="Region"  value={pledge.customer.region}  />}
-        </CardContent>
-      </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
+              <Calendar size={14} /> Loan Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-0">
+            <InfoRow label="Pledge Date"   value={fmtDate(pledge.pledgeDate)} />
+            <InfoRow label="Loan Amount"   value={<span className="tabular-nums font-semibold">{fmtINR(pledge.loanAmount)}</span>} />
+            <InfoRow label="Interest Rate" value={`${pledge.interestRate}% p.a.`} />
+            <InfoRow
+              label="Compounding"
+              value={`${titleCase(pledge.compoundingDuration)}${pledge.allowCompounding ? "" : " (Simple)"}`}
+            />
+            {pledge.remark && <InfoRow label="Remark" value={pledge.remark} />}
+          </CardContent>
+        </Card>
+      </div>
 
-      {/* ── Loan details ───────────────────────────────────────── */}
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
-            <Calendar size={14} /> Loan Details
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-0">
-          <InfoRow label="Pledge Date"   value={fmtDate(pledge.pledgeDate)} />
-          <InfoRow label="Loan Amount"   value={<span className="tabular-nums">{fmtINR(pledge.loanAmount)}</span>} />
-          <InfoRow label="Interest Rate" value={`${pledge.interestRate}% p.a.`} />
-          <InfoRow
-            label="Compounding"
-            value={`${titleCase(pledge.compoundingDuration)}${pledge.allowCompounding ? "" : " (Simple)"}`}
-          />
-          {pledge.durationMonths !== null && (
-            <InfoRow label="Duration" value={`${pledge.durationMonths} months`} />
-          )}
-          {pledge.remark && <InfoRow label="Remark" value={pledge.remark} />}
-        </CardContent>
-      </Card>
-
-      {/* ── Items ──────────────────────────────────────────────── */}
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
-            <Tag size={14} /> Pledged Items ({pledge.items.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {pledge.items.map((item, i) => (
-            <div key={item.id} className="rounded-lg border bg-gray-50 p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                    Item {i + 1}
-                  </span>
-                  <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-md">
-                    {titleCase(item.itemType)}
-                  </span>
-                  <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${
-                    item.metalType === "GOLD"
-                      ? "bg-amber-50 text-amber-700"
-                      : "bg-slate-100 text-slate-600"
-                  }`}>
-                    {titleCase(item.metalType)}
-                  </span>
-                </div>
-                <span className="text-xs text-gray-400 shrink-0">
-                  {item.quantity} pc{item.quantity !== 1 ? "s" : ""}
+        <CardHeader className="pb-2 border-b border-gray-100 mb-4">
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
+              <Tag size={14} /> Pledged Items ({pledge.items.length})
+            </CardTitle>
+            <div className="flex gap-2">
+              {pledge.netWeightOfGold > 0 && (
+                <span className="text-xs bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-md font-semibold">
+                  Gold: {Number(pledge.netWeightOfGold).toFixed(3)}g
                 </span>
-              </div>
-
-              {item.itemName && (
-                <p className="text-sm text-gray-700 font-medium">{item.itemName}</p>
               )}
-
-              <div className="grid grid-cols-4 gap-2 text-xs">
-                <div>
-                  <p className="text-gray-400">Gross Wt</p>
-                  <p className="font-medium tabular-nums">{Number(item.grossWeight).toFixed(3)}g</p>
+              {pledge.netWeightOfSilver > 0 && (
+                <span className="text-xs bg-slate-100 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-md font-semibold">
+                  Silver: {Number(pledge.netWeightOfSilver).toFixed(3)}g
+                </span>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {pledge.items.map((item, i) => (
+            <div key={item.id} className="relative rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row gap-5">
+              {item.itemPhoto && (
+                <div className="w-full md:w-32 h-32 shrink-0 rounded-lg overflow-hidden border border-gray-200 bg-gray-50 flex items-center justify-center">
+                  <img 
+                    src={item.itemPhoto} 
+                    alt={item.itemName || "Item"} 
+                    className="object-cover w-full h-full hover:scale-105 transition-transform duration-300"
+                  />
                 </div>
-                <div>
-                  <p className="text-gray-400">Net Wt</p>
-                  <p className="font-medium tabular-nums">{Number(item.netWeight).toFixed(3)}g</p>
+              )}
+              <div className="flex-1">
+                <div className="flex justify-between items-start border-b border-gray-100 pb-3 mb-3">
+                  <div>
+                    <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                      {item.itemName || `${titleCase(item.metalType)} ${titleCase(item.itemType)}`}
+                      <span className="text-[11px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                        Qty: {item.quantity}
+                      </span>
+                    </h4>
+                    <div className="flex gap-2 mt-2">
+                      <span className="text-[10px] uppercase tracking-wider font-semibold bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                        {item.itemType}
+                      </span>
+                      <span className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-1 rounded ${
+                        item.metalType === "GOLD" ? "bg-amber-100 text-amber-800" : "bg-slate-200 text-slate-800"
+                      }`}>
+                        {item.metalType}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-xs font-semibold text-gray-400">
+                    Item #{i + 1}
+                  </span>
                 </div>
-                <div>
-                  <p className="text-gray-400">Purity</p>
-                  <p className="font-medium tabular-nums">{Number(item.purity).toFixed(2)}%</p>
-                </div>
-                <div>
-                  <p className="text-gray-400">Net Metal</p>
-                  <p className="font-semibold tabular-nums">{Number(item.netWeightOfMetal).toFixed(3)}g</p>
+                
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="flex flex-col">
+                    <span className="text-[11px] uppercase tracking-wider text-gray-500 mb-0.5">Gross Wt.</span>
+                    <span className="font-medium text-gray-900 tabular-nums">{Number(item.grossWeight).toFixed(3)} g</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] uppercase tracking-wider text-gray-500 mb-0.5">Net Wt.</span>
+                    <span className="font-medium text-gray-900 tabular-nums">{Number(item.netWeight).toFixed(3)} g</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] uppercase tracking-wider text-gray-500 mb-0.5">Purity</span>
+                    <span className="font-medium text-gray-900 tabular-nums">{Number(item.purity).toFixed(2)}%</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] uppercase tracking-wider text-gray-500 mb-0.5">Net Metal</span>
+                    <span className={`font-semibold tabular-nums ${item.metalType === "GOLD" ? "text-amber-600" : "text-slate-600"}`}>
+                      {Number(item.netWeightOfMetal).toFixed(3)} g
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
           ))}
-
-          {/* Metal totals */}
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            {pledge.netWeightOfGold > 0 && (
-              <div className="rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
-                <p className="text-xs text-amber-500 flex items-center gap-1 mb-1">
-                  <Scale size={10} /> Total Gold
-                </p>
-                <p className="text-base font-bold text-amber-800 tabular-nums">
-                  {Number(pledge.netWeightOfGold).toFixed(3)}g
-                </p>
-              </div>
-            )}
-            {pledge.netWeightOfSilver > 0 && (
-              <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
-                <p className="text-xs text-slate-500 flex items-center gap-1 mb-1">
-                  <Scale size={10} /> Total Silver
-                </p>
-                <p className="text-base font-bold text-slate-700 tabular-nums">
-                  {Number(pledge.netWeightOfSilver).toFixed(3)}g
-                </p>
-              </div>
-            )}
-          </div>
         </CardContent>
       </Card>
 
-      {/* ── Financials ─────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
@@ -545,7 +509,7 @@ export default function PledgeDetailPage() {
 
           <InfoRow
             label="Principal"
-            value={<span className="tabular-nums">{fmtINR(pledge.loanAmount)}</span>}
+            value={<span className="tabular-nums font-semibold">{fmtINR(pledge.loanAmount)}</span>}
           />
           <InfoRow
             label={`Interest Till Today (${interest.T.toFixed(1)} months)`}
@@ -566,14 +530,12 @@ export default function PledgeDetailPage() {
         </CardContent>
       </Card>
 
-      {/* ── Transactions ───────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
           <div className="flex items-center justify-between">
             <CardTitle className="text-sm flex items-center gap-2 text-gray-600">
               <Receipt size={14} /> Transactions ({transactions.length})
             </CardTitle>
-            {/* ✅ FIX 4 — guard toggle during loading */}
             <button
               onClick={() => {
                 if (txnLoading) return;
@@ -591,7 +553,6 @@ export default function PledgeDetailPage() {
         </CardHeader>
         <CardContent className="space-y-4">
 
-          {/* ── Form ── */}
           {showForm && (
             <form
               onSubmit={submitTransaction}
@@ -616,14 +577,13 @@ export default function PledgeDetailPage() {
                     onChange={(e) => setTxnAmount(e.target.value)}
                     required
                   />
-                  {/* ✅ FIX 9 — quick amount buttons */}
                   <div className="flex gap-1.5 pt-0.5">
                     {QUICK_AMOUNTS.map((amt) => (
                       <button
                         key={amt}
                         type="button"
                         onClick={() => setTxnAmount(String(amt))}
-                        className="text-xs text-gray-500 border rounded px-2 py-0.5 hover:border-gray-400 hover:text-gray-800 transition-colors"
+                        className="text-xs text-gray-500 border rounded px-2 py-0.5 hover:border-gray-400 hover:text-gray-800 transition-colors bg-white"
                       >
                         ₹{(amt / 1000).toFixed(0)}k
                       </button>
@@ -669,7 +629,6 @@ export default function PledgeDetailPage() {
             </form>
           )}
 
-          {/* ── History ── */}
           {transactions.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-6">
               No transactions recorded yet.
@@ -694,11 +653,9 @@ export default function PledgeDetailPage() {
                       <td className="px-3 py-2.5">
                         <TxnBadge type={txn.type} />
                       </td>
-                      {/* ✅ FIX 8 — direction colour: TOPUP = red (money out), repayments = green */}
                       <td className={`px-3 py-2.5 text-right font-semibold tabular-nums ${
                         txn.type === "TOPUP" ? "text-red-600" : "text-emerald-600"
                       }`}>
-                        {/* ✅ FIX 1 — Number(txn.amount) only at display time, not stored as number */}
                         {fmtINR(Number(txn.amount))}
                       </td>
                       <td className="px-3 py-2.5 text-gray-500 max-w-[160px] truncate text-xs">
