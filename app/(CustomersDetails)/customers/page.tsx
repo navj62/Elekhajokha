@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
-import { Loader2, Search, X, UserPlus } from "lucide-react";
-
+import { Button } from "@/components/ui/button"; // shadcn button
+import { Loader2, Search, X, UserPlus, BarChart3 } from "lucide-react"; // added BarChart3
 /* ------------------------------------------------------------------ */
 /*  Constants                                                           */
 /* ------------------------------------------------------------------ */
@@ -207,27 +207,37 @@ export default function CustomersPage() {
             )}
           </div>
         ) : (
-          <ul className="space-y-3">
+         <ul className="space-y-3">
             {customers.map((cust) => (
-              <li key={cust.id}>
-                <Link
-                  href={`/customers/${cust.id}`}
-                  className="flex items-center justify-between border p-4 rounded-lg bg-white hover:border-gray-300 hover:shadow-sm transition-all"
-                >
-                  <div>
-                    <h2 className="font-semibold text-gray-900">{cust.name}</h2>
-                    {/* ✅ Show region instead of nothing */}
-                    <p className="text-xs text-gray-400 mt-0.5">{cust.region}</p>
-                    <p className="text-sm text-gray-500 mt-1">
-                      Latest: {cust.latestItem || "—"}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-block text-xs font-medium bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
-                      {cust.pledgeCount} pledge{cust.pledgeCount !== 1 ? "s" : ""}
-                    </span>
-                  </div>
+              <li 
+                key={cust.id}
+                className="flex items-center justify-between border p-4 rounded-lg bg-white hover:border-gray-300 hover:shadow-sm transition-all"
+              >
+                {/* LEFT SIDE: Link to Customer Details */}
+                <Link href={`/customers/${cust.id}`} className="flex-1 group">
+                  <h2 className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors">
+                    {cust.name}
+                  </h2>
+                  <p className="text-xs text-gray-400 mt-0.5">{cust.region}</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Latest: {cust.latestItem || "—"}
+                  </p>
                 </Link>
+
+                {/* RIGHT SIDE: Badges & Summary Button */}
+                <div className="flex flex-col items-end gap-2 text-right pl-4">
+                  <span className="inline-block text-xs font-medium bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
+                    {cust.pledgeCount} pledge{cust.pledgeCount !== 1 ? "s" : ""}
+                  </span>
+                  
+                  {/* shadcn Summary Button */}
+                  <Button asChild variant="outline" size="sm" className="h-7 text-xs">
+                    <Link href={`/customers/${cust.id}/financial-summary`}>
+                      <BarChart3 className="w-3 h-3 mr-1.5" />
+                      Summary
+                    </Link>
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
