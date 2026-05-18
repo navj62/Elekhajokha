@@ -1,5 +1,5 @@
 // lib/generatePDF.ts
-import path from "path/win32";
+import path from "path";
 import PDFDocument from "pdfkit";
 const boldFont = path.join(process.cwd(), "public/fonts/NotoSansDevanagari-Bold.ttf");
 
