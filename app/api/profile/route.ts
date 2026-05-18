@@ -142,6 +142,9 @@ export async function PATCH(req: Request) {
         ...(customerTerms  !== undefined && { customerTerms: customerTerms }),
       },
     });
+    // app/api/profile/route.ts — in PATCH, after prisma.user.update:
+console.log("UPDATED shopownerTerms:", updated.shopownerTerms);
+console.log("UPDATED customerTerms:", updated.customerTerms);
 
     return NextResponse.json(updated);
 

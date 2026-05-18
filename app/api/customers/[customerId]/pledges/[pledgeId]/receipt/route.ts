@@ -15,10 +15,18 @@ export async function GET(
     if (!clerkUserId)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const user = await prisma.user.findUnique({
-      where: { clerkUserId },
-      select: { id: true, username: true, shopName: true, address: true, mobile: true },
-    });
+const user = await prisma.user.findUnique({
+  where: { clerkUserId },
+  select: {
+    id: true,
+    username: true,
+    shopName: true,
+    address: true,
+    mobile: true,
+    shopownerTerms: true, // ← must be here
+    customerTerms: true,  // ← must be here
+  },
+});
     if (!user)
       return NextResponse.json({ error: "User not found" }, { status: 404 });
 
@@ -41,7 +49,6 @@ const totalNetWeight = pledge.items
   .toFixed(3);
 
     console.log("RECEIPT pledge:", pledge.id, pledge.customer.name); // ← verify in terminal
-
 const pdfBuffer = await generateReceiptPDF({
   transactionId: pledge.id.slice(-6).toUpperCase(),
   pledgeDate: new Date(pledge.pledgeDate).toLocaleDateString("en-IN", {
@@ -50,16 +57,16 @@ const pdfBuffer = await generateReceiptPDF({
   customerName: pledge.customer.name,
   customerAddress: pledge.customer.address,
   loanAmount: Number(pledge.loanAmount),
-  itemName: itemSummary || "—",           // ← from items
-  itemWeight: `${totalNetWeight} gram`,   // ← from items
+  itemName: itemSummary || "—",
+  itemWeight: `${totalNetWeight} gram`,
   remark: pledge.remark,
   username: user.username ?? "Name",
   shopName: user.shopName ?? "Shop",
   shopAddress: user.address ?? "",
   shopMobile: user.mobile ?? "",
   itemPhoto: pledge.itemPhoto ?? null,
-  shopownerTerms: null, // ← will add after profile update
-  customerTerms: null,
+  shopownerTerms: user.shopownerTerms ?? null, // ← fix
+  customerTerms: user.customerTerms ?? null,   // ← fix
 });
 
     return new NextResponse(new Uint8Array(pdfBuffer), {

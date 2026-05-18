@@ -30,6 +30,8 @@ interface Profile {
   createdAt: string;
   totalCustomers: number;
   activePledges: number;
+  shopownerTerms: string | null;
+  customerTerms: string | null;
 }
 
 const GENDER_OPTIONS = [
@@ -65,7 +67,6 @@ function SubscriptionCard({ profile, onUpgrade }: {
       })
     : null;
 
-  // ── Active ──────────────────────────────────────────────────────────
   if (status === "active") {
     const urgent = days !== null && days <= 30;
     return (
@@ -100,8 +101,6 @@ function SubscriptionCard({ profile, onUpgrade }: {
               {days !== null ? `${days} days` : "—"}
             </span>
           </div>
-
-          {/* Progress bar */}
           {days !== null && (
             <div>
               <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
@@ -124,7 +123,6 @@ function SubscriptionCard({ profile, onUpgrade }: {
     );
   }
 
-  // ── Trial ───────────────────────────────────────────────────────────
   if (status === "trial") {
     const urgent = days !== null && days <= 5;
     return (
@@ -152,14 +150,12 @@ function SubscriptionCard({ profile, onUpgrade }: {
               {days !== null ? `${days} days` : "—"}
             </span>
           </div>
-
           <div className={`rounded-lg p-3 text-sm ${urgent ? "bg-red-50 text-red-700 border border-red-200" : "bg-yellow-50 text-yellow-800 border border-yellow-200"}`}>
             {urgent
               ? `⚠ Only ${days} day${days === 1 ? "" : "s"} left — subscribe now to keep your data and access.`
               : "You're on a free trial. Subscribe before it ends to continue uninterrupted access."
             }
           </div>
-
           <Button onClick={onUpgrade} className="w-full bg-green-600 hover:bg-green-700 text-white">
             Subscribe Now →
           </Button>
@@ -168,7 +164,6 @@ function SubscriptionCard({ profile, onUpgrade }: {
     );
   }
 
-  // ── Expired / Halted ────────────────────────────────────────────────
   return (
     <Card className="border-red-200 bg-red-50/30">
       <CardHeader className="pb-3">
@@ -239,6 +234,13 @@ export default function ProfilePage() {
   const [passwordErr,      setPasswordErr]      = useState("");
   const [passwordSaved,    setPasswordSaved]    = useState(false);
 
+  // ── Terms state ──────────────────────────────────────────────────────
+  const [shopownerTerms, setShopownerTerms] = useState("");
+  const [customerTerms,  setCustomerTerms]  = useState("");
+  const [termsSaving,    setTermsSaving]    = useState(false);
+  const [termsSaved,     setTermsSaved]     = useState(false);
+  const [termsErr,       setTermsErr]       = useState("");
+
   useEffect(() => {
     fetch("/api/profile")
       .then((r) => r.json())
@@ -253,6 +255,8 @@ export default function ProfilePage() {
           address:   data.address   ?? "",
           gender:    data.gender    ?? "",
         });
+        setShopownerTerms(data.shopownerTerms ?? "");
+        setCustomerTerms(data.customerTerms   ?? "");
       })
       .catch((e) => setFetchErr(e.message))
       .finally(() => setFetching(false));
@@ -261,11 +265,9 @@ export default function ProfilePage() {
   async function handleSave() {
     setSaveErr(""); setSaving(true);
     try {
-      const res = await fetch("/api/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+      const fd = new FormData();
+      Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+      const res = await fetch("/api/profile", { method: "PATCH", body: fd });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed to save"); }
       const updated = await res.json();
       setProfile((p) => p ? { ...p, ...updated } : p);
@@ -273,6 +275,20 @@ export default function ProfilePage() {
       setTimeout(() => setSaved(false), 3000);
     } catch (e: any) { setSaveErr(e.message); }
     finally { setSaving(false); }
+  }
+
+  async function handleTermsSave() {
+    setTermsErr(""); setTermsSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append("shopownerTerms", shopownerTerms);
+      fd.append("customerTerms",  customerTerms);
+      const res = await fetch("/api/profile", { method: "PATCH", body: fd });
+      if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
+      setTermsSaved(true);
+      setTimeout(() => setTermsSaved(false), 3000);
+    } catch (e: any) { setTermsErr(e.message); }
+    finally { setTermsSaving(false); }
   }
 
   async function handleImageUpload(file: File) {
@@ -390,7 +406,7 @@ export default function ProfilePage() {
         </Card>
       </div>
 
-      {/* ← NEW: Subscription card */}
+      {/* Subscription */}
       <SubscriptionCard
         profile={profile}
         onUpgrade={() => router.push("/subscription")}
@@ -496,6 +512,53 @@ export default function ProfilePage() {
         )}
       </Card>
 
+      {/* Receipt Terms & Conditions */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-semibold">Receipt Terms & Conditions</CardTitle>
+          <p className="text-xs text-gray-400 mt-1">
+            Shown on PDF receipts. Leave empty to use default Hindi terms. Each line = one point.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1">
+            <Label className="text-sm">Shopowner Copy Terms</Label>
+            <textarea
+              value={shopownerTerms}
+              onChange={(e) => setShopownerTerms(e.target.value)}
+              rows={6}
+              placeholder={`• मेरे द्वारा गिरवी रखी गई उपरोक्त रकम...\n• (each line is one term)`}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-sm">Customer Copy Terms</Label>
+            <textarea
+              value={customerTerms}
+              onChange={(e) => setCustomerTerms(e.target.value)}
+              rows={6}
+              placeholder={`• गिरवी रखी गयी रकम का 1 वर्ष मे...\n• (each line is one term)`}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+            />
+          </div>
+
+          {termsErr && (
+            <Alert variant="destructive">
+              <AlertDescription>{termsErr}</AlertDescription>
+            </Alert>
+          )}
+
+          <Button
+            onClick={handleTermsSave}
+            disabled={termsSaving}
+            className="w-full sm:w-auto sm:px-10"
+          >
+            {termsSaving ? <Loader2 className="animate-spin" /> : "Save Terms"}
+          </Button>
+        </CardContent>
+      </Card>
+
       {/* Toasts */}
       {saved && (
         <div className="fixed bottom-6 right-6 z-50 rounded-lg bg-green-600 text-white px-4 py-3 shadow-lg text-sm">
@@ -505,6 +568,11 @@ export default function ProfilePage() {
       {passwordSaved && (
         <div className="fixed bottom-6 right-6 z-50 rounded-lg bg-green-600 text-white px-4 py-3 shadow-lg text-sm">
           Password updated successfully
+        </div>
+      )}
+      {termsSaved && (
+        <div className="fixed bottom-6 right-6 z-50 rounded-lg bg-green-600 text-white px-4 py-3 shadow-lg text-sm">
+          Terms saved successfully
         </div>
       )}
     </div>
