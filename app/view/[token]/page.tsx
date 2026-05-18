@@ -1,9 +1,9 @@
-// app/portal/[token]/page.tsx
+// app/view/[token]/page.tsx
 import Image from "next/image";
 import { prisma } from "@/lib/prisma";
 import { calculateHybridInterest } from "@/lib/interest";
 import type { CompoundingDuration, PledgeStatus } from "@prisma/client";
-
+import PortalAccessGuard from "./PortalAccessGuard";
 /* ------------------------------------------------------------------ */
 /* Formatters                                                          */
 /* ------------------------------------------------------------------ */
@@ -203,7 +203,7 @@ export default async function CustomerPortalPage({
       </header>
 
       <main className="max-w-5xl mx-auto px-4 md:px-6 py-8 space-y-8">
-
+<PortalAccessGuard token={token} />
         {/* ── Summary ──────────────────────────────────────────── */}
         <section className="bg-white rounded-2xl border border-gray-200 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
 
