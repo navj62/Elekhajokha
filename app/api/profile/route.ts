@@ -1,176 +1,155 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { uploadImage } from "@/lib/upload";
-import { Prisma, ItemType, MetalType } from "@prisma/client";
-
-type RouteContext = {
-  params: Promise<{ customerId: string }>;
-};
-
-const VALID_ITEM_TYPES  = Object.values(ItemType)  as string[];
-const VALID_METAL_TYPES = Object.values(MetalType) as string[];
-
-function toDecimal(value: unknown): Prisma.Decimal {
-  const str = String(value ?? "").trim();
-  if (!str || isNaN(Number(str))) throw new Error(`Invalid decimal: "${value}"`);
-  return new Prisma.Decimal(str);
-}
+import { Gender } from "@prisma/client";
 
 /* ------------------------------------------------------------------ */
-/*  POST /api/customers/[customerId]/pledges                           */
+/*  GET /api/profile                                                    */
 /* ------------------------------------------------------------------ */
-export async function POST(req: NextRequest, context: RouteContext) {
+export async function GET() {
   try {
     const { userId: clerkUserId } = await auth();
-    if (!clerkUserId)
+    if (!clerkUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const user = await prisma.user.findUnique({
       where: { clerkUserId },
-      select: { id: true },
-    });
-    if (!user)
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-
-    // ✅ customerId from route params, not form body
-    const { customerId } = await context.params;
-
-    const customer = await prisma.customer.findFirst({
-      where: { id: customerId, userId: user.id },
-    });
-    if (!customer)
-      return NextResponse.json({ error: "Customer not found" }, { status: 404 });
-
-    const formData = await req.formData();
-
-    const loanAmount          = formData.get("loanAmount")?.toString();
-    const interestRate        = formData.get("interestRate")?.toString();
-    const compoundingDuration = formData.get("compoundingDuration")?.toString();
-    const pledgeDate          = formData.get("pledgeDate")?.toString();
-    const remark              = formData.get("remark")?.toString() || null;
-    const imageFile           = formData.get("itemPhoto");
-
-    if (!loanAmount || !interestRate || !compoundingDuration || !pledgeDate)
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
-
-    // ── Items ─────────────────────────────────────────────────────
-    const itemsRaw = formData.get("items")?.toString();
-    if (!itemsRaw)
-      return NextResponse.json({ error: "Missing items" }, { status: 400 });
-
-    let rawItems: any[];
-    try {
-      rawItems = JSON.parse(itemsRaw);
-    } catch {
-      return NextResponse.json({ error: "Invalid items JSON" }, { status: 400 });
-    }
-
-    if (!Array.isArray(rawItems) || rawItems.length === 0)
-      return NextResponse.json({ error: "At least one item required" }, { status: 400 });
-
-    // ── Validate each item ────────────────────────────────────────
-    const itemErrors: string[] = [];
-    rawItems.forEach((item, i) => {
-      if (!VALID_ITEM_TYPES.includes(item.itemType))
-        itemErrors.push(`Item[${i}]: invalid itemType "${item.itemType}"`);
-      if (!VALID_METAL_TYPES.includes(item.metalType))
-        itemErrors.push(`Item[${i}]: invalid metalType "${item.metalType}"`);
-      for (const f of ["grossWeight", "netWeight", "purity", "netWeightOfMetal"]) {
-        if (item[f] === undefined || item[f] === "" || isNaN(Number(item[f])))
-          itemErrors.push(`Item[${i}]: missing or invalid "${f}"`);
-      }
-    });
-
-    if (itemErrors.length)
-      return NextResponse.json({ error: "Invalid item data", details: itemErrors }, { status: 400 });
-
-    // ── Upload single pledge photo ────────────────────────────────
-    let itemPhoto: string | null = null;
-    if (imageFile instanceof File && imageFile.size > 0) {
-      itemPhoto = await uploadImage(imageFile, `ELEKHAJOKHA/pledges/${customerId}`);
-    }
-
-    // ── Compute totals from items ─────────────────────────────────
-    const netWeightOfGold = rawItems
-      .filter(i => i.metalType === "GOLD")
-      .reduce((sum, i) => sum + Number(i.netWeightOfMetal), 0);
-
-    const netWeightOfSilver = rawItems
-      .filter(i => i.metalType === "SILVER")
-      .reduce((sum, i) => sum + Number(i.netWeightOfMetal), 0);
-
-    // ── Create pledge + items in one transaction ──────────────────
-    const pledge = await prisma.pledge.create({
-      data: {
-        customerId,
-        pledgeDate:          new Date(pledgeDate),
-        loanAmount:          toDecimal(loanAmount),
-        interestRate:        toDecimal(interestRate),
-        compoundingDuration: compoundingDuration as any,
-        status:              "ACTIVE",
-        remark,
-        itemPhoto,
-        netWeightOfGold:    new Prisma.Decimal(netWeightOfGold),
-        netWeightOfSilver:  new Prisma.Decimal(netWeightOfSilver),
-        items: {
-          create: rawItems.map(item => ({
-            itemType:         item.itemType  as ItemType,
-            metalType:        item.metalType as MetalType,
-            itemName:         item.itemName  || null,
-            quantity:         Number(item.quantity) || 1,
-            grossWeight:      toDecimal(item.grossWeight),
-            netWeight:        toDecimal(item.netWeight),
-            purity:           toDecimal(item.purity),
-            netWeightOfMetal: toDecimal(item.netWeightOfMetal),
-          })),
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        username: true,
+        email: true,
+        mobile: true,
+        shopName: true,
+        address: true,
+        gender: true,
+        profileImageUrl: true,
+        subscriptionStatus: true,
+        subscriptionPlan: true,  
+        subscriptionEndDate: true,
+        shopownerTerms: true,
+        customerTerms: true,
+        createdAt: true,
+        _count: {
+          select: {
+            customers: true,
+          },
         },
       },
-      include: { items: true },
     });
 
-    return NextResponse.json(pledge, { status: 201 });
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
 
-  } catch (err: any) {
-    console.error("PLEDGE CREATE ERROR:", err);
-    return NextResponse.json({ error: "Server Error", message: err.message }, { status: 500 });
+    // Count active pledges across all customers of this user
+    const activePledges = await prisma.pledge.count({
+      where: {
+        status: "ACTIVE",
+        customer: { userId: user.id },
+      },
+    });
+
+    return NextResponse.json({
+      ...user,
+      totalCustomers: user._count.customers,
+      activePledges,
+    });
+  } catch (err) {
+    console.error("PROFILE GET ERROR:", err);
+    return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }
 
 /* ------------------------------------------------------------------ */
-/*  GET /api/customers/[customerId]/pledges                            */
+/*  PATCH /api/profile  — update profile details                       */
 /* ------------------------------------------------------------------ */
-export async function GET(req: NextRequest, context: RouteContext) {
+
+export async function PATCH(req: Request) {
   try {
     const { userId: clerkUserId } = await auth();
-    if (!clerkUserId)
+    if (!clerkUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const user = await prisma.user.findUnique({
       where: { clerkUserId },
       select: { id: true },
     });
-    if (!user)
+
+    if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
 
-    const { customerId } = await context.params;
+    /* ✅ Use FormData instead of JSON */
+    const formData = await req.formData();
 
-    const customer = await prisma.customer.findFirst({
-      where: { id: customerId, userId: user.id },
+    const firstName = formData.get("firstName")?.toString();
+    const lastName  = formData.get("lastName")?.toString();
+    const mobile    = formData.get("mobile")?.toString();
+    const shopName  = formData.get("shopName")?.toString();
+    const address   = formData.get("address")?.toString();
+    const gender    = formData.get("gender")?.toString();
+    const imageFile = formData.get("profileImage");
+    const shopownerTerms = formData.get("shopownerTerms")?.toString();
+    const customerTerms  = formData.get("customerTerms")?.toString();
+
+    /* ✅ Gender mapping */
+    const genderMap = {
+      MALE: "Male",
+      FEMALE: "Female",
+      OTHER: "Other",
+    };
+
+    const genderEnum =
+      gender && genderMap[gender as keyof typeof genderMap]
+        ? (genderMap[gender as keyof typeof genderMap] as Gender)
+        : (gender as Gender | null);
+
+    /* ✅ Validation */
+    if (mobile && !/^[0-9]{10}$/.test(mobile)) {
+      return NextResponse.json(
+        { error: "Invalid mobile number" },
+        { status: 400 }
+      );
+    }
+
+    /* ☁️ Upload image if present */
+    let profileImageUrl: string | undefined;
+
+    if (imageFile instanceof File && imageFile.size > 0) {
+      profileImageUrl = await uploadImage(
+        imageFile,
+        `ELEKHAJOKHA/profile/${user.id}`
+      );
+    }
+
+    /* 💾 Update DB */
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        ...(firstName !== undefined && { firstName }),
+        ...(lastName  !== undefined && { lastName }),
+        ...(mobile    !== undefined && { mobile }),
+        ...(shopName  !== undefined && { shopName }),
+        ...(address   !== undefined && { address }),
+        ...(gender    !== undefined && { gender: genderEnum }),
+        ...(profileImageUrl && { profileImageUrl }), // ✅ only if uploaded
+        ...(shopownerTerms !== undefined && { shopownerTerms: shopownerTerms }),
+        ...(customerTerms  !== undefined && { customerTerms: customerTerms }),
+      },
     });
-    if (!customer)
-      return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+    // app/api/profile/route.ts — in PATCH, after prisma.user.update:
+console.log("UPDATED shopownerTerms:", updated.shopownerTerms);
+console.log("UPDATED customerTerms:", updated.customerTerms);
 
-    const pledges = await prisma.pledge.findMany({
-      where: { customerId },
-      include: { items: true },
-      orderBy: { createdAt: "desc" },
-    });
-
-    return NextResponse.json(pledges);
+    return NextResponse.json(updated);
 
   } catch (err) {
-    console.error("PLEDGE LIST ERROR:", err);
+    console.error("PROFILE PATCH ERROR:", err);
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }

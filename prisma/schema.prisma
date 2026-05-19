@@ -9,41 +9,32 @@ datasource db {
 model User {
   id                     String             @id @default(uuid())
   clerkUserId            String             @unique
-  
+  username               String             @unique
+  email                  String?            @unique
+  mobile                 String?            @unique
+  firstName              String?
+  lastName               String?
+  shopName               String?
+  address                String?
+  gender                 Gender?
+  profileImageUrl        String?
+  subscriptionStatus     SubscriptionStatus @default(created)
+  subscriptionEndDate    DateTime?
+  razorpaySubscriptionId String?            @unique
+  subscriptionPlan       SubscriptionPlan?
+  razorpayPaymentId      String?
+  subscriptionCreatedAt  DateTime?
+  hadTrial               Boolean            @default(false)
+  isActive               Boolean            @default(true)
+  lastLoginAt            DateTime?
+  deletedAt              DateTime?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  customerTerms          String?
+  shopownerTerms         String?
+  customers              Customer[]
 
-  // Identity (available at signup)
-  username      String  @unique
-  email         String?  @unique
-  mobile        String?  @unique
-
-  // Profile (filled during onboarding)
-  firstName     String?
-  lastName      String?
-  shopName      String?
-  address       String?
-  gender        Gender?
-  profileImageUrl String?
-
-  // Subscription (managed later)
-  subscriptionStatus   SubscriptionStatus @default( created )
-  subscriptionEndDate  DateTime?
-  razorpaySubscriptionId  String?            @unique   // ← ADD: links webhook to user
-  subscriptionPlan    SubscriptionPlan?                    // ← ADD: "halfyearly" | "yearly"
-   razorpayPaymentId  String? 
-   subscriptionCreatedAt DateTime? // set when create-subscription API is called
-   hadTrial                Boolean   @default(false)  // ← ADD THIS
-  // System
-  isActive      Boolean  @default(true)
-  lastLoginAt   DateTime?
-  deletedAt     DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  shopownerTerms  String?  // custom T&C for shopowner copy
-  customerTerms   String?  // custom T&C for customer copy
-
-  customers     Customer[]
-   @@index([razorpaySubscriptionId])  
+  @@index([razorpaySubscriptionId])
   @@index([subscriptionStatus, isActive])
   @@map("users")
 }
@@ -77,30 +68,25 @@ model Pledge {
   id                  String              @id @default(uuid())
   customerId          String
   pledgeDate          DateTime
-
-  // Financial
   loanAmount          Decimal             @db.Decimal(12, 2)
   interestRate        Decimal             @db.Decimal(5, 2)
   compoundingDuration CompoundingDuration
   allowCompounding    Boolean             @default(true)
+  itemPhoto           String?
+  remark              String?
   durationMonths      Decimal?            @db.Decimal(6, 2)
+  status              PledgeStatus
+  releaseDate         DateTime?
+  netWeightOfGold     Decimal             @default(0) @db.Decimal(10, 3)
+  netWeightOfSilver   Decimal             @default(0) @db.Decimal(10, 3)
   totalInterest       Decimal?            @db.Decimal(12, 2)
   receivableAmount    Decimal?            @db.Decimal(12, 2)
   calculationVersion  Int                 @default(1)
-  status              PledgeStatus
-  releaseDate         DateTime?
-  remark              String?
-
-  // ✅ Stored totals — always computed from items, never from user input
-  netWeightOfGold     Decimal             @default(0) @db.Decimal(10, 3)
-  netWeightOfSilver   Decimal             @default(0) @db.Decimal(10, 3)
-   itemPhoto        String?   // ✅ moved here from Pledge
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
-
-  customer            Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  items               PledgeItem[]
   pledgeAudits        PledgeAudit[]
+  items               PledgeItem[]
+  customer            Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
   transactions        Transaction[]
 
   @@index([status, createdAt])
@@ -119,10 +105,7 @@ model PledgeItem {
   netWeight        Decimal   @db.Decimal(10, 3)
   purity           Decimal   @db.Decimal(5, 2)
   netWeightOfMetal Decimal   @db.Decimal(10, 3)
- 
-
   createdAt        DateTime  @default(now())
-
   pledge           Pledge    @relation(fields: [pledgeId], references: [id], onDelete: Cascade)
 
   @@index([pledgeId])
