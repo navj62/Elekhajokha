@@ -60,6 +60,7 @@ model Customer {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
   gender        Gender?
+  viewToken  String    @unique
   pledges    Pledge[]
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

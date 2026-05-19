@@ -13,7 +13,6 @@ const createPrismaClient = () => {
   
   return new PrismaClient({
     adapter,
-    log: ["query"], // Kept your original logging!
   });
 };
 

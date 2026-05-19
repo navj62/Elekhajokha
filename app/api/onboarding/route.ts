@@ -31,7 +31,8 @@ export async function POST(req: Request) {
 
     const baseUsername =
       clerkUser.username ??
-      clerkUser.emailAddresses[0]?.emailAddress.split("@")[0];
+      clerkUser.emailAddresses[0]?.emailAddress?.split("@")[0] ??
+      "user";
 
     const username = `${baseUsername}_${userId.slice(0, 6)}`;
 
@@ -87,7 +88,7 @@ export async function POST(req: Request) {
     console.error("🔥 ONBOARDING ERROR:", err);
 
     return NextResponse.json(
-      { error: "Internal Server Error" },
+      { error: err instanceof Error ? err.message : "Internal Server Error" },
       { status: 500 }
     );
   }

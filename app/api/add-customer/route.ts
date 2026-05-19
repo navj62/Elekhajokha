@@ -1,5 +1,6 @@
 // app/api/add-customer/route.ts
 
+import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
@@ -18,10 +19,10 @@ export async function POST(req: Request) {
     }
 
     const user = await prisma.user.findUnique({
-      where:  { clerkUserId },
+      where: { clerkUserId },
       select: { id: true },
     });
-    
+
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
@@ -31,9 +32,9 @@ export async function POST(req: Request) {
     /* ---- Parse form data ----------------------------------------- */
     const fd = await req.formData();
 
-    const name    = fd.get("name")?.toString().trim();
+    const name = fd.get("name")?.toString().trim();
     const address = fd.get("address")?.toString().trim();
-    const region  = fd.get("region")?.toString().trim();
+    const region = fd.get("region")?.toString().trim();
 
     if (!name || !address || !region) {
       return NextResponse.json(
@@ -42,10 +43,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const mobile   = fd.get("mobile")?.toString().trim()    || null;
+    const mobile = fd.get("mobile")?.toString().trim() || null;
     // ✅ form field "aadhaarNo" → DB field "aadharNo"
     const aadharNo = fd.get("aadhaarNo")?.toString().trim() || null;
-    const remark   = fd.get("remarks")?.toString().trim()   || null;
+    const remark = fd.get("remarks")?.toString().trim() || null;
 
     /* ---- Mobile validation --------------------------------------- */
     if (mobile && !/^\d{10}$/.test(mobile)) {
@@ -57,13 +58,13 @@ export async function POST(req: Request) {
 
     /* ---- Gender — matches schema enum (Male | Female | Other) ---- */
     const rawGender = fd.get("gender")?.toString();
-    const gender    = VALID_GENDERS.includes(rawGender as Gender)
+    const gender = VALID_GENDERS.includes(rawGender as Gender)
       ? (rawGender as Gender)
       : null;
 
     /* ---- FILE HANDLING (Cloudinary) ------------------------------ */
     const customerImgFile = fd.get("userImg");
-    const idProofImgFile  = fd.get("idProofImg");
+    const idProofImgFile = fd.get("idProofImg");
 
     let customerImg: string | null = null;
     let idProofImg: string | null = null;
@@ -98,6 +99,7 @@ export async function POST(req: Request) {
         customerImg,
         idProofImg,
         userId: userId,
+        viewToken: crypto.randomUUID(),
       },
     });
 

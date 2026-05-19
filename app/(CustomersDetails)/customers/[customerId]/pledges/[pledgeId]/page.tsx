@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import { useParams }                                          from "next/navigation";
-import Link                                                   from "next/link";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import {
   Loader2, ArrowLeft, User, Calendar, Tag,
   Scale, TrendingUp, Receipt, Plus, ChevronUp, RefreshCw,
@@ -10,65 +10,65 @@ import {
 import {
   Card, CardContent, CardHeader, CardTitle,
 } from "@/components/ui/card";
-import { Input }                from "@/components/ui/input";
-import { Button }               from "@/components/ui/button";
-import { Label }                from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { calculateLTV }            from "@/lib/calculateLTV";
+import { calculateLTV } from "@/lib/calculateLTV";
 import { calculateHybridInterest } from "@/lib/interest";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
 interface PledgeItem {
-  id:               string;
-  itemType:         string;
-  metalType:        string;
-  itemName:         string | null;
-  quantity:         number;
-  grossWeight:      number;
-  netWeight:        number;
-  purity:           number;
+  id: string;
+  itemType: string;
+  metalType: string;
+  itemName: string | null;
+  quantity: number;
+  grossWeight: number;
+  netWeight: number;
+  purity: number;
   netWeightOfMetal: number;
 }
 
 interface Transaction {
-  id:        string;
-  amount:    string;   // ✅ FIX 1 — keep as string, Prisma Decimal → string in JSON
-  type:      "REPAYMENT_PRINCIPAL" | "REPAYMENT_INTEREST" | "TOPUP";
-  note:      string | null;
+  id: string;
+  amount: string;   // ✅ FIX 1 — keep as string, Prisma Decimal → string in JSON
+  type: "REPAYMENT_PRINCIPAL" | "REPAYMENT_INTEREST" | "TOPUP";
+  note: string | null;
   createdAt: string;
 }
 
 interface PledgeDetail {
-  id:                  string;
-  pledgeDate:          string;
-  status:              string;
-  loanAmount:          number;
-  interestRate:        number;
+  id: string;
+  pledgeDate: string;
+  status: string;
+  loanAmount: number;
+  interestRate: number;
   compoundingDuration: "MONTHLY" | "HALFYEARLY" | "YEARLY";
-  allowCompounding:    boolean;
-  durationMonths:      number | null;
-  netWeightOfGold:     number;
-  netWeightOfSilver:   number;
-  totalInterest:       number | null;
-  receivableAmount:    number | null;
-  remark:              string | null;
-  itemPhoto:           string | null;
-  items:               PledgeItem[];
+  allowCompounding: boolean;
+  durationMonths: number | null;
+  netWeightOfGold: number;
+  netWeightOfSilver: number;
+  totalInterest: number | null;
+  receivableAmount: number | null;
+  remark: string | null;
+  itemPhoto: string | null;
+  items: PledgeItem[];
   customer: {
-    id:      string;
-    name:    string;
-    mobile:  string | null;
+    id: string;
+    name: string;
+    mobile: string | null;
     address: string | null;
-    region:  string | null;
+    region: string | null;
   };
 }
 
 interface MarketRates {
-  goldPerGram:   number | null;
+  goldPerGram: number | null;
   silverPerGram: number | null;
-  updatedAt:     string | null;
+  updatedAt: string | null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -76,8 +76,8 @@ interface MarketRates {
 /* ------------------------------------------------------------------ */
 const TRANSACTION_TYPES = [
   { value: "REPAYMENT_PRINCIPAL", label: "Principal Repayment" },
-  { value: "REPAYMENT_INTEREST",  label: "Interest Payment"    },
-  { value: "TOPUP",               label: "Top-Up"              },
+  { value: "REPAYMENT_INTEREST", label: "Interest Payment" },
+  { value: "TOPUP", label: "Top-Up" },
 ] as const;
 
 // ✅ FIX 9 — quick amount shortcuts
@@ -107,9 +107,9 @@ function titleCase(str: string) {
 /* ------------------------------------------------------------------ */
 function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, string> = {
-    ACTIVE:   "bg-emerald-100 text-emerald-700",
+    ACTIVE: "bg-emerald-100 text-emerald-700",
     RELEASED: "bg-gray-100   text-gray-600",
-    OVERDUE:  "bg-red-100    text-red-700",
+    OVERDUE: "bg-red-100    text-red-700",
   };
   return (
     <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${cfg[status] ?? "bg-gray-100 text-gray-500"}`}>
@@ -121,8 +121,8 @@ function StatusBadge({ status }: { status: string }) {
 function TxnBadge({ type }: { type: Transaction["type"] }) {
   const cfg = {
     REPAYMENT_PRINCIPAL: { label: "Principal", cls: "bg-emerald-100 text-emerald-700" },
-    REPAYMENT_INTEREST:  { label: "Interest",  cls: "bg-blue-100   text-blue-700"    },
-    TOPUP:               { label: "Top-Up",    cls: "bg-amber-100  text-amber-700"   },
+    REPAYMENT_INTEREST: { label: "Interest", cls: "bg-blue-100   text-blue-700" },
+    TOPUP: { label: "Top-Up", cls: "bg-amber-100  text-amber-700" },
   }[type];
   return (
     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${cfg.cls}`}>
@@ -146,19 +146,19 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 export default function PledgeDetailPage() {
   const params = useParams<{ customerId: string; pledgeId: string }>();
 
-  const [pledge,       setPledge]       = useState<PledgeDetail | null>(null);
-  const [market,       setMarket]       = useState<MarketRates | null>(null);
+  const [pledge, setPledge] = useState<PledgeDetail | null>(null);
+  const [market, setMarket] = useState<MarketRates | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   /* ── Transaction form ─────────────────────────────────────────── */
-  const [txnAmount,  setTxnAmount]  = useState("");
-  const [txnType,    setTxnType]    = useState<Transaction["type"]>("REPAYMENT_PRINCIPAL");
-  const [txnNote,    setTxnNote]    = useState("");
+  const [txnAmount, setTxnAmount] = useState("");
+  const [txnType, setTxnType] = useState<Transaction["type"]>("REPAYMENT_PRINCIPAL");
+  const [txnNote, setTxnNote] = useState("");
   const [txnLoading, setTxnLoading] = useState(false);
-  const [txnError,   setTxnError]   = useState("");
-  const [showForm,   setShowForm]   = useState(false);
+  const [txnError, setTxnError] = useState("");
+  const [showForm, setShowForm] = useState(false);
   const amountRef = useRef<HTMLInputElement>(null);
 
   // ✅ FIX 7 — auto-focus amount input when form opens
@@ -182,7 +182,7 @@ export default function PledgeDetailPage() {
         throw new Error(d.error || `Failed to load pledge (${pledgeRes.status})`);
       }
 
-      const pledgeRaw  = await pledgeRes.json();
+      const pledgeRaw = await pledgeRes.json();
       const pledgeData = pledgeRaw?.pledge ?? pledgeRaw;
 
       if (!pledgeData?.id) {
@@ -193,9 +193,9 @@ export default function PledgeDetailPage() {
       if (marketRes.ok) {
         const m = await marketRes.json();
         setMarket({
-          goldPerGram:   m?.gold?.inrPerGram   ? Number(m.gold.inrPerGram)   : null,
+          goldPerGram: m?.gold?.inrPerGram ? Number(m.gold.inrPerGram) : null,
           silverPerGram: m?.silver?.inrPerGram ? Number(m.silver.inrPerGram) : null,
-          updatedAt:     m?.gold?.createdAt    ?? null,
+          updatedAt: m?.gold?.createdAt ?? null,
         });
       }
 
@@ -220,7 +220,7 @@ export default function PledgeDetailPage() {
   const calculations = useMemo(() => {
     if (!pledge) return null;
 
-    const now        = new Date();
+    const now = new Date();
     const pledgeDate = new Date(pledge.pledgeDate);
 
     const interest = calculateHybridInterest(
@@ -233,16 +233,16 @@ export default function PledgeDetailPage() {
     );
 
     const ltv = calculateLTV({
-      principal:           pledge.loanAmount,
-      rate:                pledge.interestRate,
+      principal: pledge.loanAmount,
+      rate: pledge.interestRate,
       pledgeDate,
-      currentDate:         now,
-      allowCompounding:    pledge.allowCompounding,
+      currentDate: now,
+      allowCompounding: pledge.allowCompounding,
       compoundingDuration: pledge.compoundingDuration,
-      goldWeight:          pledge.netWeightOfGold,
-      silverWeight:        pledge.netWeightOfSilver,
-      goldPrice:           market?.goldPerGram   ?? null,
-      silverPrice:         market?.silverPerGram ?? null,
+      goldWeight: pledge.netWeightOfGold,
+      silverWeight: pledge.netWeightOfSilver,
+      goldPrice: market?.goldPerGram ?? null,
+      silverPrice: market?.silverPerGram ?? null,
     });
 
     return { interest, ltv };
@@ -263,9 +263,9 @@ export default function PledgeDetailPage() {
     setTxnLoading(true);
     try {
       const res = await fetch(`/api/pledges/${params.pledgeId}/transactions`, {
-        method:  "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({
+        body: JSON.stringify({
           amount,
           type: txnType,
           note: txnNote.trim() || undefined,
@@ -347,9 +347,9 @@ export default function PledgeDetailPage() {
               {pledge.customer.name}
             </Link>
           } />
-          {pledge.customer.mobile  && <InfoRow label="Mobile"  value={pledge.customer.mobile}  />}
+          {pledge.customer.mobile && <InfoRow label="Mobile" value={pledge.customer.mobile} />}
           {pledge.customer.address && <InfoRow label="Address" value={pledge.customer.address} />}
-          {pledge.customer.region  && <InfoRow label="Region"  value={pledge.customer.region}  />}
+          {pledge.customer.region && <InfoRow label="Region" value={pledge.customer.region} />}
         </CardContent>
       </Card>
 
@@ -361,8 +361,8 @@ export default function PledgeDetailPage() {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-0">
-          <InfoRow label="Pledge Date"   value={fmtDate(pledge.pledgeDate)} />
-          <InfoRow label="Loan Amount"   value={<span className="tabular-nums">{fmtINR(pledge.loanAmount)}</span>} />
+          <InfoRow label="Pledge Date" value={fmtDate(pledge.pledgeDate)} />
+          <InfoRow label="Loan Amount" value={<span className="tabular-nums">{fmtINR(pledge.loanAmount)}</span>} />
           <InfoRow label="Interest Rate" value={`${pledge.interestRate}% p.a.`} />
           <InfoRow
             label="Compounding"
@@ -393,11 +393,10 @@ export default function PledgeDetailPage() {
                   <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-md">
                     {titleCase(item.itemType)}
                   </span>
-                  <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${
-                    item.metalType === "GOLD"
+                  <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${item.metalType === "GOLD"
                       ? "bg-amber-50 text-amber-700"
                       : "bg-slate-100 text-slate-600"
-                  }`}>
+                    }`}>
                     {titleCase(item.metalType)}
                   </span>
                 </div>
@@ -501,12 +500,11 @@ export default function PledgeDetailPage() {
                 <InfoRow
                   label="LTV"
                   value={
-                    <span className={`font-bold tabular-nums ${
-                      ltvResult.ltv > 90 ? "text-red-600"
-                      : ltvResult.ltv > 75 ? "text-orange-600"
-                      : ltvResult.ltv > 65 ? "text-amber-600"
-                      : "text-emerald-600"
-                    }`}>
+                    <span className={`font-bold tabular-nums ${ltvResult.ltv > 90 ? "text-red-600"
+                        : ltvResult.ltv > 75 ? "text-orange-600"
+                          : ltvResult.ltv > 65 ? "text-amber-600"
+                            : "text-emerald-600"
+                      }`}>
                       {ltvResult.ltv.toFixed(1)}%
                       {ltvResult.riskTier && (
                         <span className="text-xs font-normal text-gray-400 ml-1.5">
@@ -677,9 +675,8 @@ export default function PledgeDetailPage() {
                         <TxnBadge type={txn.type} />
                       </td>
                       {/* ✅ FIX 8 — direction colour: TOPUP = red (money out), repayments = green */}
-                      <td className={`px-3 py-2.5 text-right font-semibold tabular-nums ${
-                        txn.type === "TOPUP" ? "text-red-600" : "text-emerald-600"
-                      }`}>
+                      <td className={`px-3 py-2.5 text-right font-semibold tabular-nums ${txn.type === "TOPUP" ? "text-red-600" : "text-emerald-600"
+                        }`}>
                         {/* ✅ FIX 1 — Number(txn.amount) only at display time, not stored as number */}
                         {fmtINR(Number(txn.amount))}
                       </td>

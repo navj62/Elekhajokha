@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { SignOutButton } from "@clerk/nextjs";
+import { SignOutButton, UserButton } from "@clerk/nextjs";
 import { useLanguage } from "@/components/providers/LanguageProvider";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import {
@@ -27,8 +27,10 @@ const navItems = [
   { labelKey: "nav_dashboard", href: "/dashboard", icon: LayoutDashboard },
   { labelKey: "nav_add_customers", href: "/add-customer", icon: UserPlus },
   { labelKey: "nav_customer", href: "/customers", icon: Users },
-  { labelKey: "nav_reports", href: "/dashboard/reports", icon: BarChart3 },
-  { labelKey: "nav_settings", href: "/dashboard/settings", icon: Settings },
+  { labelKey: "nav_reports", href: "/reports", icon: BarChart3 },
+  { labelKey: "nav_settings", href: "/settings", icon: Settings },
+  { labelKey: "ltv", href: "/ltv", icon: BarChart3 },
+  { labelKey: "pledges", href: "/pledgeList", icon: BarChart3 },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -156,13 +158,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <button className="transition-colors hover:opacity-80 disabled" style={{ color: "var(--text-secondary)" }}>
               <HelpCircle size={18} strokeWidth={2} />
             </button>
-
-            <div className="flex items-center gap-3 pl-2">
+            <Link href="/profile">
+              {/* <div  className="flex items-center gap-3 pl-2">
               <span className="text-[13px] font-semibold hidden sm:inline" style={{ color: "var(--text-primary)" }}>{t("admin_user")}</span>
               <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center overflow-hidden border border-[var(--border-light)]">
                 <img src="https://i.pravatar.cc/150?u=a042581f4e29026024d" alt="avatar" className="w-full h-full object-cover" />
               </div>
-            </div>
+            </div> */}
+              <UserButton />
+            </Link>
           </div>
         </header>
 
