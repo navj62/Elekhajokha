@@ -78,10 +78,12 @@ export async function GET(_req: Request, context: RouteContext) {
       mobile:      customer.mobile,
       aadharNo:    customer.aadharNo,
       remark:      customer.remark,
+       isPortalBlocked: customer.isPortalBlocked,
       customerImg: customer.customerImg,
       idProofImg:  customer.idProofImg,
-
-      pledges: customer.pledges.map((pledge) => {
+      viewToken:   customer.viewToken,
+      
+      pledges: customer.pledges.map((pledge: typeof customer.pledges[number]) =>  {
   const firstItem = pledge.items[0];
 
   const itemLabel = firstItem

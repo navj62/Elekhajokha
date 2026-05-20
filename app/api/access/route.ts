@@ -32,7 +32,7 @@ export async function GET() {
       );
     }
 
-    const user = await prisma.user.findUnique({
+    let user = await prisma.user.findUnique({
       where:  { clerkUserId: userId },
       select: {
         subscriptionStatus:    true,
@@ -47,12 +47,27 @@ export async function GET() {
 
     // ── 404 User not in DB ────────────────────────────────────────────────
     // No hadTrial available — SubscribePage defaults it to false safely
-    if (!user) {
-      return NextResponse.json(
-        { hasAccess: false, status: "user_not_found", hadTrial: false },
-        { status: 404 }
-      );
-    }
+
+if (!user) {
+  user = await prisma.user.create({
+    data: {
+      clerkUserId: userId,
+      username: userId,
+      isActive: true,
+      hadTrial: false,
+      subscriptionStatus: SubscriptionStatus.expired,
+    },
+    select: {
+      subscriptionStatus: true,
+      subscriptionPlan: true,
+      subscriptionEndDate: true,
+      subscriptionCreatedAt: true,
+      isActive: true,
+      deletedAt: true,
+      hadTrial: true,
+    },
+  });
+}
 
     // ── 403 Account suspended / soft-deleted ──────────────────────────────
     // Check BEFORE subscription status — suspended accounts never get access

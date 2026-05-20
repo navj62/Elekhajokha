@@ -32,13 +32,21 @@ export async function POST(req: NextRequest) {
 
     console.log("Creating subscription:", { userId, plan });
 
-    const user = await prisma.user.findUnique({
-      where: { clerkUserId: userId },
-    });
+    let user = await prisma.user.findUnique({
+  where: { clerkUserId: userId },
+});
 
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
+if (!user) {
+  user = await prisma.user.create({
+    data: {
+      clerkUserId: userId,
+      username: userId,
+      isActive: true,
+      hadTrial: false,
+      subscriptionStatus: SubscriptionStatus.expired,
+    },
+  });
+}
 
     if (user.subscriptionStatus === SubscriptionStatus.active) {
       return NextResponse.json(
@@ -68,17 +76,18 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    await prisma.user.update({
-      where: { clerkUserId: userId },
-      data: {
-        razorpaySubscriptionId: subscription.id,
-        subscriptionStatus: SubscriptionStatus.created,
-        subscriptionPlan:
-          plan === "YEARLY"
-            ? SubscriptionPlan.yearly
-            : SubscriptionPlan.halfyearly,
-      },
-    });
+   await prisma.user.update({
+  where: { clerkUserId: userId },
+  data: {
+    razorpaySubscriptionId: subscription.id,
+    subscriptionStatus: SubscriptionStatus.created,
+    subscriptionCreatedAt: new Date(),
+    subscriptionPlan:
+      plan === "YEARLY"
+        ? SubscriptionPlan.yearly
+        : SubscriptionPlan.halfyearly,
+  },
+});
 
     return NextResponse.json({
       success: true,

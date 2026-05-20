@@ -267,64 +267,72 @@ export default function AddPledgePage() {
   const [submitted, setSubmitted] = useState(false);
 
   /* ---- Submit ---------------------------------------------------- */
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitted(true);
+ async function submit(e: React.FormEvent) {
+  e.preventDefault();
+  setSubmitted(true);
 
-    if (!isValid) {
-      setError(validationError ?? "Please fix the errors above");
-      return;
-    }
-
-    setError("");
-    setLoading(true);
-
-    try {
-      const fd = new FormData();
-
-      fd.append("customerId", customerId ?? "");
-      fd.append("status",     "ACTIVE");
-
-      // Loan fields
-      fd.append("pledgeDate",          loan.pledgeDate);
-      fd.append("loanAmount",          loan.loanAmount);
-      fd.append("interestRate",        loan.interestRate);
-      fd.append("compoundingDuration", loan.compoundingDuration);
-      fd.append("remark",              loan.remark);
-
-      // Metal aggregates
-      fd.append("netWeightOfGold",   netWeightOfGold.toFixed(3));
-      fd.append("netWeightOfSilver", netWeightOfSilver.toFixed(3));
-
-      // Items
-      const itemsPayload = items.map((item) => ({
-        itemType:         item.itemType,
-        metalType:        item.metalType,
-        itemName:         item.itemName,
-        quantity:         Number(item.quantity),
-        grossWeight:      Number(item.grossWeight),
-        netWeight:        Number(item.netWeight),
-        purity:           Number(item.purity),
-        netWeightOfMetal: Number(calcNetWeightOfMetal(item)),
-      }));
-      fd.append("items", JSON.stringify(itemsPayload));
-
-      if (imageFile) fd.append("itemPhoto", imageFile);
-
-      const res = await fetch("/api/pledges", { method: "POST", body: fd });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to save pledge");
-      }
-
-      router.push(customerId ? `/customers/${customerId}` : "/customers");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred");
-    } finally {
-      setLoading(false);
-    }
+  if (!isValid) {
+    setError(validationError ?? "Please fix the errors above");
+    return;
   }
+
+  if (!customerId) {
+    setError("Customer ID missing");
+    return;
+  }
+
+  setError("");
+  setLoading(true);
+
+  try {
+    const fd = new FormData();
+
+    // ❌ removed: fd.append("customerId", ...) — comes from URL now
+    // ❌ removed: fd.append("status", ...)     — set server-side
+
+    fd.append("pledgeDate",          loan.pledgeDate);
+    fd.append("loanAmount",          loan.loanAmount);
+    fd.append("interestRate",        loan.interestRate);
+    fd.append("compoundingDuration", loan.compoundingDuration);
+    fd.append("remark",              loan.remark);
+
+    // Metal aggregates — still useful to send for any server-side cross-check
+    fd.append("netWeightOfGold",   netWeightOfGold.toFixed(3));
+    fd.append("netWeightOfSilver", netWeightOfSilver.toFixed(3));
+
+    const itemsPayload = items.map((item) => ({
+      itemType:         item.itemType,
+      metalType:        item.metalType,
+      itemName:         item.itemName,
+      quantity:         Number(item.quantity),
+      grossWeight:      Number(item.grossWeight),
+      netWeight:        Number(item.netWeight),
+      purity:           Number(item.purity),
+      netWeightOfMetal: Number(calcNetWeightOfMetal(item)),
+    }));
+    fd.append("items", JSON.stringify(itemsPayload));
+
+    if (imageFile) fd.append("itemPhoto", imageFile);
+
+    // ✅ correct nested URL — customerId in the path, not the body
+    const res = await fetch(`/api/customers/${customerId}/pledges`, {
+      method: "POST",
+      body:   fd,
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || "Failed to save pledge");
+    }
+
+    router.push(`/customers/${customerId}`);
+
+  } catch (err) {
+    setError(err instanceof Error ? err.message : "An unexpected error occurred");
+  } finally {
+    setLoading(false);
+  }
+}
 
   /* ================================================================ */
   /*  Render                                                            */

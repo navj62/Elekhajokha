@@ -1,25 +1,55 @@
 import { PrismaClient } from "@prisma/client";
-import { Pool } from "pg";
-import { PrismaPg } from "@prisma/adapter-pg";
+import { PrismaNeon } from "@prisma/adapter-neon";
 
-const globalForPrisma = global as unknown as {
+/* ------------------------------------------------------------------ */
+/* Global type                                                        */
+/* ------------------------------------------------------------------ */
+
+const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-// 1. We create a helper function to initialize the new adapter and client
+/* ------------------------------------------------------------------ */
+/* Create client                                                      */
+/* ------------------------------------------------------------------ */
+
 const createPrismaClient = () => {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  const adapter = new PrismaPg(pool as any);
-  
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not defined"
+    );
+  }
+
+  const adapter = new PrismaNeon({
+    connectionString:
+      process.env.DATABASE_URL,
+  });
+
   return new PrismaClient({
     adapter,
+
+    // only log errors
+    log: ["error"],
   });
 };
 
-// 2. We use your exact same global check
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+/* ------------------------------------------------------------------ */
+/* Singleton                                                          */
+/* ------------------------------------------------------------------ */
 
-// 3. We keep your exact same hot-reloading safeguard
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+export const prisma =
+  globalForPrisma.prisma ??
+  createPrismaClient();
+
+/* ------------------------------------------------------------------ */
+/* Prevent multiple instances in dev                                  */
+/* ------------------------------------------------------------------ */
+
+if (
+  process.env.NODE_ENV !==
+  "production"
+) {
+  globalForPrisma.prisma =
+    prisma;
 }

@@ -1,8 +1,11 @@
 -- CreateEnum
+CREATE TYPE "TransactionType" AS ENUM ('REPAYMENT_PRINCIPAL', 'REPAYMENT_INTEREST', 'TOPUP');
+
+-- CreateEnum
 CREATE TYPE "Gender" AS ENUM ('Male', 'Female', 'Other');
 
 -- CreateEnum
-CREATE TYPE "AuditAction" AS ENUM ('CREATED', 'UPDATED', 'RELEASED', 'RECALCULATED');
+CREATE TYPE "AuditAction" AS ENUM ('CREATED', 'UPDATED', 'RELEASED', 'DELETED', 'RECALCULATED');
 
 -- CreateEnum
 CREATE TYPE "SubscriptionPlan" AS ENUM ('halfyearly', 'yearly');
@@ -20,7 +23,7 @@ CREATE TYPE "MetalType" AS ENUM ('GOLD', 'SILVER');
 CREATE TYPE "PledgeStatus" AS ENUM ('ACTIVE', 'RELEASED', 'OVERDUE');
 
 -- CreateEnum
-CREATE TYPE "CompoundingDuration" AS ENUM ('MONTHLY', 'HALFYEARLY', 'YEARLY', 'QUARTERLY');
+CREATE TYPE "CompoundingDuration" AS ENUM ('MONTHLY', 'HALFYEARLY', 'YEARLY');
 
 -- CreateTable
 CREATE TABLE "users" (
@@ -56,8 +59,11 @@ CREATE TABLE "customers" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "region" TEXT NOT NULL,
     "address" TEXT NOT NULL,
     "mobile" TEXT,
+    "viewToken" TEXT NOT NULL,
+    "isPortalBlocked" BOOLEAN NOT NULL DEFAULT false,
     "idProofImg" TEXT,
     "customerImg" TEXT,
     "aadharNo" TEXT,
@@ -128,9 +134,9 @@ CREATE TABLE "pledge_audits" (
     "silverPricePerGram" DECIMAL(10,2),
     "marketValueAtRelease" DECIMAL(12,2),
     "ltvAtRelease" DECIMAL(5,2),
-    "totalInterest" DECIMAL(12,2) NOT NULL,
-    "receivableAmount" DECIMAL(12,2) NOT NULL,
-    "releaseDate" TIMESTAMP(3) NOT NULL,
+    "totalInterest" DECIMAL(12,2),
+    "receivableAmount" DECIMAL(12,2),
+    "releaseDate" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "pledge_audits_pkey" PRIMARY KEY ("id")
@@ -140,12 +146,24 @@ CREATE TABLE "pledge_audits" (
 CREATE TABLE "MetalPrice" (
     "id" TEXT NOT NULL,
     "metal" "MetalType" NOT NULL,
-    "usdPerOunce" DOUBLE PRECISION NOT NULL,
-    "inrPerGram" DOUBLE PRECISION NOT NULL,
+    "usdPerOunce" DECIMAL(12,4) NOT NULL,
+    "inrPerGram" DECIMAL(10,2) NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "MetalPrice_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "transactions" (
+    "id" TEXT NOT NULL,
+    "pledgeId" TEXT NOT NULL,
+    "amount" DECIMAL(12,2) NOT NULL,
+    "type" "TransactionType" NOT NULL,
+    "note" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "transactions_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -181,10 +199,16 @@ CREATE INDEX "users_razorpaySubscriptionId_idx" ON "users"("razorpaySubscription
 CREATE INDEX "users_subscriptionStatus_isActive_idx" ON "users"("subscriptionStatus", "isActive");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "customers_viewToken_key" ON "customers"("viewToken");
+
+-- CreateIndex
 CREATE INDEX "customers_userId_idx" ON "customers"("userId");
 
 -- CreateIndex
 CREATE INDEX "customers_name_idx" ON "customers"("name");
+
+-- CreateIndex
+CREATE INDEX "pledges_status_createdAt_idx" ON "pledges"("status", "createdAt");
 
 -- CreateIndex
 CREATE INDEX "pledges_customerId_idx" ON "pledges"("customerId");
@@ -196,7 +220,13 @@ CREATE INDEX "pledge_items_pledgeId_idx" ON "pledge_items"("pledgeId");
 CREATE INDEX "pledge_audits_pledgeId_idx" ON "pledge_audits"("pledgeId");
 
 -- CreateIndex
+CREATE INDEX "MetalPrice_createdAt_idx" ON "MetalPrice"("createdAt");
+
+-- CreateIndex
 CREATE INDEX "MetalPrice_metal_createdAt_idx" ON "MetalPrice"("metal", "createdAt" DESC);
+
+-- CreateIndex
+CREATE INDEX "transactions_pledgeId_createdAt_idx" ON "transactions"("pledgeId", "createdAt" DESC);
 
 -- CreateIndex
 CREATE INDEX "ExchangeRate_from_to_createdAt_idx" ON "ExchangeRate"("from", "to", "createdAt" DESC);
@@ -212,3 +242,6 @@ ALTER TABLE "pledge_items" ADD CONSTRAINT "pledge_items_pledgeId_fkey" FOREIGN K
 
 -- AddForeignKey
 ALTER TABLE "pledge_audits" ADD CONSTRAINT "pledge_audits_pledgeId_fkey" FOREIGN KEY ("pledgeId") REFERENCES "pledges"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "transactions" ADD CONSTRAINT "transactions_pledgeId_fkey" FOREIGN KEY ("pledgeId") REFERENCES "pledges"("id") ON DELETE CASCADE ON UPDATE CASCADE;

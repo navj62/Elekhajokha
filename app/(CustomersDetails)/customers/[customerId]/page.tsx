@@ -9,6 +9,9 @@ import {
   CheckCircle2, Eye, Trash2, Loader2,
 } from "lucide-react";
 
+import { QRCodeCanvas } from "qrcode.react";
+import { Switch } from "@/components/ui/switch";
+
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
@@ -18,22 +21,24 @@ type Pledge = {
   pledgeDate:  string;
   loanAmount:  string;
   releaseDate: string | null;
-  itemLabel:   string | null;  // formatted by API
-  itemCount:   number;         // total PledgeItems
+  itemLabel:   string | null;
+  itemCount:   number;
 };
 
 type CustomerDetail = {
-  id:          string;
-  name:        string;
-  address:     string;
-  region:      string;
-  mobile:      string | null;
-  aadharNo:    string | null;
-  remark:      string | null;
-  customerImg: string | null;
-  idProofImg:  string | null;
-  createdAt?:  string;
-  pledges:     Pledge[];
+  id:              string;
+  name:            string;
+  address:         string;
+  region:          string;
+  mobile:          string | null;
+  aadharNo:        string | null;
+  remark:          string | null;
+  customerImg:     string | null;
+  idProofImg:      string | null;
+  createdAt?:      string;
+  pledges:         Pledge[];
+  viewToken:       string;
+  isPortalBlocked: boolean;
 };
 
 /* ------------------------------------------------------------------ */
@@ -61,8 +66,8 @@ function getInitials(name: string) {
 function renderStatusBadge(status?: string | null) {
   if (!status) return null;
   let bg = "#EAEAEA", color = "#6D6D6D", dot = "#A0A0A0";
-  if (status === "ACTIVE")   { bg = "#E6E8DA"; color = "#5C633F"; dot = "#838C58"; }
-  if (status === "OVERDUE")  { bg = "#F8D7DA"; color = "#C94A4A"; dot = "#D66666"; }
+  if (status === "ACTIVE")  { bg = "#E6E8DA"; color = "#5C633F"; dot = "#838C58"; }
+  if (status === "OVERDUE") { bg = "#F8D7DA"; color = "#C94A4A"; dot = "#D66666"; }
   const label = status.charAt(0) + status.slice(1).toLowerCase();
   return (
     <span style={{ backgroundColor: bg, color, borderRadius: "20px", padding: "4px 10px", fontSize: "10px", fontWeight: 700, letterSpacing: "0.5px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
@@ -85,6 +90,7 @@ export default function CustomerDetailPage() {
   const [error,      setError]      = useState<string | null>(null);
   const [toastMsg,   setToastMsg]   = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showQR,     setShowQR]     = useState(false);
   const toastRef = useRef<NodeJS.Timeout | null>(null);
 
   function showToast(msg: string) {
@@ -173,7 +179,6 @@ export default function CustomerDetailPage() {
         {/* ── Loading skeletons ─────────────────────────────────── */}
         {loading ? (
           <div className="space-y-6">
-            {/* Header card */}
             <div className="rounded-[24px] p-6 flex flex-col md:flex-row md:items-center justify-between gap-6" style={{ backgroundColor: "#FAFAF7" }}>
               <div className="flex items-center gap-5">
                 <div className="skeleton" style={{ width: 100, height: 100, borderRadius: 20, flexShrink: 0 }} />
@@ -188,7 +193,6 @@ export default function CustomerDetailPage() {
                 <div className="skeleton" style={{ width: 140, height: 40, borderRadius: 20 }} />
               </div>
             </div>
-            {/* Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
               <div className="flex flex-col gap-6">
                 <div className="bg-white rounded-[24px] p-8" style={{ border: "1px solid #ECEAE4" }}>
@@ -203,47 +207,7 @@ export default function CustomerDetailPage() {
                   </div>
                   <div className="skeleton" style={{ width: "100%", height: 12, borderRadius: 20 }} />
                 </div>
-                <div className="bg-white rounded-[24px] p-8" style={{ border: "1px solid #ECEAE4" }}>
-                  <div className="skeleton" style={{ width: 180, height: 18, marginBottom: 24 }} />
-                  {[1, 2].map((i) => (
-                    <div key={i} className="skeleton" style={{ width: "100%", height: 72, borderRadius: 12, marginBottom: 16 }} />
-                  ))}
-                  <div className="skeleton" style={{ width: 300, height: 160, borderRadius: 16, marginTop: 12 }} />
-                </div>
               </div>
-              <div className="flex flex-col gap-6">
-                <div className="rounded-[24px] p-8" style={{ backgroundColor: "#E2E0C8" }}>
-                  <div className="skeleton" style={{ width: 140, height: 18, marginBottom: 32 }} />
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="flex gap-4 items-start mb-6">
-                      <div className="skeleton" style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0 }} />
-                      <div>
-                        <div className="skeleton" style={{ width: 90, height: 10, marginBottom: 8 }} />
-                        <div className="skeleton" style={{ width: 180, height: 14 }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="rounded-[24px] p-8 flex-1" style={{ backgroundColor: "#EAE9DF", minHeight: 280 }}>
-                  <div className="skeleton" style={{ width: 140, height: 18, marginBottom: 24 }} />
-                  {[100, 90, 75, 100, 60].map((w, i) => (
-                    <div key={i} className="skeleton" style={{ width: `${w}%`, height: 14, marginBottom: 10 }} />
-                  ))}
-                </div>
-              </div>
-            </div>
-            {/* Table */}
-            <div className="bg-white rounded-[24px]" style={{ border: "1px solid #ECEAE4" }}>
-              <div className="p-6" style={{ borderBottom: "1px solid #ECEAE4" }}>
-                <div className="skeleton" style={{ width: 170, height: 18 }} />
-              </div>
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="flex gap-4 px-8 py-5 items-center" style={{ borderBottom: i < 4 ? "1px solid #ECEAE4" : "none" }}>
-                  {[1, 2, 3, 4, 5, 6].map((j) => (
-                    <div key={j} className="skeleton" style={{ flex: 1, height: 14 }} />
-                  ))}
-                </div>
-              ))}
             </div>
           </div>
 
@@ -292,9 +256,9 @@ export default function CustomerDetailPage() {
                   </div>
                 </div>
 
-                <div>
+                <div className="w-full">
                   <h2 className="text-[26px] font-bold text-[#2C2C2C] mb-1">{customer.name}</h2>
-                  <div className="text-[13px] font-medium text-[#6F6F6F] flex flex-wrap items-center gap-2">
+                  <div className="text-[13px] font-medium text-[#6F6F6F] flex flex-wrap items-center gap-2 mb-2">
                     <span className="font-bold">ID: #{customer.id.split("-")[0].toUpperCase()}</span>
                     <span>•</span>
                     <span>{customer.region}</span>
@@ -304,6 +268,68 @@ export default function CustomerDetailPage() {
                         <span>Registered {formatDate(customer.createdAt)}</span>
                       </>
                     )}
+                  </div>
+
+                  {/* Customer View Link */}
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <input
+                      value={`${process.env.NEXT_PUBLIC_BASE_URL}/view/${customer.viewToken}`}
+                      readOnly
+                      className="border px-2 py-1 rounded text-xs w-full bg-gray-50"
+                    />
+                    <button
+                      onClick={() =>
+                        navigator.clipboard.writeText(
+                          `${process.env.NEXT_PUBLIC_BASE_URL}/view/${customer.viewToken}`
+                        )
+                      }
+                      className="bg-blue-500 text-white px-3 py-1 rounded text-xs hover:bg-blue-600"
+                    >
+                      Copy
+                    </button>
+                    <button
+                      onClick={() => setShowQR(!showQR)}
+                      className="bg-gray-800 text-white px-3 py-1 rounded text-xs hover:bg-gray-900"
+                    >
+                      {showQR ? "Hide QR" : "View QR"}
+                    </button>
+                  </div>
+
+                  {/* QR Code (Toggle) */}
+                  {showQR && (
+                    <div className="mt-3 flex flex-col items-start gap-2">
+                      <div className="p-2 bg-white border rounded-lg">
+                        <QRCodeCanvas
+                          value={`${process.env.NEXT_PUBLIC_BASE_URL}/view/${customer.viewToken}`}
+                          size={120}
+                        />
+                        <p className="text-xs text-gray-400">Scan to open customer page</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Portal toggle */}
+                  <div className="mt-3 flex items-center gap-3">
+                    <Switch
+                      checked={!Boolean(customer.isPortalBlocked)}
+                      onCheckedChange={async () => {
+                        try {
+                          const res = await fetch(`/api/customers/${customer.id}/toggle-portal`, { method: "PATCH" });
+                          const data = await res.json();
+                          if (!res.ok) throw new Error(data.error || "Failed");
+                          setCustomer((prev) =>
+                            prev ? { ...prev, isPortalBlocked: data.isPortalBlocked } : prev
+                          );
+                          showToast(data.isPortalBlocked ? "Portal access blocked" : "Portal access enabled");
+                        } catch (err) {
+                          console.error(err);
+                          showToast("Failed to update portal access");
+                        }
+                      }}
+                    />
+                    <span className="text-sm text-gray-600">
+                      {!customer.isPortalBlocked ? "Portal Enabled" : "Portal Blocked"}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -369,7 +395,6 @@ export default function CustomerDetailPage() {
                 <div className="bg-white rounded-[24px] p-6 lg:p-8" style={{ border: "1px solid #ECEAE4" }}>
                   <h3 className="text-[17px] font-bold text-[#2C2C2C] mb-6">Identity & Verification</h3>
                   <div className="flex flex-col gap-4 mb-6 max-w-[340px]">
-                    {/* Aadhaar */}
                     <div className="bg-[#FAFAF7] border border-[#ECEAE4] p-4 rounded-[12px] flex justify-between items-center h-[72px]">
                       <div>
                         <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1.5 uppercase">Aadhaar Number</p>
@@ -383,7 +408,6 @@ export default function CustomerDetailPage() {
                         <CheckCircle2 size={16} fill="currentColor" stroke="#DADBCF" />
                       </div>
                     </div>
-                    {/* ID Proof status */}
                     <div className="bg-[#FAFAF7] border border-[#ECEAE4] p-4 rounded-[12px] flex justify-between items-center h-[72px]">
                       <div>
                         <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1.5 uppercase">ID Proof Document</p>
@@ -398,7 +422,6 @@ export default function CustomerDetailPage() {
                       )}
                     </div>
                   </div>
-                  {/* ID Proof image preview */}
                   {customer.idProofImg && (
                     <div>
                       <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-3 uppercase">ID Proof Preview</p>
@@ -417,7 +440,6 @@ export default function CustomerDetailPage() {
                 {/* Contact Details */}
                 <div className="rounded-[24px] p-6 lg:p-8" style={{ backgroundColor: "#E2E0C8" }}>
                   <h3 className="text-[17px] font-bold text-[#2C2C2C] mb-8">Contact Details</h3>
-
                   <div className="flex gap-4 items-start mb-6">
                     <div className="w-10 h-10 rounded-full bg-white border border-[#ECEAE4] flex items-center justify-center shrink-0">
                       <Phone size={16} className="text-[#2C2C2C]" />
@@ -427,16 +449,13 @@ export default function CustomerDetailPage() {
                       <p className="text-[14px] font-medium text-[#2C2C2C]">{customer.mobile || "—"}</p>
                     </div>
                   </div>
-
                   <div className="flex gap-4 items-start">
                     <div className="w-10 h-10 rounded-full bg-white border border-[#ECEAE4] flex items-center justify-center shrink-0 relative top-1">
                       <MapPin size={16} className="text-[#2C2C2C]" />
                     </div>
                     <div>
                       <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1 uppercase">Residential Address</p>
-                      <p className="text-[14px] font-medium text-[#2C2C2C] leading-snug">
-                        {customer.address || "—"}
-                      </p>
+                      <p className="text-[14px] font-medium text-[#2C2C2C] leading-snug">{customer.address || "—"}</p>
                       {customer.region && (
                         <p className="text-[12px] font-medium text-[#9E9E9E] mt-1">{customer.region}</p>
                       )}
@@ -514,7 +533,6 @@ export default function CustomerDetailPage() {
                           <td className="px-6 lg:px-8 py-5">
                             <div className="text-[13px] font-bold text-[#2C2C2C]">{formatDate(pledge.pledgeDate)}</div>
                           </td>
-
                           <td className="px-6 lg:px-8 py-5">
                             <div className="text-[13px] font-bold text-[#2C2C2C]">{pledge.itemLabel || "—"}</div>
                             {pledge.itemCount > 1 && (
@@ -523,20 +541,15 @@ export default function CustomerDetailPage() {
                               </div>
                             )}
                           </td>
-
                           <td className="px-6 lg:px-8 py-5">
                             <div className="text-[13px] font-bold text-[#2C2C2C]">{fmt(pledge.loanAmount)}</div>
                           </td>
-
                           <td className="px-6 lg:px-8 py-5">
                             <div className="text-[13px] font-semibold text-[#6F6F6F]">{formatDate(pledge.releaseDate)}</div>
                           </td>
-
                           <td className="px-6 lg:px-8 py-5">
                             {renderStatusBadge(pledge.status)}
                           </td>
-
-                          {/* Actions — stop row click propagation */}
                           <td
                             className="px-6 py-5 text-right"
                             onClick={(e) => e.stopPropagation()}

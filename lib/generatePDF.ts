@@ -1,5 +1,5 @@
 // lib/generatePDF.ts
-import path from "path/win32";
+import path from "path";
 import PDFDocument from "pdfkit";
 const boldFont = path.join(process.cwd(), "public/fonts/NotoSansDevanagari-Bold.ttf");
 
@@ -226,9 +226,24 @@ export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buf
     doc.end();
   });
 }
-
 import https from "https";
 import http from "http";
+
+const DEFAULT_SHOPOWNER_TERMS = [
+  "• मेरे द्वारा गिरवी रखी गई उपरोक्त रकम मेरे स्वामित्व, पूर्ण प्रामाणिक, आविवादित संपत्ति है।",
+  "• मय ब्याज (प्रतिमाह/प्रति चौकडा) मूलधन को वापस लौटाने पर ही आपसे पुन: रकम लेने का मुझे अधिकार होगा।",
+  "• गिरवी रखी गयी रकम 1 वर्ष के अंतराल में ना छुड़ा पाने की दशा में हमारे द्वारा ब्याज का हिसाब अनिवार्य रूप से जमा कर दिया जाएगा।",
+  "• तय दिशा निर्देशों के अनुरूप मूलधन व ब्याज मेरे द्वारा अदा न कर पाने की स्थिति में आपको रकम बेच कर अपनी राशि पुन: वसूलने का पूर्ण अधिकार होगा।",
+  "• अपरिहार्य कारणों से किसी विवाद की स्थिति में न्याय क्षेत्र यहीं होगा।",
+];
+
+const DEFAULT_CUSTOMER_TERMS = [
+  "• गिरवी रखी गयी रकम का 1 वर्ष मे हिसाब करना अनिवार्य है।",
+  "• रकम रखने वाले व्यक्ति को ही रकम वापस दी जायेगी।",
+  "• रकम छुडाते समय रसीद पुन: साथ लाये।",
+  "• रकम/लेनदेन/हिसाब काउंटर पर ही चेक कर तत्परचात हमारी कोई जवाबदारी नही होगी।",
+  "• असुविधा व समय के बचत हेतु रकम छुड़ाने से 1 घंटा पूर्व कृपया इस नंबर पर फोन करे।",
+];
 
 type ReceiptData = {
   transactionId: string;
@@ -244,7 +259,10 @@ type ReceiptData = {
   shopMobile: string;
   itemPhoto: string | null;
   username: string;
+  shopownerTerms: string | null; // ← new
+  customerTerms: string | null;  // ← new
 };
+
 function fetchImageBuffer(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const client = url.startsWith("https") ? https : http;
@@ -258,7 +276,6 @@ function fetchImageBuffer(url: string): Promise<Buffer> {
 }
 
 export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
-  
   return new Promise(async (resolve, reject) => {
     const doc = new PDFDocument({ margin: 0, size: "A4", layout: "landscape" });
     const chunks: Buffer[] = [];
@@ -267,18 +284,15 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    // ── Register Hindi font ──────────────────────────────
     const fontPath = path.join(process.cwd(), "public/fonts/NotoSansDevanagari_Condensed-Bold.ttf");
-    // doc.registerFont("Hindi", fontPath);
-    doc.registerFont("HindiBold", fontPath); // same file, wght axis handles bold
+    doc.registerFont("HindiBold", fontPath);
 
-    // Pre-fetch image if available
     let imageBuffer: Buffer | null = null;
     if (data.itemPhoto) {
       try {
         imageBuffer = await fetchImageBuffer(data.itemPhoto);
       } catch {
-        imageBuffer = null; // silently skip if fetch fails
+        imageBuffer = null;
       }
     }
 
@@ -294,7 +308,7 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
 
       let y = 30;
 
-      // Receipt badge
+      // ── Receipt badge ────────────────────────────────────
       const badgeW = 70;
       const badgeX = offsetX + pad + W / 2 - badgeW / 2;
       doc.rect(badgeX, y, badgeW, 16).fill("#000");
@@ -319,6 +333,7 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
       y += 10;
       doc.moveTo(offsetX + pad, y).lineTo(offsetX + pad + W, y).strokeColor("#000").lineWidth(0.5).stroke();
 
+      // ── Transaction info ─────────────────────────────────
       y += 8;
       doc.fillColor("#000").fontSize(8).font("Helvetica-Bold");
       doc.text(`Transaction ID - ${data.transactionId}`, offsetX + pad + 5, y);
@@ -336,7 +351,7 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
       doc.font("Helvetica-Bold").text("Loan Amount", offsetX + pad + 5, y);
       doc.font("Helvetica").text(`: ${data.loanAmount.toLocaleString("en-IN")}`, offsetX + pad + 85, y);
 
-      // Items table
+      // ── Items table ───────────────────────────────────────
       y += 14;
       const tX = offsetX + pad + 5;
       const tW = W - 10;
@@ -353,8 +368,8 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
       y += 14;
       doc.rect(tX, y, tW, 14).strokeColor("#000").lineWidth(0.5).stroke();
       doc.fillColor("#000").font("Helvetica").fontSize(8);
-      doc.text(data.itemName,    tX + 3, y + 3, { width: col1 });
-      doc.text(data.itemWeight,  tX + col1 + 3, y + 3, { width: col2 });
+      doc.text(data.itemName,     tX + 3, y + 3, { width: col1 });
+      doc.text(data.itemWeight,   tX + col1 + 3, y + 3, { width: col2 });
       doc.text(data.remark ?? "", tX + col1 + col2 + 3, y + 3, { width: col3 });
 
       y += 14;
@@ -363,53 +378,42 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
       doc.rect(tX, y, tW, 14).strokeColor("#000").lineWidth(0.5).stroke();
       y += 14;
 
-       // ── Item photo ───────────────────────────────────────
+      // ── Item photo ───────────────────────────────────────
       if (img) {
         try {
-          doc.image(img, tX + 44, y + 34, {
+          doc.image(img, tX + 44, y + 4, {
             fit: [160, 150],
-            // align: "left",
-            // valign: "top",
           });
         } catch {
           // skip silently
         }
       }
-      y += 150; // free space height whether or not image rendered
+      y += 160;
 
-      // ── Hindi terms ──────────────────────────────────────
-      y += 18;
-      const terms = copyLabel === "Shopowner Copy"
-        ? [
-            "• मेरे द्वारा गिरवी रखी गई उपरोक्त रकम मेरे स्वामित्व, पूर्ण प्रामाणिक, आविवादित संपत्ति है।",
-            "• मय ब्याज (प्रतिमाह/प्रति चौकडा) मूलधन को वापस लौटाने पर ही आपसे पुन: रकम लेने का मुझे अधिकार होगा।",
-            "• गिरवी रखी गयी रकम 1 वर्ष के अंतराल में ना छुड़ा पाने की दशा में हमारे द्वारा ब्याज का हिसाब अनिवार्य रूप से जमा कर दिया जाएगा।",
-            "• तय दिशा निर्देशों के अनुरूप मूलधन व ब्याज मेरे द्वारा अदा न कर पाने की स्थिति में आपको रकम बेच कर अपनी राशि पुन: वसूलने का पूर्ण अधिकार होगा।",
-            "• अपरिहार्य कारणों से किसी विवाद की स्थिति में न्याय क्षेत्र यहीं होगा।",
-          ]
-        : [
-            "• गिरवी रखी गयी रकम का 1 वर्ष मे हिसाब करना अनिवार्य है।",
-            "• रकम रखने वाले व्यक्ति को ही रकम वापस दी जायेगी।",
-            "• रकम छुडाते समय रसीद पुन: साथ लाये।",
-            "• रकम/लेनदेन/हिसाब काउंटर पर ही चेक कर तत्परचात हमारी कोई जवाबदारी नही होगी।",
-            "• असुविधा व समय के बचत हेतु रकम छुड़ाने से 1 घंटा पूर्व कृपया इस नंबर पर फोन करे।",
-          ];
+      // ── Terms ────────────────────────────────────────────
+      const rawTerms = copyLabel === "Shopowner Copy"
+        ? data.shopownerTerms
+        : data.customerTerms;
 
-      // ← Use Hindi font here
+      const termLines: string[] = rawTerms
+        ? rawTerms.split("\n").filter((l) => l.trim() !== "")
+        : copyLabel === "Shopowner Copy"
+          ? DEFAULT_SHOPOWNER_TERMS
+          : DEFAULT_CUSTOMER_TERMS;
+
       doc.fontSize(6.5).font("HindiBold").fillColor("#000");
-      terms.forEach((line) => {
-        doc.text(line, tX, y, { width: tW });
+      termLines.forEach((line) => {
+        doc.text(line.trim(), tX, y, { width: tW });
         y += doc.currentLineHeight() + 2;
       });
 
-      // Signature boxes
+      // ── Signature boxes ───────────────────────────────────
       y = PH - 75;
       const sigW = tW / 2 - 5;
 
       if (copyLabel === "Shopowner Copy") {
         doc.rect(tX, y, tW / 2 - 3, 40).strokeColor("#000").lineWidth(0.5).stroke();
         doc.rect(tX + tW / 2 + 3, y, tW / 2 - 3, 40).strokeColor("#000").lineWidth(0.5).stroke();
-        // ← Hindi font for Hindi sig labels
         doc.fontSize(7).font("HindiBold").fillColor("#000");
         doc.text("रूपये नगद प्राप्त किये", tX + 3, y + 3, { width: sigW });
         doc.text("रकम पुन: प्राप्त की दिनांक:-", tX + tW / 2 + 6, y + 3, { width: sigW });

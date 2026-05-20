@@ -7,7 +7,6 @@ import {
   Camera, Loader2, UserPlus, Mail, Briefcase,
   Shield, Check, ArrowLeft, HelpCircle,
 } from "lucide-react";
-import Image from "next/image";
 
 /* ═══════════════════════════════════════
    Sub-components
@@ -98,7 +97,7 @@ export default function OnboardingPage() {
   const update = (key: string, value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
-  /* ── Submit (logic untouched) ── */
+  /* ── Submit ── */
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -122,6 +121,10 @@ export default function OnboardingPage() {
         const data = await res.json();
         throw new Error(data.error || "Failed to save onboarding details");
       }
+
+      // 👇 THE CRITICAL FIX: Refresh Clerk session to get the new metadata
+      await user?.reload();
+
       router.replace("/dashboard");
     } catch (err: any) {
       setError(err.message);
@@ -177,7 +180,7 @@ export default function OnboardingPage() {
           </p>
         </div>
 
-        {/* Steps — vertical connector line style (matches sign-up sidebar) */}
+        {/* Steps */}
         <div className="flex-1 flex items-center px-8 xl:px-12">
           <div className="flex flex-col w-full">
             {steps.map((step, i) => {
@@ -188,7 +191,6 @@ export default function OnboardingPage() {
                 <div key={i} className="flex items-stretch gap-4">
                   {/* Circle + connector column */}
                   <div className="flex flex-col items-center shrink-0" style={{ width: "36px" }}>
-                    {/* Circle — filled green if done, outlined dark dot if active */}
                     <div
                       className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 z-10 transition-colors duration-500
                         ${isDone
@@ -204,7 +206,6 @@ export default function OnboardingPage() {
                           ? <div className="w-2.5 h-2.5 rounded-full bg-[#2B2B2B]" />
                           : step.icon}
                     </div>
-                    {/* Connector line */}
                     {!isLast && (
                       <div
                         className={`w-[2px] flex-1 my-1 rounded-full transition-colors duration-500 ${isDone ? "bg-[#585F42]" : "bg-[#D6D4C2]"}`}
@@ -213,12 +214,11 @@ export default function OnboardingPage() {
                     )}
                   </div>
 
-                  {/* Text — active step gets a highlight pill */}
+                  {/* Text */}
                   <div
                     className={`flex-1 pt-1.5 ${isLast ? "pb-0" : "pb-7"} ${isActive ? "pr-3" : ""}`}
                   >
                     {isActive ? (
-                      /* Active step: rounded highlight background */
                       <div className="bg-[#DADBCF] rounded-2xl px-3 py-2.5 -ml-1 -mt-1">
                         <p className="text-[9px] font-bold uppercase tracking-widest text-[#2B2B2B] mb-0.5">
                           {step.num}
@@ -254,14 +254,14 @@ export default function OnboardingPage() {
           </div>
         </div>
 
-        {/* Right-edge progress bar — all 3 segments filled (step 3 = complete) */}
+        {/* Right-edge progress bar */}
         <div className="absolute right-0 top-0 h-full flex flex-col" style={{ width: "3px", gap: "16px" }}>
           {[0, 1, 2].map((segIdx) => (
             <div
               key={segIdx}
               style={{
                 flex: 1,
-                backgroundColor: "#585F42", /* all filled — step 3 */
+                backgroundColor: "#585F42",
                 transition: "background-color 0.5s ease",
               }}
             />
@@ -450,12 +450,11 @@ export default function OnboardingPage() {
           {/* ── Quote card ── */}
           <div className="bg-[#F0EFE8] rounded-[24px] p-6 pr-8 flex flex-col md:flex-row items-center gap-6 mt-auto">
             <div className="w-[88px] h-[88px] rounded-[18px] overflow-hidden relative shrink-0">
-              <Image
+              {/* 👇 THE SECOND FIX: Replaced Next/Image with standard img tag */}
+              <img
                 src="/editorial.png"
                 alt="Quote visual"
-                fill
-                className="object-cover"
-                sizes="88px"
+                className="object-cover w-full h-full"
               />
             </div>
             <div className="flex-1 text-center md:text-left">
