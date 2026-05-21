@@ -8,6 +8,9 @@
     "start": "next start",
     "lint": "eslint"
   },
+   "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "dependencies": {
     "@clerk/nextjs": "^7.0.6",
     "@neondatabase/serverless": "^1.1.0",
