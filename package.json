@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint"
   },
-   "prisma": {
+  "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

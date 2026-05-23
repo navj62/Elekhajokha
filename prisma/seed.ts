@@ -1,12 +1,14 @@
 import { PrismaClient, Gender, PledgeStatus, CompoundingDuration, ItemType, MetalType, AuditAction,RiskTier } from '@prisma/client';
 import "dotenv/config"
 import { PrismaNeon } from '@prisma/adapter-neon'
+import ws from "ws"
+import { neonConfig } from '@neondatabase/serverless'
 const adapter = new PrismaNeon({
   connectionString: process.env.DATABASE_URL!,
 })
 const prisma = new PrismaClient({ adapter })
 
-
+neonConfig.webSocketConstructor = ws as unknown as typeof WebSocket
 // ─── Config ────────────────────────────────────────────────────────────────
 const USER_ID   = '5cfd6ef0-4bf4-45eb-990f-7b593b2cf3e5'
 const GOLD_PPG  = 9500   // ₹ per gram (22K equivalent)
