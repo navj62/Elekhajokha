@@ -18,6 +18,7 @@ export default function AddCustomerPage() {
   const [error,   setError]   = useState("");
   const [gender,  setGender]  = useState("");
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [createdCustomerId, setCreatedCustomerId] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   /* ── Duplicate check ──────────────────────────────────────────── */
@@ -73,6 +74,9 @@ export default function AddCustomerPage() {
       const data = await res.json();
 
       if (res.ok) {
+        if (data.customer?.id) {
+          setCreatedCustomerId(data.customer.id);
+        }
         setShowSuccessModal(true);
       } else {
         setError(data.error || "Something went wrong");
@@ -432,7 +436,7 @@ export default function AddCustomerPage() {
               {/* Primary button */}
               <button
                 type="button"
-                onClick={() => router.push("/customers")}
+                onClick={() => router.push(createdCustomerId ? `/customers/${createdCustomerId}` : "/customers")}
                 className="w-full py-[14px] font-semibold text-[14px] text-white transition-colors"
                 style={{
                   backgroundColor: "#545A3E",
@@ -454,6 +458,7 @@ export default function AddCustomerPage() {
                   setError("");
                   setSimilarCustomers([]);
                   setCheckStatus("idle");
+                  setCreatedCustomerId(null);
                   formRef.current?.reset();
                 }}
                 className="w-full mt-3 py-[14px] font-semibold text-[14px] transition-colors"

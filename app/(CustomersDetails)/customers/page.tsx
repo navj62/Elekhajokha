@@ -359,15 +359,10 @@ export default function CustomersPage() {
         {/* Header */}
 
         <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-6">
-
           <div>
             <div className="text-[11px] font-bold tracking-wider text-[#6F6F6F] mb-1 flex items-center gap-2">
               <span>CRM</span>
-
-              <span className="text-[#9E9E9E]">
-                &gt;
-              </span>
-
+              <span className="text-[#9E9E9E]">&gt;</span>
               <span>Customers</span>
             </div>
 
@@ -389,10 +384,7 @@ export default function CustomersPage() {
 
             <div
               className="relative flex items-center gap-3 px-4 py-3 rounded-xl w-full max-w-[500px]"
-              style={{
-                backgroundColor:
-                  "#DADBCF",
-              }}
+              style={{ backgroundColor: "#DADBCF" }}
             >
               <Search
                 size={18}
@@ -401,20 +393,14 @@ export default function CustomersPage() {
 
               <input
                 value={search}
-                onChange={(e) =>
-                  setSearch(
-                    e.target.value
-                  )
-                }
+                onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search customers…"
                 className="flex-1 bg-transparent outline-none border-none text-[14px] font-medium text-[#2C2C2C] placeholder-[#8B8D7A]"
               />
 
               {search && (
                 <button
-                  onClick={() =>
-                    setSearch("")
-                  }
+                  onClick={() => setSearch("")}
                   className="text-[#8B8D7A] hover:text-[#2C2C2C] transition-colors"
                 >
                   <X size={14} />
@@ -425,125 +411,78 @@ export default function CustomersPage() {
             {/* Filter pills */}
 
             <div className="flex flex-wrap gap-2">
-              {FILTER_OPTIONS.map(
-                (opt) => {
-                  const isActive =
-                    filter ===
-                    opt.value;
+              {FILTER_OPTIONS.map((opt) => {
+                const isActive = filter === opt.value;
 
-                  return (
-                    <button
-                      key={opt.value}
-                      onClick={() =>
-                        setFilter(
-                          isActive &&
-                            opt.value !==
-                              "all"
-                            ? "all"
-                            : opt.value
-                        )
-                      }
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors"
-                      style={{
-                        backgroundColor:
-                          isActive
-                            ? "#DADBCF"
-                            : "#EAE9DF",
-
-                        color: isActive
-                          ? "#565C3F"
-                          : "#6F6F6F",
-                      }}
-                    >
-                      <MapPin size={13} />
-                      {opt.label}
-                    </button>
-                  );
-                }
-              )}
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() =>
+                      setFilter(
+                        isActive && opt.value !== "all"
+                          ? "all"
+                          : opt.value
+                      )
+                    }
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors"
+                    style={{
+                      backgroundColor: isActive ? "#DADBCF" : "#EAE9DF",
+                      color: isActive ? "#565C3F" : "#6F6F6F",
+                    }}
+                  >
+                    <MapPin size={13} />
+                    {opt.label}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Status filter */}
 
             {showStatusFilter && (
               <div className="flex flex-wrap gap-2">
-                {STATUS_OPTIONS.map(
-                  (opt) => {
-                    const isActive =
-                      status ===
-                      opt.value;
+                {STATUS_OPTIONS.map((opt) => {
+                  const isActive = status === opt.value;
 
-                    let activeBg =
-                      "#DADBCF";
+                  let activeBg = "#DADBCF";
+                  let activeColor = "#565C3F";
 
-                    let activeColor =
-                      "#565C3F";
-
-                    if (
-                      opt.value ===
-                      "ACTIVE"
-                    ) {
-                      activeBg =
-                        "#E6E8DA";
-
-                      activeColor =
-                        "#5C633F";
-                    }
-
-                    if (
-                      opt.value ===
-                      "OVERDUE"
-                    ) {
-                      activeBg =
-                        "#F8D7DA";
-
-                      activeColor =
-                        "#C94A4A";
-                    }
-
-                    if (
-                      opt.value ===
-                      "RELEASED"
-                    ) {
-                      activeBg =
-                        "#EAEAEA";
-
-                      activeColor =
-                        "#6D6D6D";
-                    }
-
-                    return (
-                      <button
-                        key={opt.value}
-                        onClick={() =>
-                          setStatus(
-                            isActive
-                              ? ""
-                              : opt.value
-                          )
-                        }
-                        className="px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors"
-                        style={{
-                          backgroundColor:
-                            isActive
-                              ? activeBg
-                              : "#EAE9DF",
-
-                          color: isActive
-                            ? activeColor
-                            : "#6F6F6F",
-                        }}
-                      >
-                        {opt.label}
-                      </button>
-                    );
+                  if (opt.value === "ACTIVE") {
+                    activeBg = "#E6E8DA";
+                    activeColor = "#5C633F";
                   }
-                )}
+
+                  if (opt.value === "OVERDUE") {
+                    activeBg = "#F8D7DA";
+                    activeColor = "#C94A4A";
+                  }
+
+                  if (opt.value === "RELEASED") {
+                    activeBg = "#EAEAEA";
+                    activeColor = "#6D6D6D";
+                  }
+
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() =>
+                        setStatus(isActive ? "" : opt.value)
+                      }
+                      className="px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors"
+                      style={{
+                        backgroundColor: isActive ? activeBg : "#EAE9DF",
+                        color: isActive ? activeColor : "#6F6F6F",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Results */}
+          {/* Results count */}
 
           {!loading && !error && (
             <div className="flex-shrink-0 self-start">
@@ -558,9 +497,7 @@ export default function CustomersPage() {
                   </span>
 
                   <span className="text-[10px] font-bold text-[#9E9E9E] mt-0.5">
-                    {customers.length !== 1
-                      ? "CUSTOMERS"
-                      : "CUSTOMER"}
+                    {customers.length !== 1 ? "CUSTOMERS" : "CUSTOMER"}
                   </span>
                 </div>
               </div>
@@ -573,34 +510,180 @@ export default function CustomersPage() {
         <div
           className="rounded-[16px] overflow-hidden mb-8"
           style={{
-            backgroundColor:
-              "#FFFFFF",
-
-            boxShadow:
-              "0 4px 24px rgba(0,0,0,0.03)",
-
-            border:
-              "1px solid #E8E6DF",
+            backgroundColor: "#FFFFFF",
+            boxShadow: "0 4px 24px rgba(0,0,0,0.03)",
+            border: "1px solid #E8E6DF",
           }}
         >
           <div className="overflow-x-auto">
+            <table className="w-full text-sm">
 
-            {/* TABLE CONTENT REMAINS SAME */}
+              {/* Table head */}
 
+              <thead>
+                <tr
+                  style={{
+                    backgroundColor: "#F5F4EF",
+                    borderBottom: "1px solid #E8E6DF",
+                  }}
+                >
+                  <th className="text-left px-6 py-4 text-[11px] font-bold tracking-wider text-[#9E9E9E]">
+                    CUSTOMER
+                  </th>
+                  <th className="text-left px-6 py-4 text-[11px] font-bold tracking-wider text-[#9E9E9E]">
+                    REGION
+                  </th>
+                  <th className="text-left px-6 py-4 text-[11px] font-bold tracking-wider text-[#9E9E9E]">
+                    LATEST ITEM
+                  </th>
+                  <th className="text-left px-6 py-4 text-[11px] font-bold tracking-wider text-[#9E9E9E]">
+                    PLEDGES
+                  </th>
+                  <th className="px-6 py-4" />
+                </tr>
+              </thead>
+
+              {/* Table body */}
+
+              <tbody>
+                {loading ? (
+
+                  /* Loading state */
+
+                  <tr>
+                    <td colSpan={5} className="text-center py-20">
+                      <Loader2
+                        className="animate-spin mx-auto text-[#9E9E9E]"
+                        size={22}
+                      />
+                    </td>
+                  </tr>
+
+                ) : error ? (
+
+                  /* Error state */
+
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="text-center py-20 text-[#C94A4A] text-[13px]"
+                    >
+                      {error}
+                    </td>
+                  </tr>
+
+                ) : customers.length === 0 ? (
+
+                  /* Empty state */
+
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="text-center py-20"
+                    >
+                      <div className="flex flex-col items-center gap-3">
+                        <div
+                          className="w-12 h-12 rounded-full flex items-center justify-center"
+                          style={{ backgroundColor: "#F5F4EF" }}
+                        >
+                          <UserPlus size={20} className="text-[#9E9E9E]" />
+                        </div>
+
+                        <p className="text-[13px] font-medium text-[#9E9E9E]">
+                          No customers found
+                        </p>
+
+                        <p className="text-[12px] text-[#BEBEBE]">
+                          Try adjusting your search or filters
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+
+                ) : (
+
+                  /* Customer rows */
+
+                  customers.map((customer) => (
+                    <tr
+                      key={customer.id}
+                      onClick={() =>
+                        router.push(`/customers/${customer.id}`)
+                      }
+                      className="cursor-pointer transition-colors hover:bg-[#F9F8F4]"
+                      style={{ borderBottom: "1px solid #F0EEE8" }}
+                    >
+
+                      {/* Avatar + Name */}
+
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold text-white shrink-0"
+                            style={{ backgroundColor: "#565C3F" }}
+                          >
+                            {getInitials(customer.name)}
+                          </div>
+
+                          <span className="font-semibold text-[#2C2C2C] text-[14px]">
+                            {customer.name}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Region */}
+
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1.5 text-[#6F6F6F] text-[13px]">
+                          <MapPin size={13} className="text-[#9E9E9E] shrink-0" />
+                          {customer.region || "—"}
+                        </div>
+                      </td>
+
+                      {/* Latest Item */}
+
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1.5 text-[#6F6F6F] text-[13px]">
+                          {getItemIcon(customer.latestItem)}
+                          {customer.latestItem || "—"}
+                        </div>
+                      </td>
+
+                      {/* Pledge count */}
+
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-1.5 text-[#565C3F] font-semibold text-[13px]">
+                          <BarChart3 size={13} />
+                          {customer.pledgeCount}
+                        </div>
+                      </td>
+
+                      {/* Actions menu */}
+
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-[#9E9E9E] hover:text-[#2C2C2C] transition-colors p-1 rounded"
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* Floating button */}
+        {/* Floating add-customer button */}
 
         <Link href="/add-customer">
           <button
             className="fixed bottom-8 right-8 w-14 h-14 rounded-full flex items-center justify-center text-white transition-transform hover:scale-105 active:scale-95 z-50"
             style={{
-              background:
-                "linear-gradient(135deg, #565C3F, #747B58)",
-
-              boxShadow:
-                "0 8px 20px rgba(86,92,63,0.3)",
+              background: "linear-gradient(135deg, #565C3F, #747B58)",
+              boxShadow: "0 8px 20px rgba(86,92,63,0.3)",
             }}
           >
             <UserPlus size={22} />
@@ -612,10 +695,7 @@ export default function CustomersPage() {
         {toastMessage && (
           <div
             className="fixed bottom-6 right-6 z-50 rounded-xl text-white px-4 py-3 shadow-lg text-[13px] font-medium max-w-xs"
-            style={{
-              backgroundColor:
-                "#2C2C2C",
-            }}
+            style={{ backgroundColor: "#2C2C2C" }}
           >
             {toastMessage}
           </div>
