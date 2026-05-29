@@ -432,7 +432,6 @@ export default function PledgeDetailPage() {
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
 
       {/* Header */}
-
       <div>
         <Link
           href={`/customers/${params.customerId}`}
@@ -447,7 +446,6 @@ export default function PledgeDetailPage() {
             <h1 className="text-2xl font-bold text-gray-900">
               Pledge Details
             </h1>
-
             <p className="text-xs text-gray-400 mt-0.5">
               #{pledge.id.slice(0, 8).toUpperCase()}
             </p>
@@ -476,6 +474,345 @@ export default function PledgeDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Two-column layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+        {/* ── Customer Info ── */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <User size={14} />
+              Customer
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-0">
+            <InfoRow label="Name" value={pledge.customer.name} />
+            <InfoRow
+              label="Mobile"
+              value={pledge.customer.mobile ?? "—"}
+            />
+            <InfoRow
+              label="Address"
+              value={pledge.customer.address ?? "—"}
+            />
+            <InfoRow
+              label="Region"
+              value={pledge.customer.region ?? "—"}
+            />
+          </CardContent>
+        </Card>
+
+        {/* ── Loan Info ── */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <Calendar size={14} />
+              Loan Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-0">
+            <InfoRow
+              label="Pledge Date"
+              value={fmtDate(pledge.pledgeDate)}
+            />
+            <InfoRow
+              label="Loan Amount"
+              value={fmtINR(pledge.loanAmount)}
+            />
+            <InfoRow
+              label="Interest Rate"
+              value={`${pledge.interestRate}% p.a.`}
+            />
+            <InfoRow
+              label="Compounding"
+              value={
+                pledge.allowCompounding
+                  ? titleCase(pledge.compoundingDuration)
+                  : "None"
+              }
+            />
+            {pledge.durationMonths != null && (
+              <InfoRow
+                label="Duration"
+                value={`${pledge.durationMonths} months`}
+              />
+            )}
+            {pledge.remark && (
+              <InfoRow label="Remark" value={pledge.remark} />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Interest & LTV ── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <TrendingUp size={14} />
+            Interest &amp; LTV
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-gray-50 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Principal</p>
+              <p className="text-base font-semibold text-gray-900">
+                {fmtINR(pledge.loanAmount)}
+              </p>
+            </div>
+            <div className="bg-blue-50 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Accrued Interest</p>
+              <p className="text-base font-semibold text-blue-700">
+                {fmtINR(interest.interest)}
+              </p>
+            </div>
+            <div className="bg-amber-50 rounded-lg p-3">
+              <p className="text-xs text-gray-500 mb-1">Total Due</p>
+              <p className="text-base font-semibold text-amber-700">
+                {fmtINR(interest.total)}
+              </p>
+            </div>
+            <div
+              className={`rounded-lg p-3 ${
+                ltvResult?.ltv != null && ltvResult.ltv > 75
+                  ? "bg-red-50"
+                  : "bg-emerald-50"
+              }`}
+            >
+              <p className="text-xs text-gray-500 mb-1">LTV</p>
+              <p
+                className={`text-base font-semibold ${
+                  ltvResult?.ltv != null && ltvResult.ltv > 75
+                    ? "text-red-600"
+                    : "text-emerald-700"
+                }`}
+              >
+                {ltvResult?.ltv != null
+                  ? `${ltvResult.ltv.toFixed(1)}%`
+                  : "N/A"}
+              </p>
+            </div>
+          </div>
+
+          {market && (
+            <p className="text-xs text-gray-400 mt-3">
+              Market rates — Gold:{" "}
+              {market.goldPerGram != null
+                ? fmtINR(market.goldPerGram) + "/g"
+                : "N/A"}{" "}
+              · Silver:{" "}
+              {market.silverPerGram != null
+                ? fmtINR(market.silverPerGram) + "/g"
+                : "N/A"}
+              {market.updatedAt && (
+                <> · Updated {fmtDate(market.updatedAt)}</>
+              )}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Pledged Items ── */}
+      {pledge.items.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <Tag size={14} />
+              Pledged Items ({pledge.items.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-gray-50">
+              {pledge.items.map((item) => (
+                <div
+                  key={item.id}
+                  className="px-5 py-3 flex items-center justify-between gap-4"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">
+                      {item.itemName ?? item.itemType}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {item.metalType} · Qty {item.quantity} · Purity{" "}
+                      {item.purity}%
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-sm font-medium text-gray-900">
+                      {Number(item.netWeightOfMetal).toFixed(2)}g net
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      {Number(item.grossWeight).toFixed(2)}g gross
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Transactions ── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <Receipt size={14} />
+              Transactions ({transactions.length})
+            </CardTitle>
+
+            {pledge.status === "ACTIVE" && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowForm((v) => !v)}
+                className="flex items-center gap-1.5 text-xs"
+              >
+                {showForm ? (
+                  <>
+                    <ChevronUp size={12} /> Cancel
+                  </>
+                ) : (
+                  <>
+                    <Plus size={12} /> Add
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {/* Add-transaction form */}
+          {showForm && (
+            <form
+              onSubmit={submitTransaction}
+              className="border border-gray-100 rounded-lg p-4 space-y-3 bg-gray-50"
+            >
+              {txnError && (
+                <Alert variant="destructive" className="py-2">
+                  <AlertDescription className="text-xs">
+                    {txnError}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* Type selector */}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Type</Label>
+                <div className="flex gap-2 flex-wrap">
+                  {TRANSACTION_TYPES.map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() =>
+                        setTxnType(t.value as Transaction["type"])
+                      }
+                      className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                        txnType === t.value
+                          ? "bg-gray-900 text-white border-gray-900"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-gray-400"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Amount */}
+              <div className="space-y-1.5">
+                <Label htmlFor="txn-amount" className="text-xs">
+                  Amount (₹)
+                </Label>
+                <Input
+                  id="txn-amount"
+                  ref={amountRef}
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={txnAmount}
+                  onChange={(e) => setTxnAmount(e.target.value)}
+                  className="h-8 text-sm"
+                />
+                <div className="flex gap-1.5">
+                  {QUICK_AMOUNTS.map((q) => (
+                    <button
+                      key={q}
+                      type="button"
+                      onClick={() => setTxnAmount(String(q))}
+                      className="text-xs px-2 py-1 rounded border border-gray-200 bg-white text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors"
+                    >
+                      +{(q / 1000).toFixed(0)}k
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Note */}
+              <div className="space-y-1.5">
+                <Label htmlFor="txn-note" className="text-xs">
+                  Note (optional)
+                </Label>
+                <Input
+                  id="txn-note"
+                  placeholder="e.g. partial payment"
+                  value={txnNote}
+                  onChange={(e) => setTxnNote(e.target.value)}
+                  className="h-8 text-sm"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                size="sm"
+                disabled={txnLoading}
+                className="w-full"
+              >
+                {txnLoading ? (
+                  <Loader2 size={13} className="animate-spin mr-1.5" />
+                ) : null}
+                Save Transaction
+              </Button>
+            </form>
+          )}
+
+          {/* Transaction list */}
+          {transactions.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">
+              No transactions yet
+            </p>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {transactions.map((txn) => (
+                <div
+                  key={txn.id}
+                  className="flex items-center justify-between py-3 gap-3"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <TxnBadge type={txn.type} />
+                      {txn.note && (
+                        <span className="text-xs text-gray-400 truncate">
+                          {txn.note}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      {fmtDate(txn.createdAt)}
+                    </p>
+                  </div>
+                  <p className="text-sm font-semibold text-gray-900 shrink-0">
+                    {fmtINR(Number(txn.amount))}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
