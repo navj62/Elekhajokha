@@ -18,7 +18,7 @@ export default function SignUpPage() {
   const [form, setForm] = useState({
     firstName: "", lastName: "", username: "",
     email: "", password: "", confirmPassword: "",
-  });
+  }); 
 
   const [pendingVerification, setPendingVerification] = useState(false);
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
@@ -46,7 +46,7 @@ export default function SignUpPage() {
     setOtp(next);
     if (digit && idx < 5) otpRefs.current[idx + 1]?.focus();
   }
-
+ 
   function handleOtpKeyDown(idx: number, e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Backspace" && !otp[idx] && idx > 0)
       otpRefs.current[idx - 1]?.focus();
@@ -74,47 +74,59 @@ export default function SignUpPage() {
 
   /* ── Step 1: Create account & send OTP (v7 API) ── */
   async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setError("");
+  e.preventDefault();
+  setError("");
 
-    if (form.password !== form.confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-    if (form.password.length < 8) {
-      setError("Password must be at least 8 characters");
-      return;
-    }
+  if (form.password !== form.confirmPassword) {
+    setError("Passwords do not match");
+    return;
+  }
+  if (form.password.length < 8) {
+    setError("Password must be at least 8 characters");
+    return;
+  }
 
-    setLoading(true);
-    try {
-      // v7: signUp.password() instead of signUp.create()
-      const createRes = await signUp.password({
-        firstName: form.firstName,
-        lastName: form.lastName,
-        username: form.username,
-        emailAddress: form.email,
-        password: form.password,
-      });
-      if (createRes?.error) throw { errors: [createRes.error] };
+  // ✅ Validate username format before hitting Clerk
+  if (!/^[a-zA-Z0-9_]{3,20}$/.test(form.username)) {
+    setError("Username must be 3–20 characters, letters, numbers, or underscores only");
+    return;
+  }
 
-      // v7: signUp.verifications.sendEmailCode() instead of prepareEmailAddressVerification
-      const prepRes = await signUp.verifications.sendEmailCode();
-      if (prepRes?.error) throw { errors: [prepRes.error] };
+  setLoading(true);
+  try {
+    const createRes = await signUp.password({
+      firstName:    form.firstName,
+      lastName:     form.lastName,
+      username:     form.username,
+      emailAddress: form.email,
+      password:     form.password,
+    });
+    if (createRes?.error) throw { errors: [createRes.error] };
 
-      setPendingVerification(true);
-      setOtp(Array(6).fill(""));
-    } catch (err: unknown) {
-      const e = err as { errors?: { message?: string; longMessage?: string }[] };
+    const prepRes = await signUp.verifications.sendEmailCode();
+    if (prepRes?.error) throw { errors: [prepRes.error] };
+
+    setPendingVerification(true);
+    setOtp(Array(6).fill(""));
+
+  } catch (err: unknown) {
+    const e = err as { errors?: { message?: string; longMessage?: string; code?: string }[] };
+
+    // ✅ Catch Clerk's username-taken error specifically
+    const clerkError = e.errors?.[0];
+    if (clerkError?.code === "form_identifier_exists" || clerkError?.message?.toLowerCase().includes("username")) {
+      setError("That username is already taken. Please choose a different one.");
+    } else {
       setError(
-        e.errors?.[0]?.longMessage ||
-        e.errors?.[0]?.message ||
+        clerkError?.longMessage ||
+        clerkError?.message ||
         "Sign up failed. Please try again."
       );
-    } finally {
-      setLoading(false);
     }
+  } finally {
+    setLoading(false);
   }
+}
 
   /* ── Step 2: Verify OTP (v7 API) ── */
   async function verify(e: React.FormEvent) {
@@ -301,10 +313,13 @@ export default function SignUpPage() {
                     <InputField label="FIRST NAME" placeholder="John" onChange={(v) => update("firstName", v)} />
                     <InputField label="LAST NAME" placeholder="Doe" onChange={(v) => update("lastName", v)} />
                   </div>
-                  <InputField
-                    label="USERNAME" placeholder="@ johndoe123"
-                    autoComplete="username" onChange={(v) => update("username", v)}
-                  />
+                 <InputField
+  label="USERNAME"
+  placeholder="@ johndoe123"
+  autoComplete="username"
+  onChange={(v) => update("username", v)}
+  hint="3–20 characters, letters, numbers, underscores"  // ✅ add hint prop
+/>
                   <InputField
                     label="EMAIL" placeholder="john@example.com"
                     type="email" autoComplete="email" onChange={(v) => update("email", v)}
@@ -532,11 +547,13 @@ export default function SignUpPage() {
    Shared sub-components (unchanged)
 ═══════════════════════════════════════ */
 
+// ✅ Only this one should exist — outside the component
 function InputField({
-  label, type = "text", placeholder, autoComplete, onChange,
+  label, type = "text", placeholder, autoComplete, onChange, hint,
 }: {
   label: string; type?: string; placeholder?: string;
   autoComplete?: string; onChange: (v: string) => void;
+  hint?: string; // ✅ added
 }) {
   return (
     <div className="space-y-2">
@@ -546,6 +563,7 @@ function InputField({
         onChange={(e) => onChange(e.target.value)} required
         className="w-full bg-[#E8EDE0] text-[#2C2C2C] placeholder:text-[#A3A3A3] border-none rounded-2xl h-14 px-5 text-[15px] focus:outline-none focus:ring-2 focus:ring-[#5A6043]/40 transition-all font-medium"
       />
+      {hint && <p className="text-[11px] text-[#A3A3A3] pl-1">{hint}</p>} {/* ✅ added */}
     </div>
   );
 }

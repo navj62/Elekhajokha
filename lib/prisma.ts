@@ -1,5 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
+import { neonConfig } from "@neondatabase/serverless";
+
 
 /* ------------------------------------------------------------------ */
 /* Global type                                                        */
@@ -9,9 +11,12 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+<<<<<<< HEAD
 /* ------------------------------------------------------------------ */
 /* Create client                                                      */
 /* ------------------------------------------------------------------ */
+=======
+>>>>>>> main
 
 const createPrismaClient = () => {
 

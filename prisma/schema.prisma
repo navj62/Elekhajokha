@@ -97,6 +97,12 @@ model Pledge {
   lastRiskTier       RiskTier?
   lastEvaluatedAt    DateTime?
   alerts             PledgeAlert[]
+<<<<<<< HEAD
+=======
+  lastAmountOwed   Decimal? @db.Decimal(14,2)
+lastMarketValue  Decimal? @db.Decimal(14,2)
+
+>>>>>>> main
   @@index([status, createdAt])
   @@index([customerId])
   @@map("pledges")
@@ -227,6 +233,7 @@ model FinancialSnapshot {
   atRiskPledges    Int
   underwaterPledges Int
 
+<<<<<<< HEAD
   // Month-to-date (calculated for the current month at snapshot time)
   mtdNewPledges      Int   // created this month
   mtdReleasedPledges Int   // released this month
@@ -234,6 +241,13 @@ model FinancialSnapshot {
 
   calculatedAt DateTime @default(now())
 
+=======
+ 
+
+  calculatedAt DateTime @default(now())
+  snapshotDate     DateTime
+@@unique([userId, snapshotDate])
+>>>>>>> main
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, calculatedAt(sort: Desc)])
@@ -325,4 +339,8 @@ enum AlertType {
   TIER_CHANGE
   CRITICAL
   INFO
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> main
