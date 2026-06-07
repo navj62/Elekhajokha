@@ -1,14 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/components/providers/LanguageProvider";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { Loader2, Camera, Store, MapPin, Phone, User, Users, TrendingUp, CreditCard, CalendarDays, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, User, Mail, CalendarDays, Lock, CreditCard, Info, Edit2 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -34,212 +30,26 @@ interface Profile {
   customerTerms: string | null;
 }
 
-const GENDER_OPTIONS = [
-  { value: "Male",   label: "Male"   },
-  { value: "Female", label: "Female" },
-  { value: "Other",  label: "Other"  },
-];
-
-/* ------------------------------------------------------------------ */
-/*  Subscription helpers                                                */
-/* ------------------------------------------------------------------ */
-function daysRemaining(endDate: string | null): number | null {
-  if (!endDate) return null;
-  const diff = new Date(endDate).getTime() - Date.now();
-  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-}
-
-function planLabel(plan: string | null): string {
-  if (plan === "halfyearly") return "Half Yearly";
-  if (plan === "yearly")     return "Yearly";
-  return "—";
-}
-
-function SubscriptionCard({ profile, onUpgrade }: {
-  profile: Profile;
-  onUpgrade: () => void;
-}) {
-  const days    = daysRemaining(profile.subscriptionEndDate);
-  const status  = profile.subscriptionStatus;
-  const endDate = profile.subscriptionEndDate
-    ? new Date(profile.subscriptionEndDate).toLocaleDateString("en-IN", {
-        day: "numeric", month: "short", year: "numeric",
-      })
-    : null;
-
-  if (status === "active") {
-    const urgent = days !== null && days <= 30;
-    return (
-      <Card className={urgent ? "border-orange-200" : "border-green-200"}>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <CreditCard size={16} className="text-green-600" />
-            Subscription
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Status</span>
-            <span className="flex items-center gap-1.5 text-sm font-medium text-green-700">
-              <CheckCircle2 size={14} /> Active
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Plan</span>
-            <span className="text-sm font-medium">{planLabel(profile.subscriptionPlan)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Valid Until</span>
-            <span className="text-sm font-medium flex items-center gap-1.5">
-              <CalendarDays size={14} className="text-gray-400" />
-              {endDate ?? "—"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Days Remaining</span>
-            <span className={`text-sm font-semibold ${urgent ? "text-orange-600" : "text-green-700"}`}>
-              {days !== null ? `${days} days` : "—"}
-            </span>
-          </div>
-          {days !== null && (
-            <div>
-              <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all ${urgent ? "bg-orange-400" : "bg-green-500"}`}
-                  style={{
-                    width: `${Math.min(100, (days / (profile.subscriptionPlan === "yearly" ? 365 : 180)) * 100)}%`,
-                  }}
-                />
-              </div>
-              {urgent && (
-                <p className="text-xs text-orange-600 mt-1.5 flex items-center gap-1">
-                  <AlertTriangle size={12} /> Expiring soon — renew to avoid losing access
-                </p>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (status === "trial") {
-    const urgent = days !== null && days <= 5;
-    return (
-      <Card className="border-yellow-200 bg-yellow-50/40">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <CreditCard size={16} className="text-yellow-600" />
-            Subscription
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Status</span>
-            <span className="flex items-center gap-1.5 text-sm font-medium text-yellow-700">
-              <Clock size={14} /> Free Trial
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Trial Ends</span>
-            <span className="text-sm font-medium">{endDate ?? "—"}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Days Remaining</span>
-            <span className={`text-sm font-semibold ${urgent ? "text-red-600" : "text-yellow-700"}`}>
-              {days !== null ? `${days} days` : "—"}
-            </span>
-          </div>
-          <div className={`rounded-lg p-3 text-sm ${urgent ? "bg-red-50 text-red-700 border border-red-200" : "bg-yellow-50 text-yellow-800 border border-yellow-200"}`}>
-            {urgent
-              ? `⚠ Only ${days} day${days === 1 ? "" : "s"} left — subscribe now to keep your data and access.`
-              : "You're on a free trial. Subscribe before it ends to continue uninterrupted access."
-            }
-          </div>
-          <Button onClick={onUpgrade} className="w-full bg-green-600 hover:bg-green-700 text-white">
-            Subscribe Now →
-          </Button>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="border-red-200 bg-red-50/30">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base font-semibold flex items-center gap-2">
-          <CreditCard size={16} className="text-red-500" />
-          Subscription
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-gray-500">Status</span>
-          <span className="flex items-center gap-1.5 text-sm font-medium text-red-600">
-            <AlertTriangle size={14} />
-            {status === "halted" ? "Payment Failed" : "Expired"}
-          </span>
-        </div>
-        {profile.subscriptionPlan && (
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Last Plan</span>
-            <span className="text-sm font-medium">{planLabel(profile.subscriptionPlan)}</span>
-          </div>
-        )}
-        {endDate && (
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-500">Expired On</span>
-            <span className="text-sm font-medium">{endDate}</span>
-          </div>
-        )}
-        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
-          {status === "halted"
-            ? "Your payment failed. Please subscribe again to restore access."
-            : "Your subscription has expired. Renew to regain full access."
-          }
-        </div>
-        <Button onClick={onUpgrade} className="w-full bg-green-600 hover:bg-green-700 text-white">
-          {status === "halted" ? "Retry Payment →" : "Renew Subscription →"}
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Page                                                                */
-/* ------------------------------------------------------------------ */
 export default function ProfilePage() {
   const { user, isLoaded: clerkLoaded } = useUser();
   const router = useRouter();
 
-  const [profile,  setProfile]  = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [fetching, setFetching] = useState(true);
   const [fetchErr, setFetchErr] = useState("");
 
   const [editing, setEditing] = useState(false);
-  const [form,    setForm]    = useState({
+  const [form, setForm] = useState({
     firstName: "", lastName: "", mobile: "", shopName: "", address: "", gender: "",
   });
-  const [saving,  setSaving]  = useState(false);
+  const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState("");
-  const [saved,   setSaved]   = useState(false);
-
-  const [imgUploading, setImgUploading] = useState(false);
-
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
-  const [newPassword,      setNewPassword]      = useState("");
-  const [confirmPassword,  setConfirmPassword]  = useState("");
-  const [passwordSaving,   setPasswordSaving]   = useState(false);
-  const [passwordErr,      setPasswordErr]      = useState("");
-  const [passwordSaved,    setPasswordSaved]    = useState(false);
 
   // ── Terms state ──────────────────────────────────────────────────────
   const [shopownerTerms, setShopownerTerms] = useState("");
-  const [customerTerms,  setCustomerTerms]  = useState("");
-  const [termsSaving,    setTermsSaving]    = useState(false);
-  const [termsSaved,     setTermsSaved]     = useState(false);
-  const [termsErr,       setTermsErr]       = useState("");
+  const [customerTerms, setCustomerTerms] = useState("");
+  const [termsSaving, setTermsSaving] = useState(false);
+  const [termsErr, setTermsErr] = useState("");
 
   useEffect(() => {
     fetch("/api/profile")
@@ -249,14 +59,14 @@ export default function ProfilePage() {
         setProfile(data);
         setForm({
           firstName: data.firstName ?? "",
-          lastName:  data.lastName  ?? "",
-          mobile:    data.mobile    ?? "",
-          shopName:  data.shopName  ?? "",
-          address:   data.address   ?? "",
-          gender:    data.gender    ?? "",
+          lastName: data.lastName ?? "",
+          mobile: data.mobile ?? "",
+          shopName: data.shopName ?? "",
+          address: data.address ?? "",
+          gender: data.gender ?? "",
         });
         setShopownerTerms(data.shopownerTerms ?? "");
-        setCustomerTerms(data.customerTerms   ?? "");
+        setCustomerTerms(data.customerTerms ?? "");
       })
       .catch((e) => setFetchErr(e.message))
       .finally(() => setFetching(false));
@@ -271,8 +81,7 @@ export default function ProfilePage() {
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed to save"); }
       const updated = await res.json();
       setProfile((p) => p ? { ...p, ...updated } : p);
-      setEditing(false); setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      setEditing(false);
     } catch (e: any) { setSaveErr(e.message); }
     finally { setSaving(false); }
   }
@@ -282,299 +91,314 @@ export default function ProfilePage() {
     try {
       const fd = new FormData();
       fd.append("shopownerTerms", shopownerTerms);
-      fd.append("customerTerms",  customerTerms);
+      fd.append("customerTerms", customerTerms);
       const res = await fetch("/api/profile", { method: "PATCH", body: fd });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
-      setTermsSaved(true);
-      setTimeout(() => setTermsSaved(false), 3000);
     } catch (e: any) { setTermsErr(e.message); }
     finally { setTermsSaving(false); }
   }
 
-  async function handleImageUpload(file: File) {
-    if (!user) return;
-    setImgUploading(true);
-    try {
-      await user.setProfileImage({ file });
-      setProfile((p) => p ? { ...p, profileImageUrl: user.imageUrl } : p);
-    } catch {}
-    finally { setImgUploading(false); }
-  }
-
-  async function handlePasswordChange() {
-    if (!user) return;
-    setPasswordErr("");
-    if (newPassword.length < 8) { setPasswordErr("Password must be at least 8 characters"); return; }
-    if (newPassword !== confirmPassword) { setPasswordErr("Passwords do not match"); return; }
-    setPasswordSaving(true);
-    try {
-      await user.updatePassword({ newPassword });
-      setPasswordSaved(true); setNewPassword(""); setConfirmPassword(""); setShowPasswordForm(false);
-      setTimeout(() => setPasswordSaved(false), 3000);
-    } catch (e: any) { setPasswordErr(e.errors?.[0]?.message || "Failed to update password"); }
-    finally { setPasswordSaving(false); }
-  }
-
-  if (fetching || !clerkLoaded) {
+  if (!clerkLoaded || fetching) {
     return (
-      <div className="flex items-center justify-center min-h-[40vh]">
-        <Loader2 className="animate-spin text-gray-400" size={32} />
+      <div className="flex h-[60vh] items-center justify-center">
+        <Loader2 className="animate-spin text-[#6B7150]" size={28} />
       </div>
     );
   }
 
   if (fetchErr || !profile) {
     return (
-      <div className="max-w-2xl mx-auto p-6">
-        <Alert variant="destructive">
-          <AlertDescription>{fetchErr || "Profile not found"}</AlertDescription>
-        </Alert>
+      <div className="p-6 text-red-600 bg-red-50 rounded-lg max-w-2xl mx-auto mt-10 text-[13px]">
+        {fetchErr || "Failed to load profile"}
       </div>
     );
   }
 
-  const displayImage = user?.imageUrl || profile.profileImageUrl;
-  const fullName     = [profile.firstName, profile.lastName].filter(Boolean).join(" ") || profile.username;
-  const memberSince  = new Date(profile.createdAt).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+  const memberSince = profile.createdAt
+    ? new Date(profile.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    : "";
+
+  const diff = profile.subscriptionEndDate ? new Date(profile.subscriptionEndDate).getTime() - Date.now() : 0;
+  const days = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  const endDateStr = profile.subscriptionEndDate
+    ? new Date(profile.subscriptionEndDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : "";
+
+  const isTrial = profile.subscriptionStatus === "trial";
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-6">
-
-      <div>
-        <h1 className="text-2xl font-bold">Profile</h1>
-        <p className="text-sm text-gray-500 mt-1">Manage your account and shop details.</p>
+    <div className="max-w-[1200px] mx-auto pb-16 mt-4 font-sans text-[#2C2C2C]">
+      {/* ── PAGE HEADER ── */}
+      <div className="mb-8">
+        <h1 className="text-[32px] font-semibold tracking-tight text-[#2C2C2C] leading-none mb-2">
+          Profile
+        </h1>
+        <p className="text-[14px] text-[#6F6F6F]">
+          Manage your account and shop details.
+        </p>
       </div>
 
-      {/* Profile Photo + Name */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
-            <div className="relative shrink-0">
-              <div className="h-24 w-24 rounded-full overflow-hidden bg-gray-100 border">
-                {displayImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={displayImage} alt={fullName} className="h-full w-full object-cover" />
+      {/* ── PAGE LAYOUT ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-[35fr_65fr] gap-8 items-start">
+
+        {/* ════════════════════════════════════ */}
+        {/* LEFT COLUMN                          */}
+        {/* ════════════════════════════════════ */}
+        <div className="space-y-6">
+
+          {/* Profile Card */}
+          <div className="bg-white rounded-[20px] overflow-hidden border border-[#ECEAE4] shadow-sm text-center">
+            <div className="bg-[#6B7150] h-[100px] w-full"></div>
+            <div className="relative -mt-12 mb-3 flex justify-center">
+              <div className="w-24 h-24 rounded-full border-[5px] border-white bg-[#E8EBD8] overflow-hidden">
+                {user?.imageUrl ? (
+                  <img src={user.imageUrl} alt="Avatar" className="w-full h-full object-cover" />
                 ) : (
-                  <div className="h-full w-full flex items-center justify-center text-2xl font-bold text-gray-400">
-                    {fullName.charAt(0).toUpperCase()}
-                  </div>
+                  <User size={40} className="text-[#555B3F] mt-4 mx-auto" />
                 )}
               </div>
-              <label className="absolute bottom-0 right-0 bg-black text-white p-1.5 rounded-full cursor-pointer hover:opacity-80">
-                {imgUploading ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />}
-                <input type="file" accept="image/*" hidden
-                  onChange={(e) => e.target.files && handleImageUpload(e.target.files[0])} />
-              </label>
             </div>
-            <div className="text-center sm:text-left">
-              <h2 className="text-xl font-semibold">{fullName}</h2>
-              <p className="text-sm text-gray-500">@{profile.username}</p>
-              {profile.email && <p className="text-sm text-gray-500">{profile.email}</p>}
-              <p className="text-xs text-gray-400 mt-1">Member since {memberSince}</p>
+            <div className="px-6 pb-6">
+              <h2 className="text-[20px] font-semibold text-[#2C2C2C]">{form.firstName} {form.lastName}</h2>
+              <p className="text-[13px] text-[#8C8F7A] mt-0.5">@{profile.username || "user"}</p>
+
+              <div className="h-px w-full bg-[#F4F3EE] my-5"></div>
+
+              <div className="space-y-3.5 text-[13px] text-[#2C2C2C] font-medium">
+                <div className="flex items-center gap-3 justify-center">
+                  <Mail size={15} className="text-[#6F6F6F]" />
+                  <span>{profile.email}</span>
+                </div>
+                <div className="flex items-center gap-3 justify-center">
+                  <CalendarDays size={15} className="text-[#6F6F6F]" />
+                  <span>Member since {memberSince}</span>
+                </div>
+              </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-4">
-        <Card>
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-blue-50 flex items-center justify-center">
-                <Users size={18} className="text-blue-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{profile.totalCustomers}</p>
-                <p className="text-xs text-gray-500">Total Customers</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-5 pb-5">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-green-50 flex items-center justify-center">
-                <TrendingUp size={18} className="text-green-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{profile.activePledges}</p>
-                <p className="text-xs text-gray-500">Active Pledges</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          {/* Language Card */}
+          <div className="bg-white rounded-[20px] border border-[#ECEAE4] shadow-sm p-6">
+            <h3 className="text-[16px] font-semibold text-[#2C2C2C]">Language</h3>
+            <p className="text-[12px] text-[#6F6F6F] mt-1 mb-4">Choose application language</p>
 
-      {/* Subscription */}
-      <SubscriptionCard
-        profile={profile}
-        onUpgrade={() => router.push("/subscription")}
-      />
-
-      {/* Shop & Personal Details */}
-      <Card>
-        <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-base font-semibold">Shop & Personal Details</CardTitle>
-          {!editing ? (
-            <button type="button" onClick={() => setEditing(true)} className="text-sm text-blue-600 hover:underline">Edit</button>
-          ) : (
-            <button type="button" onClick={() => { setEditing(false); setSaveErr(""); }} className="text-sm text-gray-500 hover:underline">Cancel</button>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {!editing ? (
-            <div className="space-y-0">
-              {[
-                { icon: <Store size={15} />,  label: "Shop Name",  value: profile.shopName  || "—" },
-                { icon: <MapPin size={15} />,  label: "Address",    value: profile.address   || "—" },
-                { icon: <Phone size={15} />,   label: "Mobile",     value: profile.mobile    || "—" },
-                { icon: <User size={15} />,    label: "First Name", value: profile.firstName || "—" },
-                { icon: <User size={15} />,    label: "Last Name",  value: profile.lastName  || "—" },
-                { icon: <User size={15} />,    label: "Gender",     value: profile.gender    || "—" },
-              ].map(({ icon, label, value }) => (
-                <div key={label} className="flex items-center gap-3 py-3 border-b last:border-0">
-                  <span className="text-gray-400 shrink-0">{icon}</span>
-                  <span className="text-sm text-gray-500 w-28 shrink-0">{label}</span>
-                  <span className="text-sm font-medium text-gray-800">{value}</span>
-                </div>
-              ))}
+            <div className="flex p-1 bg-[#F9F8F3] rounded-[12px] border border-[#ECEAE4] mb-4">
+              <button className="flex-1 bg-[#555B3F] text-white text-[13px] font-semibold py-2 rounded-[10px] shadow-sm">
+                English
+              </button>
+              <button className="flex-1 text-[#6F6F6F] text-[13px] font-medium py-2 rounded-[10px] hover:bg-[#ECEAE4] transition-colors">
+                हिन्दी
+              </button>
             </div>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2">
-              {[
-                { key: "firstName", label: "First Name" },
-                { key: "lastName",  label: "Last Name"  },
-                { key: "shopName",  label: "Shop Name"  },
-                { key: "mobile",    label: "Mobile"     },
-              ].map(({ key, label }) => (
-                <div key={key} className="space-y-1">
-                  <Label className="text-sm">{label}</Label>
-                  <Input
-                    value={form[key as keyof typeof form]}
-                    onChange={(e) => setForm((p) => ({ ...p, [key]: e.target.value }))}
-                  />
-                </div>
-              ))}
-              <div className="space-y-1 sm:col-span-2">
-                <Label className="text-sm">Address</Label>
-                <Input value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
+
+            <p className="text-[11px] text-[#8C8F7A] leading-relaxed">
+              This changes menus, reports, receipts, and customer-facing text.
+            </p>
+          </div>
+
+          {/* Statistics Cards */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-white rounded-[20px] border border-[#ECEAE4] shadow-sm py-6 px-4 text-center flex flex-col items-center justify-center">
+              <span className="text-[28px] font-semibold text-[#2C2C2C] leading-none mb-2">{profile.totalCustomers}</span>
+              <span className="text-[11px] text-[#6F6F6F] font-medium leading-tight">Total<br />Customers</span>
+            </div>
+            <div className="bg-white rounded-[20px] border border-[#ECEAE4] shadow-sm py-6 px-4 text-center flex flex-col items-center justify-center">
+              <span className="text-[28px] font-semibold text-[#2C2C2C] leading-none mb-2">{profile.activePledges}</span>
+              <span className="text-[11px] text-[#6F6F6F] font-medium leading-tight">Active<br />Pledges</span>
+            </div>
+          </div>
+
+          {/* Security Card */}
+          <div className="bg-white rounded-[20px] border border-[#ECEAE4] shadow-sm p-6">
+            <h3 className="text-[16px] font-semibold text-[#2C2C2C]">Security</h3>
+            <p className="text-[12px] text-[#6F6F6F] mt-1 mb-3">Update your password to keep your account secure.</p>
+            <p className="text-[11px] text-[#8C8F7A] mb-5">Last password update: 14 days ago</p>
+
+            <button className="w-full flex items-center justify-center gap-2 bg-[#E3E5C3] hover:bg-[#DEDCD4] text-[#2C2C2C] text-[13px] font-semibold py-3 rounded-[12px] transition-colors">
+              <Lock size={14} /> Change Password
+            </button>
+          </div>
+
+        </div>
+
+
+        {/* ════════════════════════════════════ */}
+        {/* RIGHT COLUMN                         */}
+        {/* ════════════════════════════════════ */}
+        <div className="space-y-6">
+
+          {/* Subscription Banner */}
+          <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm flex items-center justify-between">
+            <div className="space-y-3 max-w-[70%]">
+              <div className="flex items-center gap-3">
+                <span className="bg-[#E8EBD8] text-[#555B3F] text-[11px] font-bold uppercase tracking-widest px-3 py-1 rounded-full">
+                  {isTrial ? "Free Trial" : "Active"}
+                </span>
+                <span className="text-[13px] text-[#6F6F6F] font-medium">
+                  Ends {endDateStr}
+                </span>
               </div>
-              <div className="space-y-1">
-                <Label className="text-sm">Gender</Label>
-                <select className="w-full rounded-md border px-3 py-2 text-sm bg-background" value={form.gender}
-                  onChange={(e) => setForm((p) => ({ ...p, gender: e.target.value }))}>
-                  <option value="">Select</option>
-                  {GENDER_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              </div>
-              {saveErr && (
-                <div className="sm:col-span-2">
-                  <Alert variant="destructive"><AlertDescription>{saveErr}</AlertDescription></Alert>
+              {days <= 14 && (
+                <div>
+                  <span className="bg-[#FEE2E2] text-[#991B1B] text-[11px] font-bold px-2.5 py-1 rounded-full">
+                    {days} days remaining
+                  </span>
                 </div>
               )}
-              <div className="sm:col-span-2">
-                <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto sm:px-10">
-                  {saving ? <Loader2 className="animate-spin" /> : "Save Changes"}
-                </Button>
+              <p className="text-[13px] text-[#2C2C2C] leading-relaxed">
+                {isTrial
+                  ? "Your free trial will expire soon. Subscribe before it ends to avoid interruption."
+                  : "Your subscription is active and in good standing."}
+              </p>
+            </div>
+            <div>
+              <button onClick={() => router.push("/subscription")} className="bg-[#555B3F] hover:bg-[#3D4230] text-white text-[13px] font-semibold px-5 py-3 rounded-[12px] transition-colors flex items-center gap-2">
+                Subscribe Now <span>→</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Shop & Personal Details */}
+          <div className="bg-white rounded-[20px] border border-[#ECEAE4] shadow-sm overflow-hidden">
+            <div className="bg-[#555B3F] px-6 py-4 flex items-center justify-between">
+              <h3 className="text-[16px] font-semibold text-[#F8FAD7]">Shop & Personal Details</h3>
+              <button
+                onClick={() => editing ? handleSave() : setEditing(true)}
+                className="text-white/90 hover:text-white text-[13px] font-medium flex items-center gap-1.5"
+              >
+                {editing ? (saving ? <Loader2 size={14} className="animate-spin" /> : "Save") : <><Edit2 size={14} /> Edit</>}
+              </button>
+            </div>
+
+            <div className="p-6 space-y-5">
+              {saveErr && <div className="text-red-600 text-[12px]">{saveErr}</div>}
+
+              <div>
+                <label className="block text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-2">Shop Name</label>
+                <input
+                  disabled={!editing}
+                  value={form.shopName}
+                  onChange={e => setForm({ ...form, shopName: e.target.value })}
+                  className="w-full bg-[#F9F8F3] border border-[#ECEAE4] disabled:bg-[#F9F8F3] disabled:text-[#2C2C2C] rounded-[10px] px-4 py-3 text-[14px] text-[#2C2C2C] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-2">Address</label>
+                <input
+                  disabled={!editing}
+                  value={form.address}
+                  onChange={e => setForm({ ...form, address: e.target.value })}
+                  className="w-full bg-[#F9F8F3] border border-[#ECEAE4] disabled:bg-[#F9F8F3] disabled:text-[#2C2C2C] rounded-[10px] px-4 py-3 text-[14px] text-[#2C2C2C] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-2">Mobile</label>
+                  <input
+                    disabled={!editing}
+                    value={form.mobile}
+                    onChange={e => setForm({ ...form, mobile: e.target.value })}
+                    className="w-full bg-[#F9F8F3] border border-[#ECEAE4] disabled:bg-[#F9F8F3] disabled:text-[#2C2C2C] rounded-[10px] px-4 py-3 text-[14px] text-[#2C2C2C] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-2">Gender</label>
+                  <select
+                    disabled={!editing}
+                    value={form.gender}
+                    onChange={e => setForm({ ...form, gender: e.target.value })}
+                    className="w-full bg-[#F9F8F3] border border-[#ECEAE4] disabled:bg-[#F9F8F3] disabled:text-[#2C2C2C] rounded-[10px] px-4 py-3 text-[14px] text-[#2C2C2C] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all appearance-none"
+                  >
+                    <option value="">Select</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-2">First Name</label>
+                  <input
+                    disabled={!editing}
+                    value={form.firstName}
+                    onChange={e => setForm({ ...form, firstName: e.target.value })}
+                    className="w-full bg-[#F9F8F3] border border-[#ECEAE4] disabled:bg-[#F9F8F3] disabled:text-[#2C2C2C] rounded-[10px] px-4 py-3 text-[14px] text-[#2C2C2C] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-2">Last Name</label>
+                  <input
+                    disabled={!editing}
+                    value={form.lastName}
+                    onChange={e => setForm({ ...form, lastName: e.target.value })}
+                    className="w-full bg-[#F9F8F3] border border-[#ECEAE4] disabled:bg-[#F9F8F3] disabled:text-[#2C2C2C] rounded-[10px] px-4 py-3 text-[14px] text-[#2C2C2C] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
+                  />
+                </div>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Change Password */}
-      <Card>
-        <CardHeader className="pb-3 flex flex-row items-center justify-between">
-          <CardTitle className="text-base font-semibold">Password</CardTitle>
-          <button type="button" onClick={() => { setShowPasswordForm((v) => !v); setPasswordErr(""); }}
-            className="text-sm text-blue-600 hover:underline">
-            {showPasswordForm ? "Cancel" : "Change Password"}
-          </button>
-        </CardHeader>
-        {showPasswordForm && (
-          <CardContent className="space-y-4">
-            <div className="space-y-1">
-              <Label className="text-sm">New Password</Label>
-              <Input type="password" placeholder="Min. 8 characters" value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-sm">Confirm New Password</Label>
-              <Input type="password" placeholder="Re-enter new password" value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)} />
-            </div>
-            {passwordErr && <Alert variant="destructive"><AlertDescription>{passwordErr}</AlertDescription></Alert>}
-            <Button onClick={handlePasswordChange} disabled={passwordSaving} className="w-full sm:w-auto sm:px-10">
-              {passwordSaving ? <Loader2 className="animate-spin" /> : "Update Password"}
-            </Button>
-          </CardContent>
-        )}
-      </Card>
-
-      {/* Receipt Terms & Conditions */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">Receipt Terms & Conditions</CardTitle>
-          <p className="text-xs text-gray-400 mt-1">
-            Shown on PDF receipts. Leave empty to use default Hindi terms. Each line = one point.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1">
-            <Label className="text-sm">Shopowner Copy Terms</Label>
-            <textarea
-              value={shopownerTerms}
-              onChange={(e) => setShopownerTerms(e.target.value)}
-              rows={6}
-              placeholder={`• मेरे द्वारा गिरवी रखी गई उपरोक्त रकम...\n• (each line is one term)`}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
-            />
           </div>
 
-          <div className="space-y-1">
-            <Label className="text-sm">Customer Copy Terms</Label>
-            <textarea
-              value={customerTerms}
-              onChange={(e) => setCustomerTerms(e.target.value)}
-              rows={6}
-              placeholder={`• गिरवी रखी गयी रकम का 1 वर्ष मे...\n• (each line is one term)`}
-              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
-            />
+          {/* Receipt Terms & Conditions */}
+          <div className="bg-white rounded-[20px] border border-[#ECEAE4] shadow-sm p-6">
+            <div className="mb-5">
+              <h3 className="text-[18px] font-semibold text-[#2C2C2C]">Receipt Terms & Conditions</h3>
+              <p className="text-[13px] text-[#6F6F6F] mt-1.5 leading-relaxed">
+                Shown on PDF receipts. Leave empty to use default Hindi terms. Each line = one point.
+              </p>
+            </div>
+
+            <div className="space-y-6">
+              {termsErr && <div className="text-red-600 text-[12px]">{termsErr}</div>}
+
+              <div>
+                <label className="block text-[13px] font-semibold text-[#2C2C2C] mb-2">Shopowner Copy terms</label>
+                <textarea
+                  rows={4}
+                  placeholder={"• मेरे द्वारा गिरवी रखी गई उपरोक्त रकम...\n• (each line is one term)"}
+                  value={shopownerTerms}
+                  onChange={e => setShopownerTerms(e.target.value)}
+                  className="w-full bg-white border border-[#ECEAE4] rounded-[12px] px-4 py-3 text-[13px] text-[#2C2C2C] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] resize-none transition-all"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[13px] font-semibold text-[#2C2C2C] mb-2">Customer copy terms</label>
+                <textarea
+                  rows={4}
+                  placeholder={"• गिरवी रखी गयी रकम का 1 वर्ष मे...\n• (each line is one term)"}
+                  value={customerTerms}
+                  onChange={e => setCustomerTerms(e.target.value)}
+                  className="w-full bg-white border border-[#ECEAE4] rounded-[12px] px-4 py-3 text-[13px] text-[#2C2C2C] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] resize-none transition-all"
+                />
+              </div>
+
+              <div className="bg-[#F9F8F3] border border-[#ECEAE4] rounded-[12px] p-4 flex gap-3 items-start">
+                <Info size={16} className="text-[#8C8F7A] shrink-0 mt-0.5" />
+                <p className="text-[12px] text-[#6F6F6F] leading-relaxed">
+                  Default Hindi terms will automatically be used if this field is left empty.
+                </p>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={handleTermsSave}
+                  disabled={termsSaving}
+                  className="bg-[#6B7150] hover:bg-[#585E42] text-white text-[13px] font-semibold px-6 py-2.5 rounded-[12px] transition-colors flex items-center gap-2 shadow-sm"
+                >
+                  {termsSaving && <Loader2 size={14} className="animate-spin" />}
+                  Save Terms
+                </button>
+              </div>
+            </div>
           </div>
 
-          {termsErr && (
-            <Alert variant="destructive">
-              <AlertDescription>{termsErr}</AlertDescription>
-            </Alert>
-          )}
+        </div>
 
-          <Button
-            onClick={handleTermsSave}
-            disabled={termsSaving}
-            className="w-full sm:w-auto sm:px-10"
-          >
-            {termsSaving ? <Loader2 className="animate-spin" /> : "Save Terms"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Toasts */}
-      {saved && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-lg bg-green-600 text-white px-4 py-3 shadow-lg text-sm">
-          Profile updated successfully
-        </div>
-      )}
-      {passwordSaved && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-lg bg-green-600 text-white px-4 py-3 shadow-lg text-sm">
-          Password updated successfully
-        </div>
-      )}
-      {termsSaved && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-lg bg-green-600 text-white px-4 py-3 shadow-lg text-sm">
-          Terms saved successfully
-        </div>
-      )}
+      </div>
     </div>
   );
 }

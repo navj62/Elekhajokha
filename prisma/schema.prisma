@@ -33,34 +33,37 @@ model User {
   customerTerms          String?
   shopownerTerms         String?
   customers              Customer[]
+  alerts                 PledgeAlert[]
+  tasks                  Task[]
+  financialSnapshot      FinancialSnapshot[]
 
-   alerts            PledgeAlert[]
-  financialSnapshot FinancialSnapshot[]
   @@index([razorpaySubscriptionId])
   @@index([subscriptionStatus, isActive])
   @@map("users")
 }
 
 model Customer {
-  id              String    @id @default(uuid())
+  id              String        @id @default(uuid())
   userId          String
   name            String
   region          String
   address         String
   mobile          String?
-  viewToken       String    @unique @default(uuid())
-  isPortalBlocked Boolean   @default(false)
+  viewToken       String        @unique @default(uuid())
+  isPinned        Boolean       @default(false)
+  isPortalBlocked Boolean       @default(false)
   idProofImg      String?
   customerImg     String?
   aadharNo        String?
   remark          String?
   deletedAt       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   gender          Gender?
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   pledges         Pledge[]
-  alerts  PledgeAlert[]
+  alerts          PledgeAlert[]
+
   @@index([userId])
   @@index([name])
   @@map("customers")
@@ -86,23 +89,17 @@ model Pledge {
   calculationVersion  Int                 @default(1)
   createdAt           DateTime            @default(now())
   updatedAt           DateTime            @updatedAt
+  lastCalculatedLtv   Decimal?            @db.Decimal(8, 2)
+  lastRiskTier        RiskTier?
+  lastEvaluatedAt     DateTime?
+  lastAmountOwed      Decimal?            @db.Decimal(14, 2)
+  lastMarketValue     Decimal?            @db.Decimal(14, 2)
   pledgeAudits        PledgeAudit[]
   items               PledgeItem[]
   customer            Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
   transactions        Transaction[]
+  alerts              PledgeAlert[]
 
-
-  //snapshot notification
-  lastCalculatedLtv  Decimal?  @db.Decimal(5,2)
-  lastRiskTier       RiskTier?
-  lastEvaluatedAt    DateTime?
-  alerts             PledgeAlert[]
-<<<<<<< HEAD
-=======
-  lastAmountOwed   Decimal? @db.Decimal(14,2)
-lastMarketValue  Decimal? @db.Decimal(14,2)
-
->>>>>>> main
   @@index([status, createdAt])
   @@index([customerId])
   @@map("pledges")
@@ -125,20 +122,18 @@ model PledgeItem {
   @@index([pledgeId])
   @@map("pledge_items")
 }
+
 model PledgeAlert {
   id         String    @id @default(uuid())
   userId     String
   pledgeId   String
   customerId String
-
   oldTier    RiskTier?
   newTier    RiskTier
   alertType  AlertType
   message    String
   isRead     Boolean   @default(false)
-
   createdAt  DateTime  @default(now())
-
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   pledge     Pledge    @relation(fields: [pledgeId], references: [id], onDelete: Cascade)
   customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -201,55 +196,33 @@ model Transaction {
 }
 
 model FinancialSnapshot {
-  id     String @id @default(cuid())
-  userId String
+  id                 String  @id @default(cuid())
+  userId             String
+  totalLoanAmount    Decimal @db.Decimal(14, 2)
+  totalAmountOwed    Decimal @db.Decimal(14, 2)
+  totalInterestOwed  Decimal @db.Decimal(14, 2)
+  totalMarketValue   Decimal @db.Decimal(14, 2)
+  goldPricePerGram   Decimal @db.Decimal(10, 2)
+  silverPricePerGram Decimal @db.Decimal(10, 2)
+  overallLtv         Decimal @db.Decimal(5, 2)
+  totalGoldWeight    Decimal @db.Decimal(14, 3)
+  totalSilverWeight  Decimal @db.Decimal(14, 3)
+  totalPledges       Int
+  activePledges      Int
+  releasedPledges    Int
+  overduePledges     Int
+  safePledges        Int
+  watchPledges       Int
+  atRiskPledges      Int
+  underwaterPledges  Int
+  mtdNewPledges      Int      @default(0)
+  mtdReleasedPledges Int      @default(0)
+  mtdLoanAmount      Decimal  @default(0) @db.Decimal(14, 2)
+  calculatedAt       DateTime @default(now())
+  snapshotDate       DateTime
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Loan
-  totalLoanAmount   Decimal @db.Decimal(14,2)
-  totalAmountOwed   Decimal @db.Decimal(14,2)
-  totalInterestOwed Decimal @db.Decimal(14,2)
-
-  // Market
-  totalMarketValue   Decimal @db.Decimal(14,2)
-  goldPricePerGram   Decimal @db.Decimal(10,2)
-  silverPricePerGram Decimal @db.Decimal(10,2)
-
-  // LTV
-  overallLtv Decimal @db.Decimal(5,2)
-
-  // Weight
-  totalGoldWeight   Decimal @db.Decimal(14,3)
-  totalSilverWeight Decimal @db.Decimal(14,3)
-
-  // Pledge counts — lifetime totals
-  totalPledges    Int   // ← all pledges ever created
-  activePledges   Int
-  releasedPledges Int   // ← all time released
-  overduePledges  Int
-
-  // Risk tier breakdown (active only)
-  safePledges      Int
-  watchPledges     Int
-  atRiskPledges    Int
-  underwaterPledges Int
-
-<<<<<<< HEAD
-  // Month-to-date (calculated for the current month at snapshot time)
-  mtdNewPledges      Int   // created this month
-  mtdReleasedPledges Int   // released this month
-  mtdLoanAmount      Decimal @db.Decimal(14,2) // loan amount added this month
-
-  calculatedAt DateTime @default(now())
-
-=======
- 
-
-  calculatedAt DateTime @default(now())
-  snapshotDate     DateTime
-@@unique([userId, snapshotDate])
->>>>>>> main
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
+  @@unique([userId, snapshotDate])
   @@index([userId, calculatedAt(sort: Desc)])
   @@map("financial_snapshots")
 }
@@ -274,6 +247,20 @@ enum Gender {
   Male
   Female
   Other
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  userId      String
+  title       String
+  isDone      Boolean   @default(false)
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("tasks")
 }
 
 enum AuditAction {
@@ -339,8 +326,4 @@ enum AlertType {
   TIER_CHANGE
   CRITICAL
   INFO
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> main

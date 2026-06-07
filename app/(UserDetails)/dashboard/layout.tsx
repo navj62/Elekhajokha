@@ -126,22 +126,22 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Main area */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         {/* Top bar */}
-        <header className="flex items-center justify-between h-[84px] px-10 shrink-0">
+        <header className="flex items-center justify-between h-[58px] px-8 shrink-0" style={{ borderBottom: "1px solid var(--border-light)" }}>
           <button className="mr-4 lg:hidden" onClick={() => setSidebarOpen(true)}>
             <Menu size={22} style={{ color: "var(--text-primary)" }} />
           </button>
 
           {/* Left: Search Box */}
-          <div className="hidden md:flex flex-1 items-center max-w-[320px]">
+          <div className="hidden md:flex flex-1 items-center max-w-[280px]">
             <div
-              className="flex items-center w-full gap-2 px-4 py-[10px] rounded-full transition-all focus-within:ring-2 focus-within:ring-[#A2AB89]"
+              className="flex items-center w-full gap-2 px-3 py-[7px] rounded-full transition-all focus-within:ring-2 focus-within:ring-[#A2AB89]"
               style={{ backgroundColor: "var(--sidebar-bg)" }}
             >
-              <Search size={14} style={{ color: "var(--text-muted)" }} />
+              <Search size={13} style={{ color: "var(--text-muted)" }} />
               <input
                 type="text"
                 placeholder={t("search_placeholder")}
-                className="w-full bg-transparent outline-none text-[13px] font-medium text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+                className="w-full bg-transparent outline-none text-[12.5px] font-medium text-[var(--text-primary)] placeholder-[var(--text-muted)]"
               />
             </div>
           </div>
@@ -151,20 +151,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
 
           {/* Right: Actions */}
-          <div className="flex-1 flex items-center justify-end gap-6">
-            <button className="relative transition-colors hover:opacity-80 disabled" style={{ color: "var(--text-secondary)" }}>
-              <Bell size={18} strokeWidth={2} />
-            </button>
-            <button className="transition-colors hover:opacity-80 disabled" style={{ color: "var(--text-secondary)" }}>
-              <HelpCircle size={18} strokeWidth={2} />
-            </button>
+          <div className="flex-1 flex items-center justify-end gap-4">
+            <Link href="/notifications" className="relative transition-colors hover:opacity-70" style={{ color: "var(--text-secondary)" }}>
+              <Bell size={17} strokeWidth={2} />
+            </Link>
+            <Link href="/help" className="transition-colors hover:opacity-70" style={{ color: "var(--text-secondary)" }}>
+              <HelpCircle size={17} strokeWidth={2} />
+            </Link>
             <Link href="/profile">
-              {/* <div  className="flex items-center gap-3 pl-2">
-              <span className="text-[13px] font-semibold hidden sm:inline" style={{ color: "var(--text-primary)" }}>{t("admin_user")}</span>
-              <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center overflow-hidden border border-[var(--border-light)]">
-                <img src="https://i.pravatar.cc/150?u=a042581f4e29026024d" alt="avatar" className="w-full h-full object-cover" />
-              </div>
-            </div> */}
               <UserButton />
             </Link>
           </div>

@@ -1,503 +1,142 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Loader2, RefreshCw, AlertTriangle,
   ShieldCheck, Eye, Flame, Waves,
-  ArrowUpDown, ChevronRight, Search, X,
+  ArrowUpDown, Search, X, Filter,
 } from "lucide-react";
-import {
-  PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer,
-} from "recharts";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
-type RiskTier  = "SAFE" | "WATCH" | "AT_RISK" | "UNDERWATER" | null;
+type RiskTier = "SAFE" | "WATCH" | "AT_RISK" | "UNDERWATER" | null;
 type FilterTab = "ALL" | RiskTier;
 
 interface PledgeRow {
-  pledgeId:          string;
-  customerId:        string;
-  customerName:      string;
-  pledgeDate:        string;
-  netWeightOfGold:   number;
+  pledgeId: string;
+  customerId: string;
+  customerName: string;
+  pledgeDate: string;
+  netWeightOfGold: number;
   netWeightOfSilver: number;
-  principal:         number;
-  accruedInterest:   number;
-  amountOwed:        number;
-  goldPpg:           number | null;
-  silverPpg:         number | null;
-  marketValue:       number | null;
-  ltv:               number | null;
-  riskTier:          RiskTier;
+  principal: number;
+  accruedInterest: number;
+  amountOwed: number;
+  goldPpg: number | null;
+  silverPpg: number | null;
+  marketValue: number | null;
+  ltv: number | null;
+  riskTier: RiskTier;
 }
 
 interface TierCounts {
-  SAFE:       number;
-  WATCH:      number;
-  AT_RISK:    number;
+  SAFE: number;
+  WATCH: number;
+  AT_RISK: number;
   UNDERWATER: number;
-  NO_PRICE:   number;
+  NO_PRICE: number;
 }
 
 interface Summary {
-  totalPledges:     number;
-  totalLent:        number;
-  totalOwed:        number;
+  totalPledges: number;
+  totalLent: number;
+  totalOwed: number;
   totalMarketValue: number;
-  avgLtv:           number | null;
-  tierCounts:       TierCounts;
+  avgLtv: number | null;
+  tierCounts: TierCounts;
 }
 
 interface LtvData {
-  hasPrices:          boolean;
-  goldPricePerGram:   number | null;
+  hasPrices: boolean;
+  goldPricePerGram: number | null;
   silverPricePerGram: number | null;
-  priceUpdatedAt:     string | null;
-  summary:            Summary;
-  pledges:            PledgeRow[];
+  priceUpdatedAt: string | null;
+  summary: Summary;
+  pledges: PledgeRow[];
 }
 
 /* ------------------------------------------------------------------ */
-/*  Tier config                                                         */
+/*  Tier config — Linen Ledger palette                                  */
 /* ------------------------------------------------------------------ */
-const TIER_CONFIG = {
-  SAFE: {
-    label:  "Safe",
-    range:  "0–65%",
-    icon:   ShieldCheck,
-    color:  "text-emerald-600",
-    bg:     "bg-emerald-50",
-    badge:  "bg-emerald-100 text-emerald-700",
-    dot:    "bg-emerald-500",
-    hex:    "#10b981",
-  },
-  WATCH: {
-    label:  "Watch",
-    range:  "66–75%",
-    icon:   Eye,
-    color:  "text-amber-600",
-    bg:     "bg-amber-50",
-    badge:  "bg-amber-100 text-amber-700",
-    dot:    "bg-amber-400",
-    hex:    "#f59e0b",
-  },
-  AT_RISK: {
-    label:  "At Risk",
-    range:  "76–90%",
-    icon:   Flame,
-    color:  "text-orange-600",
-    bg:     "bg-orange-50",
-    badge:  "bg-orange-100 text-orange-700",
-    dot:    "bg-orange-500",
-    hex:    "#f97316",
-  },
-  UNDERWATER: {
-    label:  "Underwater",
-    range:  "> 90%",
-    icon:   Waves,
-    color:  "text-red-600",
-    bg:     "bg-red-50",
-    badge:  "bg-red-100 text-red-700",
-    dot:    "bg-red-500",
-    hex:    "#ef4444",
-  },
+const TIER_CFG = {
+  SAFE: { label: "Safe", range: "(0–65%)", hex: "#555B3F", dot: "bg-[#555B3F]", badge: "bg-[#E8EBD8] text-[#555B3F]", icon: ShieldCheck },
+  WATCH: { label: "Watch", range: "(66–75%)", hex: "#C9A14B", dot: "bg-[#C9A14B]", badge: "bg-[#FDF4DC] text-[#8B6914]", icon: Eye },
+  AT_RISK: { label: "At Risk", range: "(76–90%)", hex: "#D97706", dot: "bg-[#D97706]", badge: "bg-[#FEF3C7] text-[#92400E]", icon: Flame },
+  UNDERWATER: { label: "Underwater", range: "(> 90%)", hex: "#DC2626", dot: "bg-[#DC2626]", badge: "bg-[#FEE2E2] text-[#991B1B]", icon: Waves },
 } as const;
+
+const TIERS = ["SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as const;
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
 /* ------------------------------------------------------------------ */
 function fmt(n: number) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency", currency: "INR", maximumFractionDigits: 0,
-  }).format(n);
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
 }
-
 function fmtExact(n: number) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency", currency: "INR", maximumFractionDigits: 2,
-  }).format(n);
+  return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format(n);
 }
-
 function timeAgo(dateStr: string) {
-  const diff  = Date.now() - new Date(dateStr).getTime();
-  const mins  = Math.floor(diff / 60000);
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
   const hours = Math.floor(mins / 60);
-  if (mins  < 1)  return "just now";
-  if (mins  < 60) return `${mins}m ago`;
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-// ✅ FIX #3 — single source of truth for tier thresholds
-// Previously duplicated between LtvBar and the data layer
-function getTier(ltv: number): keyof typeof TIER_CONFIG {
-  if (ltv <= 65) return "SAFE";
-  if (ltv <= 75) return "WATCH";
-  if (ltv <= 90) return "AT_RISK";
-  return "UNDERWATER";
-}
-
-function LtvBar({ ltv }: { ltv: number }) {
-  const capped   = Math.min(ltv, 120);
-  const pct      = (capped / 120) * 100;
-  const tier     = getTier(ltv); // ✅ uses shared helper — no more duplicated thresholds
-  const barColor = {
-    SAFE:       "bg-emerald-400",
-    WATCH:      "bg-amber-400",
-    AT_RISK:    "bg-orange-500",
-    UNDERWATER: "bg-red-500",
-  }[tier];
-
-  return (
-    <div className="flex items-center gap-2">
-      <div className="w-20 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className="text-xs font-mono font-medium tabular-nums">
-        {ltv.toFixed(1)}%
-      </span>
-    </div>
-  );
-}
-
-function RiskBadge({ tier }: { tier: RiskTier }) {
-  if (!tier) return <span className="text-xs text-gray-400">—</span>;
-  const cfg  = TIER_CONFIG[tier];
-  const Icon = cfg.icon;
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${cfg.badge}`}>
-      <Icon size={10} />
-      {cfg.label}
-    </span>
-  );
-}
-
 /* ------------------------------------------------------------------ */
-/*  Risk Pie Chart                                                      */
+/*  Donut Chart (pure SVG — no recharts needed)                         */
 /* ------------------------------------------------------------------ */
-function RiskPieChart({ tierCounts }: { tierCounts: TierCounts }) {
-  const chartData = (["SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as const)
-    .map((tier) => ({
-      name:  TIER_CONFIG[tier].label,
-      value: tierCounts[tier],
-      hex:   TIER_CONFIG[tier].hex,
-    }))
-    .filter((d) => d.value > 0);
+function DonutChart({ tierCounts, total }: { tierCounts: TierCounts; total: number }) {
+  const data = TIERS.map(t => ({ tier: t, count: tierCounts[t], hex: TIER_CFG[t].hex })).filter(d => d.count > 0);
 
-  if (chartData.length === 0) {
+  if (data.length === 0 || total === 0) {
     return (
-      <div className="flex items-center justify-center h-48 text-sm text-gray-400">
-        No data to display
+      <div className="relative w-[160px] h-[160px] mx-auto">
+        <svg viewBox="0 0 36 36" className="w-full h-full">
+          <circle cx="18" cy="18" r="14" fill="none" stroke="#ECEAE4" strokeWidth="3.5" />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-[22px] font-semibold text-[#2C2C2C]">{total}</span>
+          <span className="text-[9px] font-bold text-[#6F6F6F] uppercase tracking-wider">Total</span>
+        </div>
       </div>
     );
   }
 
-  return (
-    <ResponsiveContainer width="100%" height={220}>
-      <PieChart>
-        <Pie
-          data={chartData}
-          cx="50%"
-          cy="50%"
-          innerRadius={55}
-          outerRadius={85}
-          paddingAngle={3}
-          dataKey="value"
-        >
-          {chartData.map((entry, i) => (
-            <Cell key={i} fill={entry.hex} />
-          ))}
-        </Pie>
-        <Tooltip
-          formatter={(value, name) => [
-  `${Number(value)} pledge${Number(value) !== 1 ? "s" : ""}`,
-  String(name),
-]}
-          contentStyle={{
-            fontSize: 12,
-            borderRadius: 8,
-            border: "1px solid #e5e7eb",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-          }}
-        />
-        <Legend
-          iconType="circle"
-          iconSize={8}
-          formatter={(value) => (
-            <span style={{ fontSize: 12, color: "#6b7280" }}>{value}</span>
-          )}
-        />
-      </PieChart>
-    </ResponsiveContainer>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Summary Cards                                                       */
-/* ------------------------------------------------------------------ */
-function SummaryCards({ summary, goldPpg, silverPpg, priceUpdatedAt }: {
-  summary:        Summary;
-  goldPpg:        number | null;
-  silverPpg:      number | null;
-  priceUpdatedAt: string | null;
-}) {
-  const exposure  = summary.totalOwed - summary.totalMarketValue;
-  const isExposed = exposure > 0;
-
-  return (
-    <div className="space-y-4">
-      {/* Live prices strip */}
-      <div className="flex items-center gap-4 text-xs text-gray-500 bg-white border rounded-lg px-4 py-2.5">
-        <span className="font-medium text-gray-700">Live Prices</span>
-        {goldPpg   && <span>🥇 Gold   <span className="font-semibold text-gray-900">{fmtExact(goldPpg)}/g</span></span>}
-        {silverPpg && <span>🥈 Silver <span className="font-semibold text-gray-900">{fmtExact(silverPpg)}/g</span></span>}
-        {priceUpdatedAt && (
-          <span className="ml-auto text-gray-400">Updated {timeAgo(priceUpdatedAt)}</span>
-        )}
-      </div>
-
-      {/* Stats + Pie chart side by side */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        {/* Stats — 2/3 width */}
-        <div className="lg:col-span-2 grid grid-cols-2 gap-3">
-          <div className="bg-white border rounded-xl p-4 space-y-1">
-            <p className="text-xs text-gray-400">Total Lent</p>
-            <p className="text-xl font-bold text-gray-900">{fmt(summary.totalLent)}</p>
-            <p className="text-xs text-gray-400">{summary.totalPledges} active pledges</p>
-          </div>
-          <div className="bg-white border rounded-xl p-4 space-y-1">
-            <p className="text-xs text-gray-400">Amount Owed Today</p>
-            <p className="text-xl font-bold text-gray-900">{fmt(summary.totalOwed)}</p>
-            <p className="text-xs text-gray-400">
-              +{fmt(summary.totalOwed - summary.totalLent)} interest
-            </p>
-          </div>
-          <div className="bg-white border rounded-xl p-4 space-y-1">
-            <p className="text-xs text-gray-400">Total Market Value</p>
-            <p className="text-xl font-bold text-gray-900">{fmt(summary.totalMarketValue)}</p>
-            <p className={`text-xs font-medium ${isExposed ? "text-red-500" : "text-emerald-600"}`}>
-              {isExposed
-                ? `⚠ Exposed by ${fmt(exposure)}`
-                : `Buffer ${fmt(Math.abs(exposure))}`}
-            </p>
-          </div>
-          <div className="bg-white border rounded-xl p-4 space-y-1">
-            <p className="text-xs text-gray-400">Avg LTV</p>
-            <p className={`text-xl font-bold ${
-              summary.avgLtv === null  ? "text-gray-400"   :
-              summary.avgLtv <= 65    ? "text-emerald-600" :
-              summary.avgLtv <= 75    ? "text-amber-600"   :
-              summary.avgLtv <= 90    ? "text-orange-600"  :
-              "text-red-600"
-            }`}>
-              {summary.avgLtv !== null ? `${summary.avgLtv}%` : "—"}
-            </p>
-            <p className="text-xs text-gray-400">across all pledges</p>
-          </div>
-        </div>
-
-        {/* Pie chart — 1/3 width */}
-        <div className="bg-white border rounded-xl p-4">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-            Risk Distribution
-          </p>
-          <RiskPieChart tierCounts={summary.tierCounts} />
-        </div>
-      </div>
-
-      {/* Portfolio breakdown bar */}
-      {summary.totalPledges > 0 && (
-        <div className="bg-white border rounded-xl p-4 space-y-3">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            Portfolio Breakdown
-          </p>
-          <div className="flex rounded-full overflow-hidden h-3 gap-0.5">
-            {(["SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as const).map((tier) => {
-              const count = summary.tierCounts[tier];
-              const pct   = (count / summary.totalPledges) * 100;
-              if (pct === 0) return null;
-              return (
-                <div
-                  key={tier}
-                  className={`${TIER_CONFIG[tier].dot} transition-all`}
-                  style={{ width: `${pct}%` }}
-                  title={`${TIER_CONFIG[tier].label}: ${count}`}
-                />
-              );
-            })}
-          </div>
-          <div className="flex flex-wrap gap-4">
-            {(["SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as const).map((tier) => {
-              const cfg   = TIER_CONFIG[tier];
-              const count = summary.tierCounts[tier];
-              return (
-                <div key={tier} className="flex items-center gap-1.5 text-xs text-gray-600">
-                  <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
-                  <span>{cfg.label}</span>
-                  <span className="font-semibold text-gray-900">{count}</span>
-                </div>
-              );
-            })}
-            {/* ✅ FIX #6 — NO_PRICE pledges now shown in breakdown */}
-            {summary.tierCounts.NO_PRICE > 0 && (
-              <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                <div className="w-2 h-2 rounded-full bg-gray-300" />
-                <span>No Price</span>
-                <span className="font-semibold text-gray-900">{summary.tierCounts.NO_PRICE}</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Pledge Table                                                        */
-/* ------------------------------------------------------------------ */
-function PledgeTable({
-  pledges,
-  sortDesc,
-  onSortToggle,
-  onRowClick,
-}: {
-  pledges:      PledgeRow[];
-  sortDesc:     boolean;           // ✅ FIX #5 — sort state lifted to page
-  onSortToggle: () => void;
-  onRowClick:   (row: PledgeRow) => void;
-}) {
-  const sorted = [...pledges].sort((a, b) => {
-    if (a.ltv === null && b.ltv === null) return 0;
-    if (a.ltv === null) return 1;
-    if (b.ltv === null) return -1;
-    return sortDesc ? b.ltv - a.ltv : a.ltv - b.ltv;
+  let offset = 25; // start at top
+  const segments = data.map(d => {
+    const pct = (d.count / total) * 100;
+    const seg = { ...d, pct, offset };
+    offset += pct;
+    return seg;
   });
 
-  // ✅ FIX #10 — distinguish zero pledges vs no search matches
-  if (pledges.length === 0) {
-    return (
-      <div className="bg-white border rounded-xl px-6 py-12 text-center text-sm text-gray-400">
-        No pledges match your search or filter.
-      </div>
-    );
-  }
-
   return (
-    <div className="bg-white border rounded-xl overflow-hidden">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
-            <th className="text-left px-4 py-3 font-medium">Customer</th>
-            <th className="text-right px-4 py-3 font-medium">🥇 Gold Wt</th>
-            <th className="text-right px-4 py-3 font-medium">🥈 Silver Wt</th>
-            <th className="text-right px-4 py-3 font-medium">Principal</th>
-            <th className="text-right px-4 py-3 font-medium">Owed Today</th>
-            <th className="text-right px-4 py-3 font-medium">Market Value</th>
-            <th className="text-right px-4 py-3 font-medium">
-              <button
-                onClick={onSortToggle}
-                className="inline-flex items-center gap-1 hover:text-gray-800 transition-colors"
-              >
-                LTV <ArrowUpDown size={11} />
-              </button>
-            </th>
-            <th className="text-center px-4 py-3 font-medium">Risk</th>
-            <th className="px-4 py-3" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          {sorted.map((row) => (
-            <tr
-              key={row.pledgeId}
-              onClick={() => onRowClick(row)}
-              className="hover:bg-gray-50 cursor-pointer transition-colors"
-            >
-              <td className="px-4 py-3">
-                <p className="font-medium text-gray-900">{row.customerName}</p>
-                <p className="text-xs text-gray-400">
-                  {new Date(row.pledgeDate).toLocaleDateString("en-IN", {
-                    day: "2-digit", month: "short", year: "numeric",
-                  })}
-                </p>
-              </td>
-
-              <td className="px-4 py-3 text-right">
-                {row.netWeightOfGold > 0 ? (
-                  <>
-                    <p className="font-medium text-amber-700 tabular-nums">
-                      {row.netWeightOfGold.toFixed(3)}g
-                    </p>
-                    {row.goldPpg && (
-                      <p className="text-xs text-gray-400 tabular-nums">
-                        @{fmtExact(row.goldPpg)}/g
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-gray-300 text-xs">—</span>
-                )}
-              </td>
-
-              <td className="px-4 py-3 text-right">
-                {row.netWeightOfSilver > 0 ? (
-                  <>
-                    <p className="font-medium text-gray-600 tabular-nums">
-                      {row.netWeightOfSilver.toFixed(3)}g
-                    </p>
-                    {row.silverPpg && (
-                      <p className="text-xs text-gray-400 tabular-nums">
-                        @{fmtExact(row.silverPpg)}/g
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <span className="text-gray-300 text-xs">—</span>
-                )}
-              </td>
-
-              <td className="px-4 py-3 text-right">
-                <p className="font-medium text-gray-900 tabular-nums">{fmt(row.principal)}</p>
-              </td>
-
-              <td className="px-4 py-3 text-right">
-                <p className="font-medium text-gray-900 tabular-nums">{fmt(row.amountOwed)}</p>
-                <p className="text-xs text-orange-500 tabular-nums">
-                  +{fmt(row.accruedInterest)}
-                </p>
-              </td>
-
-              <td className="px-4 py-3 text-right">
-                {row.marketValue !== null ? (
-                  <p className="font-medium text-gray-900 tabular-nums">{fmt(row.marketValue)}</p>
-                ) : (
-                  <span className="text-gray-400 text-xs">No price</span>
-                )}
-              </td>
-
-              <td className="px-4 py-3 text-right">
-                {row.ltv !== null
-                  ? <LtvBar ltv={row.ltv} />
-                  : <span className="text-gray-400 text-xs">—</span>
-                }
-              </td>
-
-              <td className="px-4 py-3 text-center">
-                <RiskBadge tier={row.riskTier} />
-              </td>
-
-              <td className="px-4 py-3">
-                <ChevronRight size={14} className="text-gray-300" />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="relative w-[160px] h-[160px] mx-auto">
+      <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+        <circle cx="18" cy="18" r="14" fill="none" stroke="#ECEAE4" strokeWidth="3.5" />
+        {segments.map((s) => (
+          <circle
+            key={s.tier}
+            cx="18" cy="18" r="14"
+            fill="none"
+            stroke={s.hex}
+            strokeWidth="3.5"
+            strokeDasharray={`${s.pct} ${100 - s.pct}`}
+            strokeDashoffset={`${100 - s.offset + 25}`}
+            strokeLinecap="round"
+          />
+        ))}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-[22px] font-semibold text-[#2C2C2C]">{total}</span>
+        <span className="text-[9px] font-bold text-[#6F6F6F] uppercase tracking-wider">Total</span>
+      </div>
     </div>
   );
 }
@@ -507,91 +146,88 @@ function PledgeTable({
 /* ================================================================== */
 export default function LtvPage() {
   const router = useRouter();
-
-  const [data,       setData]       = useState<LtvData | null>(null);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState("");
+  const [data, setData] = useState<LtvData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
-  const [filter,     setFilter]     = useState<FilterTab>("ALL");
-  const [search,     setSearch]     = useState("");
-  const [sortDesc,   setSortDesc]   = useState(true); // ✅ FIX #5 — lifted from PledgeTable
+  const [search, setSearch] = useState("");
+  const [sortDesc, setSortDesc] = useState(true);
+  const [filterTier, setFilterTier] = useState<FilterTab>("ALL");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  // ✅ FIX #1 — useCallback so useEffect dependency is stable
-  // search is a dep so backend gets the current search term on every call
   const load = useCallback(async (isRefresh = false) => {
-  if (isRefresh) setRefreshing(true);
-  else setLoading(true);
-  setError("");
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/ltv?t=${Date.now()}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load");
+      setData(json);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  try {
-    const params = new URLSearchParams({ t: String(Date.now()) });
-
-    const res  = await fetch(`/api/ltv?${params.toString()}`);
-    const json = await res.json();
-
-    if (!res.ok) throw new Error(json.error || "Failed to load");
-
-    setData(json);
-  } catch (err) {
-    setError(err instanceof Error ? err.message : "Failed to load");
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-}, []); // ✅ NO search dependency // re-create when search changes
-
-  // ✅ FIX #1 + #4 — re-fetch on search change + auto-refresh every 5 min
   useEffect(() => {
     load();
     const id = setInterval(() => load(true), 5 * 60 * 1000);
     return () => clearInterval(id);
   }, [load]);
 
-  // ✅ FIX #8 — TABS memoized, not rebuilt on every render
-  const TABS = useMemo<{ key: FilterTab; label: string; count?: number }[]>(
-    () => [
-      { key: "ALL",        label: "All",          count: data?.summary.totalPledges },
-      { key: "SAFE",       label: "🟢 Safe",       count: data?.summary.tierCounts.SAFE },
-      { key: "WATCH",      label: "🟡 Watch",      count: data?.summary.tierCounts.WATCH },
-      { key: "AT_RISK",    label: "🔴 At Risk",    count: data?.summary.tierCounts.AT_RISK },
-      { key: "UNDERWATER", label: "🚨 Underwater", count: data?.summary.tierCounts.UNDERWATER },
-    ],
-    [data]
-  );
-
-  // ✅ Search handled by backend — only filter tab applied client-side
   const filtered = useMemo(() => {
-  if (!data) return [];
-
-  return data.pledges
-    .filter((p) =>
-      filter === "ALL" || p.riskTier === filter
-    )
-    .filter((p) =>
+    if (!data) return [];
+    let rows = data.pledges.filter(p =>
       p.customerName.toLowerCase().includes(search.toLowerCase())
     );
+    if (filterTier !== "ALL") {
+      rows = rows.filter(p => p.riskTier === filterTier);
+    }
+    rows.sort((a, b) => {
+      if (a.ltv === null && b.ltv === null) return 0;
+      if (a.ltv === null) return 1;
+      if (b.ltv === null) return -1;
+      return sortDesc ? b.ltv - a.ltv : a.ltv - b.ltv;
+    });
+    return rows;
+  }, [data, search, sortDesc, filterTier]);
 
-}, [data, filter, search]); // ✅ search ONLY affects client-side
+  // ── Derived ──
+  const s = data?.summary;
+  const interestAccrued = s ? s.totalOwed - s.totalLent : 0;
+  const buffer = s ? s.totalMarketValue - s.totalOwed : 0;
 
-  // ✅ FIX #9 — memoized so PledgeTable doesn't re-render on unrelated state changes
-  const handleRowClick = useCallback((row: PledgeRow) => {
-    router.push(`/customers/${row.customerId}/pledges/${row.pledgeId}`);
-  }, [router]);
+  // ── Safety bar widths ──
+  const safetyBar = useMemo(() => {
+    if (!s || s.totalPledges === 0) return TIERS.map(() => 0);
+    return TIERS.map(t => (s.tierCounts[t] / s.totalPledges) * 100);
+  }, [s]);
 
-  const handleSortToggle = useCallback(() => setSortDesc((v) => !v), []);
+  // ── Risk label for avg LTV ──
+  const avgRiskLabel = useMemo(() => {
+    if (!s || s.avgLtv === null) return null;
+    if (s.avgLtv <= 65) return "Highly Secure";
+    if (s.avgLtv <= 75) return "Watch";
+    if (s.avgLtv <= 90) return "At Risk";
+    return "Underwater";
+  }, [s]);
 
+  // ── Loading state ──
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="animate-spin text-gray-300" size={32} />
+        <Loader2 className="animate-spin text-[#555B3F]" size={28} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="max-w-5xl mx-auto p-6">
-        <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+      <div className="max-w-[1200px] mx-auto p-6">
+        <div className="rounded-[16px] border border-red-200 bg-red-50 px-5 py-4 text-[13px] text-red-700">
           {error}
         </div>
       </div>
@@ -599,148 +235,370 @@ export default function LtvPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+    <div className="max-w-[1200px] mx-auto pb-16 mt-4 font-sans text-[#2C2C2C]">
 
-      {/* Header */}
-      <div className="flex items-start justify-between">
+      {/* ── PAGE HEADER ── */}
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <Link href="/dashboard" className="text-xs text-gray-400 hover:text-gray-600">
-            ← Dashboard
-          </Link>
-          <h1 className="text-2xl font-bold text-gray-900 mt-1">Portfolio Risk</h1>
-          <p className="text-sm text-gray-400 mt-0.5">
-            LTV = Amount Owed ÷ Market Value × 100
-          </p>
+          <h1 className="text-[28px] font-medium tracking-tight text-[#2C2C2C] mb-2">
+            Loan to Value
+          </h1>
+          <div className="inline-flex items-center gap-2 bg-[#F0EFDF] px-3 py-1.5 rounded-full text-[11px] font-semibold text-[#555B3F] border border-[#EAE8DD]">
+            Σ LTV = Amount Owed ÷ Market Value × 100
+          </div>
         </div>
         <button
           onClick={() => load(true)}
           disabled={refreshing}
-          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 border rounded-lg px-3 py-2 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 text-[11px] font-semibold text-[#555B3F] bg-[#F0EFDF] border border-[#EAE8DD] rounded-full px-3 py-1.5 transition-colors hover:bg-[#EAE8DD] disabled:opacity-50"
         >
-          <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
-          {refreshing ? "Refreshing..." : "Refresh"}
+          <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
+          {refreshing ? "Refreshing…" : "● Refresh"}
         </button>
       </div>
 
-      {/* No price warning */}
+      {/* ── NO PRICE WARNING ── */}
       {data && !data.hasPrices && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+        <div className="flex items-start gap-3 rounded-[16px] border border-[#E8D4B0] bg-[#FFF8ED] px-5 py-4 text-[13px] text-[#8B6914] mb-6">
           <AlertTriangle size={16} className="shrink-0 mt-0.5" />
           <div>
-            <p className="font-medium">No market prices available</p>
-            <p className="text-xs mt-0.5 text-amber-600">
-              LTV cannot be calculated until the cron job runs. Market values will show as — until then.
-            </p>
+            <p className="font-semibold">No market prices available</p>
+            <p className="text-[12px] mt-0.5 opacity-80">LTV cannot be calculated until market data is fetched.</p>
           </div>
         </div>
       )}
 
-      {/* Summary + Pie */}
-      {data && (
-        <SummaryCards
-          summary={data.summary}
-          goldPpg={data.goldPricePerGram}
-          silverPpg={data.silverPricePerGram}
-          priceUpdatedAt={data.priceUpdatedAt}
-        />
-      )}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {/* ROW 1 — KPI CARDS                                             */}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 md:grid-cols-[1.6fr_1fr_1fr] gap-4 mb-6">
 
-      {/* ✅ Search + Filter row */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        {/* Search bar */}
-        <div className="relative flex-1 max-w-xs">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
-          />
-          <input
-            type="text"
-            placeholder="Search by customer name…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-8 pr-8 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-gray-200"
-          />
-          {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-            >
-              <X size={13} />
-            </button>
+        {/* Card 1 — Live Commodity Prices */}
+        <div className="bg-white border border-[#ECEAE4] rounded-[16px] p-6">
+          <div className="flex items-center justify-between mb-5">
+            <h3 className="text-[13px] font-semibold text-[#2C2C2C]">Live Commodity Prices</h3>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C5C7B8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22,7 13.5,15.5 8.5,10.5 2,17" /><polyline points="16,7 22,7 22,13" /></svg>
+          </div>
+          <div className="flex gap-8">
+            <div>
+              <p className="text-[24px] font-semibold text-[#2C2C2C] tabular-nums">
+                {data?.goldPricePerGram ? fmtExact(data.goldPricePerGram) : "—"}<span className="text-[13px] font-normal text-[#6F6F6F] ml-1">/g</span>
+              </p>
+              <div className="flex items-center gap-1.5 mt-1">
+                <div className="w-2 h-2 rounded-full bg-[#C9A14B]" />
+                <span className="text-[11px] font-semibold text-[#6F6F6F]">Gold</span>
+              </div>
+            </div>
+            <div>
+              <p className="text-[24px] font-semibold text-[#2C2C2C] tabular-nums">
+                {data?.silverPricePerGram ? fmtExact(data.silverPricePerGram) : "—"}<span className="text-[13px] font-normal text-[#6F6F6F] ml-1">/g</span>
+              </p>
+              <div className="flex items-center gap-1.5 mt-1">
+                <div className="w-2 h-2 rounded-full bg-[#9E9E9E]" />
+                <span className="text-[11px] font-semibold text-[#6F6F6F]">Silver</span>
+              </div>
+            </div>
+          </div>
+          {data?.priceUpdatedAt && (
+            <p className="text-[11px] text-[#9E9E9E] mt-4 flex items-center gap-1">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
+              Updated {timeAgo(data.priceUpdatedAt)}
+            </p>
           )}
         </div>
 
-        {/* Risk filter tabs */}
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setFilter(tab.key)}
-              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                filter === tab.key
-                  ? "bg-white text-gray-900 shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              {tab.label}
-              {tab.count !== undefined && tab.count > 0 && (
-                <span className={`ml-1.5 tabular-nums ${
-                  filter === tab.key ? "text-gray-500" : "text-gray-400"
-                }`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
+        {/* Card 2 — Total Lent */}
+        <div className="bg-white border border-[#ECEAE4] rounded-[16px] p-6 flex flex-col">
+          <h3 className="text-[13px] font-semibold text-[#6F6F6F] mb-3">Total Lent</h3>
+          <p className="text-[28px] font-semibold text-[#2C2C2C] tabular-nums">{s ? fmt(s.totalLent) : "—"}</p>
+          <div className="mt-auto pt-4 flex items-center justify-between border-t border-[#F4F3EE]">
+            <span className="text-[12px] text-[#6F6F6F]">Active Pledges</span>
+            <span className="inline-flex items-center justify-center w-7 h-7 bg-[#F0EFDF] rounded-[8px] text-[13px] font-semibold text-[#555B3F]">
+              {s?.totalPledges ?? 0}
+            </span>
+          </div>
+        </div>
+
+        {/* Card 3 — Average LTV */}
+        <div className="bg-[#F0EFDF] border border-[#E5E3D0] rounded-[16px] p-6 flex flex-col">
+          <h3 className="text-[13px] font-semibold text-[#555B3F] mb-3">Average LTV</h3>
+          <p className="text-[28px] font-semibold text-[#2C2C2C] tabular-nums">
+            {s?.avgLtv !== null && s?.avgLtv !== undefined ? `${s.avgLtv}%` : "—"}
+          </p>
+          {avgRiskLabel && (
+            <div className="mt-2 inline-flex items-center gap-1.5 w-max">
+              <div className="w-2 h-2 rounded-full bg-[#555B3F]" />
+              <span className="text-[11px] font-semibold text-[#555B3F]">{avgRiskLabel}</span>
+            </div>
+          )}
+          <p className="text-[11px] text-[#6F6F6F] mt-auto pt-2">Across all pledges</p>
         </div>
       </div>
 
-      {/* Search result count */}
-      {search && (
-        <p className="text-xs text-gray-400 -mt-3">
-          {filtered.length} result{filtered.length !== 1 ? "s" : ""} for &ldquo;{search}&rdquo;
-        </p>
-      )}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {/* ROW 2 — VALUATION + RISK DISTRIBUTION                         */}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4 mb-6">
 
-      {/* ✅ FIX #10 — true empty state when no pledges at all */}
-      {data && data.pledges.length === 0 ? (
-        <div className="bg-white border rounded-xl px-6 py-12 text-center text-sm text-gray-400">
-          No active pledges yet.
-        </div>
-      ) : (
-        data && (
-          <PledgeTable
-            pledges={filtered}
-            sortDesc={sortDesc}
-            onSortToggle={handleSortToggle}
-            onRowClick={handleRowClick}
-          />
-        )
-      )}
+        {/* Valuation Overview */}
+        <div className="bg-white border border-[#ECEAE4] rounded-[16px] p-6">
+          <h3 className="text-[15px] font-semibold text-[#2C2C2C] mb-5">Valuation Overview</h3>
 
-      {/* LTV reference */}
-      <div className="bg-white border rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b bg-gray-50">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            LTV Reference
-          </p>
-        </div>
-        <div className="divide-y">
-          {(["SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as const).map((tier) => {
-            const cfg  = TIER_CONFIG[tier];
-            const Icon = cfg.icon;
-            return (
-              <div key={tier} className="flex items-center justify-between px-4 py-3">
-                <div className="flex items-center gap-2.5">
-                  <div className={`p-1.5 rounded-md ${cfg.bg}`}>
-                    <Icon size={13} className={cfg.color} />
-                  </div>
-                  <span className="text-sm font-medium text-gray-700">{cfg.label}</span>
-                </div>
-                <span className="text-sm text-gray-500 tabular-nums">{cfg.range}</span>
+          <div className="grid grid-cols-2 gap-6 mb-6">
+            <div>
+              <p className="text-[12px] text-[#6F6F6F] mb-1">Amount Owed Today</p>
+              <p className="text-[24px] font-semibold text-[#2C2C2C] tabular-nums">{s ? fmt(s.totalOwed) : "—"}</p>
+              {s && interestAccrued > 0 && (
+                <span className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#FEE2E2] text-[#991B1B]">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /></svg>
+                  +{fmt(interestAccrued)} interest accrued
+                </span>
+              )}
+            </div>
+            <div className="border-l border-[#ECEAE4] pl-6">
+              <p className="text-[12px] text-[#6F6F6F] mb-1">Total Market Value</p>
+              <p className="text-[24px] font-semibold text-[#2C2C2C] tabular-nums">{s ? fmt(s.totalMarketValue) : "—"}</p>
+              {s && (
+                <span className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#E8EBD8] text-[#555B3F]">
+                  ○ Buffer: {fmt(Math.abs(buffer))}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* LTV Safety Bar */}
+          <div className="flex rounded-full overflow-hidden h-3 mb-3">
+            {TIERS.map((t, i) => {
+              const w = safetyBar[i];
+              if (w === 0) return null;
+              return (
+                <div
+                  key={t}
+                  className={`${TIER_CFG[t].dot} transition-all`}
+                  style={{ width: `${w}%` }}
+                />
+              );
+            })}
+            {(!s || s.totalPledges === 0) && <div className="bg-[#ECEAE4] w-full" />}
+          </div>
+          <div className="flex flex-wrap gap-5">
+            {TIERS.map(t => (
+              <div key={t} className="flex items-center gap-1.5 text-[11px] text-[#6F6F6F]">
+                <div className={`w-2 h-2 rounded-full ${TIER_CFG[t].dot}`} />
+                <span>{TIER_CFG[t].label}</span>
+                <span className="font-semibold text-[#2C2C2C]">{s?.tierCounts[t] ?? 0}</span>
               </div>
-            );
-          })}
+            ))}
+          </div>
+        </div>
+
+        {/* Risk Distribution */}
+        <div className="bg-white border border-[#ECEAE4] rounded-[16px] p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[15px] font-semibold text-[#2C2C2C]">Risk Distribution</h3>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
+          </div>
+
+          <DonutChart tierCounts={s?.tierCounts ?? { SAFE: 0, WATCH: 0, AT_RISK: 0, UNDERWATER: 0, NO_PRICE: 0 }} total={s?.totalPledges ?? 0} />
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-5">
+            {TIERS.map(t => (
+              <div key={t} className="flex items-center justify-between text-[12px]">
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-2 h-2 rounded-full ${TIER_CFG[t].dot}`} />
+                  <span className={t === "WATCH" || t === "AT_RISK" || t === "UNDERWATER" ? `text-[${TIER_CFG[t].hex}] font-semibold` : "text-[#2C2C2C]"}>
+                    {TIER_CFG[t].label}
+                  </span>
+                </div>
+                <span className="font-semibold tabular-nums">{s?.tierCounts[t] ?? 0}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════ */}
+      {/* ROW 3 — PORTFOLIO DETAILS TABLE                               */}
+      {/* ══════════════════════════════════════════════════════════════ */}
+      <div className="bg-white border border-[#ECEAE4] rounded-[16px] overflow-hidden mb-6">
+
+        {/* Table Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[#F4F3EE]">
+          <h3 className="text-[15px] font-semibold text-[#2C2C2C]">Portfolio Details</h3>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9E9E] pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search by name"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-9 pr-8 py-2 text-[12px] bg-[#F5F4EF] border border-[#ECEAE4] rounded-[10px] w-[200px] focus:outline-none focus:ring-2 focus:ring-[#C5C7B8] text-[#2C2C2C] placeholder-[#9E9E9E]"
+              />
+              {search && (
+                <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#9E9E9E] hover:text-[#2C2C2C]">
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <button 
+                onClick={() => setDropdownOpen(v => !v)}
+                className={`flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold transition-colors rounded-[8px] ${filterTier !== "ALL" || dropdownOpen ? "bg-[#F0EFDF] text-[#555B3F]" : "text-[#6F6F6F] hover:text-[#2C2C2C]"}`}
+              >
+                <Filter size={13} /> {filterTier === "ALL" ? "Filter" : filterTier === null ? "No Price" : TIER_CFG[filterTier]?.label}
+              </button>
+              
+              {dropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
+                  <div className="absolute right-0 top-full mt-2 w-44 bg-white border border-[#ECEAE4] rounded-[12px] shadow-lg z-50 p-1.5">
+                    <button 
+                      onClick={() => { setFilterTier("ALL"); setDropdownOpen(false); }}
+                      className={`w-full text-left px-3 py-2 rounded-[8px] text-[12px] font-medium transition-colors ${filterTier === "ALL" ? "bg-[#F0EFDF] text-[#555B3F]" : "text-[#6F6F6F] hover:bg-[#F5F4EF]"}`}
+                    >
+                      All Records
+                    </button>
+                    <div className="h-px bg-[#F4F3EE] my-1 mx-2" />
+                    {TIERS.map(t => (
+                      <button 
+                        key={t}
+                        onClick={() => { setFilterTier(t); setDropdownOpen(false); }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-[8px] text-[12px] font-medium transition-colors ${filterTier === t ? "bg-[#F0EFDF] text-[#555B3F]" : "text-[#6F6F6F] hover:bg-[#F5F4EF]"}`}
+                      >
+                        <div className={`w-2 h-2 rounded-full ${TIER_CFG[t].dot}`} />
+                        {TIER_CFG[t].label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="bg-[#3D4230] text-white text-[11px] font-semibold tracking-wider uppercase">
+                <th className="text-left px-5 py-3">Customer</th>
+                <th className="text-right px-5 py-3">Gold wt.</th>
+                <th className="text-right px-5 py-3">Silver wt.</th>
+                <th className="text-right px-5 py-3">Principal</th>
+                <th className="text-right px-5 py-3">
+                  <button
+                    onClick={() => setSortDesc(v => !v)}
+                    className="inline-flex items-center gap-1 hover:text-[#E8EBD8] transition-colors"
+                  >
+                    Owed Today <ArrowUpDown size={10} />
+                  </button>
+                </th>
+                <th className="text-right px-5 py-3">Market Value</th>
+                <th className="text-right px-5 py-3">LTV</th>
+                <th className="text-center px-5 py-3">Risk Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="text-center py-16 text-[13px] text-[#9E9E9E]">
+                    {data && data.pledges.length === 0 ? "No active pledges yet." : "No pledges match your search."}
+                  </td>
+                </tr>
+              ) : (
+                filtered.map(row => (
+                  <tr
+                    key={row.pledgeId}
+                    onClick={() => router.push(`/customers/${row.customerId}/pledges/${row.pledgeId}`)}
+                    className="border-b border-[#F4F3EE] hover:bg-[#FAFAF8] cursor-pointer transition-colors"
+                  >
+                    {/* Customer */}
+                    <td className="px-5 py-4">
+                      <p className="font-semibold text-[#2C2C2C]">{row.customerName}</p>
+                      <p className="text-[11px] text-[#9E9E9E] mt-0.5">
+                        {new Date(row.pledgeDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                      </p>
+                    </td>
+
+                    {/* Gold */}
+                    <td className="px-5 py-4 text-right">
+                      {row.netWeightOfGold > 0 ? (
+                        <>
+                          <p className="font-semibold text-[#2C2C2C] tabular-nums">{row.netWeightOfGold.toFixed(3)}g</p>
+                          {row.goldPpg && <p className="text-[10px] text-[#9E9E9E] tabular-nums">@ {fmtExact(row.goldPpg)}/g</p>}
+                        </>
+                      ) : <span className="text-[#C5C7B8]">—</span>}
+                    </td>
+
+                    {/* Silver */}
+                    <td className="px-5 py-4 text-right">
+                      {row.netWeightOfSilver > 0 ? (
+                        <>
+                          <p className="font-semibold text-[#2C2C2C] tabular-nums">{row.netWeightOfSilver.toFixed(3)}g</p>
+                          {row.silverPpg && <p className="text-[10px] text-[#9E9E9E] tabular-nums">@ {fmtExact(row.silverPpg)}/g</p>}
+                        </>
+                      ) : <span className="text-[#C5C7B8]">—</span>}
+                    </td>
+
+                    {/* Principal */}
+                    <td className="px-5 py-4 text-right font-semibold text-[#2C2C2C] tabular-nums">{fmt(row.principal)}</td>
+
+                    {/* Owed Today */}
+                    <td className="px-5 py-4 text-right">
+                      <p className="font-semibold text-[#2C2C2C] tabular-nums">{fmt(row.amountOwed)}</p>
+                      {row.accruedInterest > 0 && (
+                        <p className="text-[10px] text-[#D97706] font-semibold tabular-nums">+{fmt(row.accruedInterest)}</p>
+                      )}
+                    </td>
+
+                    {/* Market Value */}
+                    <td className="px-5 py-4 text-right">
+                      {row.marketValue !== null ? (
+                        <p className="font-semibold text-[#2C2C2C] tabular-nums">{fmt(row.marketValue)}</p>
+                      ) : <span className="text-[#9E9E9E] text-[11px]">No price</span>}
+                    </td>
+
+                    {/* LTV */}
+                    <td className="px-5 py-4 text-right font-semibold tabular-nums">
+                      {row.ltv !== null ? `${row.ltv.toFixed(1)}%` : "—"}
+                    </td>
+
+                    {/* Risk Status */}
+                    <td className="px-5 py-4 text-center">
+                      {row.riskTier ? (
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold ${TIER_CFG[row.riskTier].badge}`}>
+                          <div className={`w-1.5 h-1.5 rounded-full ${TIER_CFG[row.riskTier].dot}`} />
+                          {TIER_CFG[row.riskTier].label}
+                        </span>
+                      ) : <span className="text-[#9E9E9E] text-[11px]">—</span>}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* End of records */}
+        {filtered.length > 0 && (
+          <div className="text-center py-6 text-[12px] text-[#9E9E9E] italic">
+            End of active records.
+          </div>
+        )}
+      </div>
+
+      {/* ── LTV LEGEND ── */}
+      <div className="flex items-center justify-center">
+        <div className="inline-flex items-center gap-5 bg-white border border-[#ECEAE4] rounded-full px-6 py-3">
+          <span className="text-[10px] font-bold text-[#6F6F6F] uppercase tracking-wider mr-1">LTV Legend:</span>
+          {TIERS.map(t => (
+            <div key={t} className="flex items-center gap-1.5 text-[11px]">
+              <div className={`w-2 h-2 rounded-full ${TIER_CFG[t].dot}`} />
+              <span className="font-semibold text-[#2C2C2C]">{TIER_CFG[t].label}</span>
+              <span className="text-[#9E9E9E]">{TIER_CFG[t].range}</span>
+            </div>
+          ))}
         </div>
       </div>
 

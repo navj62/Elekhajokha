@@ -16,28 +16,28 @@ import { Switch } from "@/components/ui/switch";
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
 type Pledge = {
-  id:          string;
-  status:      "ACTIVE" | "RELEASED" | "OVERDUE";
-  pledgeDate:  string;
-  loanAmount:  string;
+  id: string;
+  status: "ACTIVE" | "RELEASED" | "OVERDUE";
+  pledgeDate: string;
+  loanAmount: string;
   releaseDate: string | null;
-  itemLabel:   string | null;
-  itemCount:   number;
+  itemLabel: string | null;
+  itemCount: number;
 };
 
 type CustomerDetail = {
-  id:              string;
-  name:            string;
-  address:         string;
-  region:          string;
-  mobile:          string | null;
-  aadharNo:        string | null;
-  remark:          string | null;
-  customerImg:     string | null;
-  idProofImg:      string | null;
-  createdAt?:      string;
-  pledges:         Pledge[];
-  viewToken:       string;
+  id: string;
+  name: string;
+  address: string;
+  region: string;
+  mobile: string | null;
+  aadharNo: string | null;
+  remark: string | null;
+  customerImg: string | null;
+  idProofImg: string | null;
+  createdAt?: string;
+  pledges: Pledge[];
+  viewToken: string;
   isPortalBlocked: boolean;
 };
 
@@ -66,7 +66,7 @@ function getInitials(name: string) {
 function renderStatusBadge(status?: string | null) {
   if (!status) return null;
   let bg = "#EAEAEA", color = "#6D6D6D", dot = "#A0A0A0";
-  if (status === "ACTIVE")  { bg = "#E6E8DA"; color = "#5C633F"; dot = "#838C58"; }
+  if (status === "ACTIVE") { bg = "#E6E8DA"; color = "#5C633F"; dot = "#838C58"; }
   if (status === "OVERDUE") { bg = "#F8D7DA"; color = "#C94A4A"; dot = "#D66666"; }
   const label = status.charAt(0) + status.slice(1).toLowerCase();
   return (
@@ -81,16 +81,22 @@ function renderStatusBadge(status?: string | null) {
 /*  Page                                                                */
 /* ================================================================== */
 export default function CustomerDetailPage() {
-  const params     = useParams<{ customerId: string }>();
-  const router     = useRouter();
+  const params = useParams<{ customerId: string }>();
+  const router = useRouter();
   const customerId = params?.customerId;
 
-  const [customer,   setCustomer]   = useState<CustomerDetail | null>(null);
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState<string | null>(null);
-  const [toastMsg,   setToastMsg]   = useState<string | null>(null);
+  const [customer, setCustomer] = useState<CustomerDetail | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [showQR,     setShowQR]     = useState(false);
+  const [showQR, setShowQR] = useState(false);
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [editingRemark, setEditingRemark] = useState("");
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({ name: "", mobile: "", address: "", region: "", aadharNo: "" });
+  const [savingProfile, setSavingProfile] = useState(false);
   const toastRef = useRef<NodeJS.Timeout | null>(null);
 
   function showToast(msg: string) {
@@ -106,7 +112,7 @@ export default function CustomerDetailPage() {
       setLoading(true);
       setError(null);
       try {
-        const res  = await fetch(`/api/customers/${customerId}`, { cache: "no-store" });
+        const res = await fetch(`/api/customers/${customerId}`, { cache: "no-store" });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "Unable to load customer.");
         setCustomer(data.customer);
@@ -128,7 +134,7 @@ export default function CustomerDetailPage() {
     if (!window.confirm("Delete this pledge? This cannot be undone.")) return;
     setDeletingId(pledgeId);
     try {
-      const res  = await fetch(`/api/pledges/${pledgeId}`, { method: "DELETE" });
+      const res = await fetch(`/api/pledges/${pledgeId}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Unable to delete pledge.");
       setCustomer({
@@ -143,6 +149,50 @@ export default function CustomerDetailPage() {
     }
   }
 
+  /* ---- Save Notes --------------------------------------------- */
+  async function handleSaveNotes() {
+    if (!customer) return;
+    setSavingNotes(true);
+    try {
+      const res = await fetch(`/api/customers/${customerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ remark: editingRemark }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Unable to save notes.");
+      setCustomer({ ...customer, remark: editingRemark });
+      setIsEditingNotes(false);
+      showToast("Notes updated.");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Unexpected error");
+    } finally {
+      setSavingNotes(false);
+    }
+  }
+
+  /* ---- Save Profile ------------------------------------------- */
+  async function handleSaveProfile() {
+    if (!customer) return;
+    setSavingProfile(true);
+    try {
+      const res = await fetch(`/api/customers/${customerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Unable to save profile.");
+      setCustomer({ ...customer, ...editForm });
+      setShowEditModal(false);
+      showToast("Profile updated.");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Unexpected error");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
   if (!customerId) {
     return (
       <SubscriptionGuard featureName="Customer Details">
@@ -154,9 +204,9 @@ export default function CustomerDetailPage() {
   }
 
   /* ---- Financial summary calculations ------------------------- */
-  const totalLoan     = customer?.pledges.reduce((s, p) => s + Number(p.loanAmount), 0) ?? 0;
-  const repaid        = customer?.pledges.filter((p) => p.status === "RELEASED").reduce((s, p) => s + Number(p.loanAmount), 0) ?? 0;
-  const outstanding   = totalLoan - repaid;
+  const totalLoan = customer?.pledges.reduce((s, p) => s + Number(p.loanAmount), 0) ?? 0;
+  const repaid = customer?.pledges.filter((p) => p.status === "RELEASED").reduce((s, p) => s + Number(p.loanAmount), 0) ?? 0;
+  const outstanding = totalLoan - repaid;
   const progressValue = totalLoan > 0 ? (repaid / totalLoan) * 100 : 0;
 
   /* ================================================================ */
@@ -211,20 +261,20 @@ export default function CustomerDetailPage() {
             </div>
           </div>
 
-        /* ── Error ─────────────────────────────────────────────── */
+          /* ── Error ─────────────────────────────────────────────── */
         ) : error ? (
           <div className="p-6 rounded-[16px] border" style={{ backgroundColor: "#F8D7DA", borderColor: "#F5C2C7" }}>
             <h3 className="text-[14px] font-bold text-[#C94A4A] mb-1">Unable to load customer</h3>
             <p className="text-[13px] text-[#C94A4A]">{error}</p>
           </div>
 
-        /* ── Not found ─────────────────────────────────────────── */
+          /* ── Not found ─────────────────────────────────────────── */
         ) : !customer ? (
           <div className="p-6 rounded-[16px] border text-center" style={{ backgroundColor: "#FFFFFF", borderColor: "#ECEAE4" }}>
             <p className="text-[14px] text-[#9E9E9E]">Customer not found.</p>
           </div>
 
-        /* ── Loaded ────────────────────────────────────────────── */
+          /* ── Loaded ────────────────────────────────────────────── */
         ) : (
           <div className="space-y-6">
 
@@ -335,15 +385,27 @@ export default function CustomerDetailPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <button className="flex items-center gap-2 px-5 py-2.5 rounded-[20px] text-[13px] font-bold transition-colors bg-[#E6E4DC] text-[#6F6F6F] hover:bg-[#D8D6C8] hover:text-[#2C2C2C]">
+                <button
+                  onClick={() => {
+                    setEditForm({
+                      name: customer.name || "",
+                      mobile: customer.mobile || "",
+                      address: customer.address || "",
+                      region: customer.region || "",
+                      aadharNo: customer.aadharNo || "",
+                    });
+                    setShowEditModal(true);
+                  }}
+                  className="flex items-center gap-2 px-5 py-2.5 cursor-pointer rounded-[20px] text-[13px] font-bold transition-colors bg-[#E6E4DC] text-[#6F6F6F] hover:bg-[#D8D6C8] hover:text-[#2C2C2C]"
+                >
                   <Edit3 size={15} /> Edit Profile
                 </button>
                 <button className="flex items-center gap-2 px-5 py-2.5 rounded-[20px] text-[13px] font-bold transition-colors bg-[#E6E4DC] text-[#6F6F6F] hover:bg-[#D8D6C8] hover:text-[#2C2C2C]">
                   <Upload size={15} /> Export Data
                 </button>
                 <Link href={`/customers/${customerId}/pledges/add`}>
-                  <button className="flex items-center gap-2 px-6 py-2.5 rounded-[20px] text-[13px] font-bold transition-all text-white bg-[#555B3F] hover:bg-[#4B5036]">
-                    <Plus size={15} /> New Pledge
+                  <button className="flex items-center gap-2 px-6 py-2.5 cursor-pointer rounded-[20px] text-[13px] font-bold transition-all text-white bg-[#555B3F] hover:bg-[#4B5036]">
+                    <Plus size={15} /> Add Pledge
                   </button>
                 </Link>
               </div>
@@ -356,9 +418,28 @@ export default function CustomerDetailPage() {
               <div className="flex flex-col gap-6">
 
                 {/* Financial Summary */}
-                <div className="bg-white rounded-[24px] p-6 lg:p-8" style={{ border: "1px solid #ECEAE4" }}>
+                <div
+                  className="bg-white rounded-[24px] p-6 lg:p-8 cursor-pointer transition-all duration-200 group"
+                  style={{ border: "1px solid #ECEAE4" }}
+                  onMouseEnter={(e) => {
+                    const el = e.currentTarget as HTMLDivElement;
+                    el.style.border = "1.5px solid #555B3F";
+                    el.style.backgroundColor = "#FAFAF5";
+                    el.style.boxShadow = "0 6px 24px rgba(85,91,63,0.14)";
+                  }}
+                  onMouseLeave={(e) => {
+                    const el = e.currentTarget as HTMLDivElement;
+                    el.style.border = "1px solid #ECEAE4";
+                    el.style.backgroundColor = "#ffffff";
+                    el.style.boxShadow = "none";
+                  }}
+                  onClick={() => router.push(`/customers/${customerId}/financial-summary`)}
+                >
                   <div className="flex items-center justify-between mb-8">
-                    <h3 className="text-[17px] font-bold text-[#2C2C2C]">Financial Summary</h3>
+                    <div className="flex items-center gap-3">
+                      <h3 className="text-[17px] font-bold text-[#2C2C2C]">Financial Summary</h3>
+                      <span className="text-[12px] font-semibold text-[#555B3F] opacity-0 group-hover:opacity-100 transition-opacity duration-150">View Details →</span>
+                    </div>
                     <span className="bg-[#EAE9DF] text-[#555B3F] text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-widest">
                       {customer.pledges.length} Pledge{customer.pledges.length !== 1 ? "s" : ""}
                     </span>
@@ -399,9 +480,7 @@ export default function CustomerDetailPage() {
                       <div>
                         <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1.5 uppercase">Aadhaar Number</p>
                         <p className="text-[14px] font-bold text-[#2C2C2C] tracking-[0.15em]">
-                          {customer.aadharNo
-                            ? customer.aadharNo.replace(/.(?=.{4})/g, "*")
-                            : "**** **** ****"}
+                          {customer.aadharNo ? customer.aadharNo : "-"}
                         </p>
                       </div>
                       <div className="text-[#555B3F] bg-[#DADBCF] p-1.5 rounded-full">
@@ -470,16 +549,48 @@ export default function CustomerDetailPage() {
                 >
                   <div className="flex items-center justify-between mb-5">
                     <h3 className="text-[17px] font-bold text-[#2C2C2C]">Internal Remarks</h3>
-                    <button className="text-[13px] font-semibold text-[#2C2C2C] hover:text-black transition-colors">
-                      Edit Notes
-                    </button>
+                    {isEditingNotes ? (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setIsEditingNotes(false)}
+                          className="text-[12px] font-semibold text-[#9E9E9E] hover:text-[#2C2C2C] transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleSaveNotes}
+                          disabled={savingNotes}
+                          className="text-[12px] font-semibold bg-[#555B3F] text-white px-3 py-1.5 rounded-[12px] hover:bg-[#4B5036] transition-colors disabled:opacity-50"
+                        >
+                          {savingNotes ? "Saving..." : "Save Notes"}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setEditingRemark(customer.remark || "");
+                          setIsEditingNotes(true);
+                        }}
+                        className="text-[13px] font-semibold text-[#2C2C2C] hover:text-black transition-colors"
+                      >
+                        Edit Notes
+                      </button>
+                    )}
                   </div>
                   <div className="bg-[#F4F3EE] rounded-[16px] p-5 flex-1 flex flex-col justify-between border border-[#E8E6DF]">
-                    <div className="text-[14px] leading-[1.7] text-[#6F6F6F]">
-                      {customer.remark
-                        ? <p>{customer.remark}</p>
-                        : <p className="italic text-[#9E9E9E]">No remarks added yet.</p>
-                      }
+                    <div className="text-[14px] leading-[1.7] text-[#6F6F6F] flex-1 flex flex-col">
+                      {isEditingNotes ? (
+                        <textarea
+                          value={editingRemark}
+                          onChange={(e) => setEditingRemark(e.target.value)}
+                          placeholder="Add internal remarks here..."
+                          className="w-full flex-1 bg-transparent border-none outline-none resize-none text-[#2C2C2C] placeholder-[#9E9E9E]"
+                        />
+                      ) : (
+                        customer.remark
+                          ? <p>{customer.remark}</p>
+                          : <p className="italic text-[#9E9E9E]">No remarks added yet.</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -560,15 +671,15 @@ export default function CustomerDetailPage() {
                                   <Eye size={15} />
                                 </button>
                               </Link>
-                              <button
-                                onClick={() => handleDelete(pledge.id)}
-                                disabled={deletingId === pledge.id || pledge.status === "RELEASED"}
-                                className="p-2 rounded-full hover:bg-[#F8D7DA] text-[#9E9E9E] hover:text-[#C94A4A] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                              >
-                                {deletingId === pledge.id
-                                  ? <Loader2 size={15} className="animate-spin" />
-                                  : <Trash2 size={15} />}
-                              </button>
+                              <Link href={`/customers/${customerId}/pledges/${pledge.id}/release`}>
+                                <button
+                                  disabled={pledge.status === "RELEASED"}
+                                  className="p-2 rounded-full hover:bg-[#EAE9DF] text-[#9E9E9E] hover:text-[#555B3F] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                  title="Release Pledge"
+                                >
+                                  <Trash2 size={15} />
+                                </button>
+                              </Link>
                             </div>
                           </td>
                         </tr>
@@ -588,6 +699,52 @@ export default function CustomerDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Edit Profile Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setShowEditModal(false)}>
+          <div
+            className="bg-white rounded-[24px] p-8 w-full max-w-[500px] shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-[20px] font-bold text-[#2C2C2C] mb-6">Edit Profile</h3>
+            <div className="flex flex-col gap-4">
+              {([
+                { label: "Full Name", key: "name", placeholder: "Customer name" },
+                { label: "Mobile Number", key: "mobile", placeholder: "+91 XXXXX XXXXX" },
+                { label: "Address", key: "address", placeholder: "Street, City" },
+                { label: "Region", key: "region", placeholder: "State / District" },
+                { label: "Aadhaar Number", key: "aadharNo", placeholder: "XXXX XXXX XXXX" },
+              ] as { label: string; key: keyof typeof editForm; placeholder: string }[]).map(({ label, key, placeholder }) => (
+                <div key={key}>
+                  <label className="block text-[11px] font-bold tracking-wider text-[#9E9E9E] uppercase mb-1.5">{label}</label>
+                  <input
+                    value={editForm[key]}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, [key]: e.target.value }))}
+                    placeholder={placeholder}
+                    className="w-full px-4 py-3 rounded-[12px] border border-[#E0DED6] bg-[#FAFAF7] text-[14px] text-[#2C2C2C] outline-none focus:border-[#555B3F] transition-colors"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-3 mt-8">
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="px-5 py-2.5 rounded-[20px] text-[13px] font-bold bg-[#F0EEE8] text-[#6F6F6F] hover:bg-[#E6E4DC] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveProfile}
+                disabled={savingProfile}
+                className="px-5 py-2.5 rounded-[20px] text-[13px] font-bold bg-[#555B3F] text-white hover:bg-[#4B5036] transition-colors disabled:opacity-50"
+              >
+                {savingProfile ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Toast */}
       {toastMsg && (

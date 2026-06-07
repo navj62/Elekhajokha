@@ -5,22 +5,13 @@ import { auth }                      from "@clerk/nextjs/server";
 import { prisma }                    from "@/lib/prisma";
 import { PledgeStatus, ItemType, Prisma } from "@prisma/client";
 
-/* ------------------------------------------------------------------ */
-/*  Constants                                                           */
-/* ------------------------------------------------------------------ */
-const MAX_RESULTS  = 50;  // hard cap — increase if needed
-const DEFAULT_TAKE = 20;  // default page size
+const MAX_RESULTS  = 50; 
+const DEFAULT_TAKE = 20;
 
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                             */
-/* ------------------------------------------------------------------ */
-
-/** Capitalise first letter, lowercase the rest: "NECKLACE" → "Necklace" */
 function titleCase(str: string) {
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 }
 
-/** Build a human-readable item label from DB fields */
 function buildItemLabel(item: {
   itemName:  string | null;
   itemType:  string;
@@ -29,26 +20,13 @@ function buildItemLabel(item: {
   return item.itemName?.trim() || `${titleCase(item.itemType)} (${titleCase(item.metalType)})`;
 }
 
-/** Safe PledgeStatus parse — returns undefined if invalid */
-function parsePledgeStatus(raw: string | null): PledgeStatus | undefined {
-  if (!raw) return undefined;
-  return Object.values(PledgeStatus).includes(raw as PledgeStatus)
-    ? (raw as PledgeStatus)
-    : undefined;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Route                                                               */
-/* ------------------------------------------------------------------ */
 export async function GET(req: NextRequest) {
   try {
-    /* ---- Auth ---------------------------------------------------- */
     const { userId: clerkUserId } = await auth();
     if (!clerkUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // ✅ findUnique instead of findUniqueOrThrow — controlled 404
     const user = await prisma.user.findUnique({
       where:  { clerkUserId },
       select: { id: true },
@@ -57,33 +35,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    /* ---- Params -------------------------------------------------- */
     const { searchParams } = req.nextUrl;
-    const search      = searchParams.get("q")?.trim()      ?? "";
-    const filter      = searchParams.get("filter")         ?? "all";
-    const take        = Math.min(
+    const search   = searchParams.get("q")?.trim() ?? "";
+    const sortBy   = searchParams.get("sortBy")    ?? ""; // name-asc, name-desc, most-pledges, highest-loan, newest, recent-update
+    const filterBy = searchParams.get("filterBy")  ?? "ALL"; // ALL, ACTIVE, RELEASED, OVERDUE, PINNED
+    const take     = Math.min(
       parseInt(searchParams.get("take") ?? String(DEFAULT_TAKE), 10) || DEFAULT_TAKE,
       MAX_RESULTS
     );
-    const validStatus = parsePledgeStatus(searchParams.get("status"));
 
-    /* ---- Build where clause -------------------------------------- */
-    // ✅ Typed as Prisma.CustomerWhereInput — no `any`
     const where: Prisma.CustomerWhereInput = {
       userId:    user.id,
       deletedAt: null,
     };
 
+    let statusFilter: PledgeStatus | undefined = undefined;
+    if (filterBy === "ACTIVE") statusFilter = PledgeStatus.ACTIVE;
+    if (filterBy === "RELEASED") statusFilter = PledgeStatus.RELEASED;
+    if (filterBy === "OVERDUE") statusFilter = PledgeStatus.OVERDUE;
+    
+    if (filterBy === "PINNED") {
+      where.isPinned = true;
+    }
+
     if (search) {
-      // ✅ Prisma enums don't support contains/insensitive — must pre-filter to valid values
-      // e.g. search "neck" → matchingItemTypes = ["NECKLACE"]
-      // e.g. search "ring" → matchingItemTypes = ["RING", "EARRING"]
       const matchingItemTypes = Object.values(ItemType).filter((t) =>
         t.toLowerCase().includes(search.toLowerCase())
       );
 
-      // Build OR clauses — itemType clause only added when there are matching enum values
-      // (avoids passing an empty `in: []` which Prisma rejects)
       const itemOrClauses: Prisma.PledgeItemWhereInput[] = [
         { itemName: { contains: search, mode: "insensitive" } },
         ...(matchingItemTypes.length > 0
@@ -97,63 +76,72 @@ export async function GET(req: NextRequest) {
 
       const pledgesWithItems: Prisma.PledgeListRelationFilter = {
         some: {
-          ...(validStatus && { status: validStatus }),
+          ...(statusFilter && { status: statusFilter }),
           items: itemsWhere,
         },
       };
 
-      switch (filter) {
-        case "name":
-          where.name = { contains: search, mode: "insensitive" };
-          break;
-
-        case "region":
-          where.region = { contains: search, mode: "insensitive" };
-          break;
-
-        case "itemName":
-        case "itemType":
-          where.pledges = pledgesWithItems;
-          break;
-
-        default: // "all" — search across all fields
-          where.OR = [
-            { name:    { contains: search, mode: "insensitive" } },
-            { region:  { contains: search, mode: "insensitive" } },
-            { pledges: pledgesWithItems },
-          ];
-      }
-    } else if (validStatus) {
-      // No search term but status filter set
-      where.pledges = { some: { status: validStatus } };
+      where.OR = [
+        { name:    { contains: search, mode: "insensitive" } },
+        { address: { contains: search, mode: "insensitive" } },
+        { region:  { contains: search, mode: "insensitive" } },
+        { mobile:  { contains: search, mode: "insensitive" } },
+        { pledges: pledgesWithItems },
+      ];
+    } else if (statusFilter) {
+      where.pledges = { some: { status: statusFilter } };
     }
 
-    /* ---- Query --------------------------------------------------- */
+    const orderBy: Prisma.CustomerOrderByWithRelationInput[] = [
+      { isPinned: "desc" }
+    ];
+
+    if (sortBy === "name-asc") {
+      orderBy.push({ name: "asc" });
+    } else if (sortBy === "name-desc") {
+      orderBy.push({ name: "desc" });
+    } else if (sortBy === "address-asc") {
+      orderBy.push({ address: "asc" });
+    } else if (sortBy === "address-desc") {
+      orderBy.push({ address: "desc" });
+    } else if (sortBy === "most-pledges") {
+      orderBy.push({ pledges: { _count: "desc" } });
+    } else if (sortBy === "recent-update") {
+      orderBy.push({ updatedAt: "desc" });
+    } else if (sortBy === "oldest") {
+      orderBy.push({ createdAt: "asc" });
+    } else if (!sortBy.startsWith("item") && sortBy !== "highest-loan") {
+      orderBy.push({ createdAt: "desc" }); // "newest" or default
+    }
+
     const customers = await prisma.customer.findMany({
       where,
-      take:    take + 1, // fetch one extra to detect if there are more results
-      orderBy: { createdAt: "desc" },
-
+      orderBy,
       select: {
         id:     true,
         name:   true,
         region: true,
+        address: true,
+        isPinned: true,
+        createdAt: true,
+        updatedAt: true,
 
-        // ✅ Count only pledges matching the status filter — not all pledges
         _count: {
           select: {
-            pledges: validStatus
-              ? { where: { status: validStatus } }
-              : true,
+            pledges: statusFilter
+              ? { where: { status: statusFilter } }
+              : { where: { status: PledgeStatus.ACTIVE } },
           },
         },
 
-        // Latest pledge → latest item for the label
         pledges: {
-          where:   validStatus ? { status: validStatus } : undefined,
+          where:   statusFilter ? { status: statusFilter } : undefined,
           orderBy: { createdAt: "desc" },
-          take:    1,
+          // If we need to calculate highest loan, we need all pledges for this customer (that match statusFilter)
+          // Since we only really need `loanAmount` for the calculation and the latest `items` for the label,
+          // we fetch all pledges (matching status filter) to sum loan amount.
           select: {
+            loanAmount: true,
             items: {
               orderBy: { id: "desc" },
               take:    1,
@@ -168,34 +156,67 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    /* ---- Pagination detection ------------------------------------ */
-    // ✅ fetch take+1, slice back to take — tells frontend if more exist
-    const hasMore = customers.length > take;
-    const page    = hasMore ? customers.slice(0, take) : customers;
-
-    /* ---- Format response ---------------------------------------- */
-    const result = page.map((cust) => {
+    let mapped = customers.map((cust) => {
       const latestItem = cust.pledges[0]?.items[0];
+      
+      let totalLoanAmount = 0;
+      cust.pledges.forEach(p => {
+        totalLoanAmount += Number(p.loanAmount || 0);
+      });
 
       return {
         id:          cust.id,
         name:        cust.name,
-        region:      cust.region,
+        region:      cust.region || cust.address, 
+        isPinned:    cust.isPinned,
         pledgeCount: cust._count.pledges,
+        totalLoanAmount,
         latestItem:  latestItem ? buildItemLabel(latestItem) : null,
       };
     });
 
+    if (sortBy === "highest-loan") {
+      mapped.sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return b.totalLoanAmount - a.totalLoanAmount;
+      });
+    } else if (sortBy.startsWith("itemname")) {
+      mapped.sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        const nameA = a.latestItem || "";
+        const nameB = b.latestItem || "";
+        return sortBy === "itemname-asc" ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+      });
+    } else if (sortBy.startsWith("itemtype")) {
+      // Sort by Item Type Options: Gold, Silver, Diamond, Other
+      // we'll boost the specific type to the top
+      const targetType = sortBy.split("-")[1] || "";
+      mapped.sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        const itemA = (a.latestItem || "").toLowerCase();
+        const itemB = (b.latestItem || "").toLowerCase();
+        const hasA = itemA.includes(targetType);
+        const hasB = itemB.includes(targetType);
+        if (hasA && !hasB) return -1;
+        if (!hasA && hasB) return 1;
+        return 0; // maintain default
+      });
+    }
+
+    const hasMore = mapped.length > take;
+    const page    = hasMore ? mapped.slice(0, take) : mapped;
+
     return NextResponse.json(
       {
-        customers: result,
+        customers: page,
         hasMore,
-        count: result.length,
+        count: mapped.length,
       },
       {
         headers: {
-          // ✅ Short cache — search results can be stale for 10s in browser
-          // but must revalidate with server (no serving stale from CDN)
           "Cache-Control": "private, max-age=10, must-revalidate",
         },
       }
