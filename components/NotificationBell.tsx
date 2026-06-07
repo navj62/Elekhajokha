@@ -66,6 +66,13 @@ function formatItemNames(items: PledgeItem[]): string {
   return `${names[0]}, ${names[1]} +${names.length - 2} more`;
 }
 
+// Older alerts baked the raw pledge id into the message ("Pledge <id> moved
+// to …"). Swap that exact prefix for the human item label. New alerts already
+// use the label, so the replace is a harmless no-op for them.
+function displayMessage(alert: Alert, itemLabel: string): string {
+  return alert.message.replace(`Pledge ${alert.pledge.id}`, itemLabel);
+}
+
 function formatRelativeTime(dateStr: string): string {
   const diff  = Date.now() - new Date(dateStr).getTime();
   const mins  = Math.floor(diff / 60000);
@@ -175,6 +182,41 @@ export function NotificationBell() {
     });
   };
 
+  // Delete a single notification — optimistic, refetch on failure to resync.
+  const deleteOne = async (id: string) => {
+    const target = alerts.find((a) => a.id === id);
+    if (!target) return;
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+    if (!target.isRead) setUnreadCount((c) => Math.max(0, c - 1));
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [id] }),
+      });
+      if (!res.ok) throw new Error("delete failed");
+    } catch {
+      fetchAlerts(); // resync from server on failure
+    }
+  };
+
+  // Clear every notification — confirm first, optimistic, rollback on failure.
+  const clearAll = async () => {
+    if (alerts.length === 0) return;
+    if (!window.confirm("Delete all notifications? This cannot be undone.")) return;
+    const prevAlerts = alerts;
+    const prevUnread = unreadCount;
+    setAlerts([]);
+    setUnreadCount(0);
+    try {
+      const res = await fetch("/api/notifications", { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+    } catch {
+      setAlerts(prevAlerts);   // rollback
+      setUnreadCount(prevUnread);
+    }
+  };
+
   const hasUnread = unreadCount > 0;
 
   return (
@@ -213,15 +255,25 @@ export function NotificationBell() {
                 </span>
               )}
             </div>
-            {hasUnread && (
-              <button
-                onClick={markAllRead}
-                disabled={markingRead}
-                className="text-xs text-[#4f46e5] hover:text-[#4338ca] font-medium disabled:opacity-50 transition-colors"
-              >
-                {markingRead ? "Marking…" : "Mark all read"}
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {hasUnread && (
+                <button
+                  onClick={markAllRead}
+                  disabled={markingRead}
+                  className="text-xs text-[#4f46e5] hover:text-[#4338ca] font-medium disabled:opacity-50 transition-colors"
+                >
+                  {markingRead ? "Marking…" : "Mark all read"}
+                </button>
+              )}
+              {alerts.length > 0 && (
+                <button
+                  onClick={clearAll}
+                  className="text-xs text-[#dc2626] hover:text-[#b91c1c] font-medium transition-colors"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Body */}
@@ -234,7 +286,7 @@ export function NotificationBell() {
               <ul>
                 {alerts.map((alert, i) => (
                   <li key={alert.id}>
-                    <DropdownItem alert={alert} onRead={markOneRead} onClose={() => setOpen(false)} />
+                    <DropdownItem alert={alert} onRead={markOneRead} onDelete={deleteOne} onClose={() => setOpen(false)} />
                     {i < alerts.length - 1 && <div className="mx-4 h-px bg-[#f3f4f6]" />}
                   </li>
                 ))}
@@ -279,10 +331,11 @@ export function NotificationBell() {
 // DROPDOWN ITEM — links directly to pledge
 // ─────────────────────────────────────────────
 
-function DropdownItem({ alert, onRead, onClose }: {
-  alert:   Alert;
-  onRead:  (id: string) => void;
-  onClose: () => void;
+function DropdownItem({ alert, onRead, onDelete, onClose }: {
+  alert:    Alert;
+  onRead:   (id: string) => void;
+  onDelete: (id: string) => void;
+  onClose:  () => void;
 }) {
   const tierConfig = TIER_CONFIG[alert.newTier];
   const itemLabel  = formatItemNames(alert.pledge.items);
@@ -292,8 +345,10 @@ function DropdownItem({ alert, onRead, onClose }: {
     onClose();
   };
 
+  // The delete button must live OUTSIDE the <Link> — a <button> nested in an
+  // <a> is invalid HTML — so it's a sibling revealed on hover.
   return (
-    // ← links to the specific pledge, not just /notifications
+    <div className="relative group">
     <Link
       href={`/customers/${alert.pledge.customerId}/pledges/${alert.pledge.id}`}
       onClick={handleClick}
@@ -317,14 +372,15 @@ function DropdownItem({ alert, onRead, onClose }: {
               {itemLabel}
             </span>
           </div>
-          <span className="text-[10px] text-[#9ca3af] shrink-0 mt-px">
+          {/* Time fades on hover so the delete button can take its spot */}
+          <span className="text-[10px] text-[#9ca3af] shrink-0 mt-px transition-opacity group-hover:opacity-0">
             {formatRelativeTime(alert.createdAt)}
           </span>
         </div>
 
         {/* Message */}
         <p className="text-xs text-[#6b7280] leading-snug mt-0.5 line-clamp-2">
-          {alert.message}
+          {displayMessage(alert, itemLabel)}
         </p>
 
         {/* Tier + LTV */}
@@ -354,9 +410,26 @@ function DropdownItem({ alert, onRead, onClose }: {
       </div>
 
       {!alert.isRead && (
-        <span className="w-2 h-2 rounded-full bg-[#4f46e5] shrink-0 mt-1.5" />
+        <span className="w-2 h-2 rounded-full bg-[#4f46e5] shrink-0 mt-1.5 transition-opacity group-hover:opacity-0" />
       )}
     </Link>
+
+      {/* Delete button — sibling of the Link (valid HTML), revealed on hover. */}
+      <button
+        type="button"
+        onClick={() => onDelete(alert.id)}
+        aria-label="Delete notification"
+        title="Delete notification"
+        className="absolute top-2.5 right-2.5 z-10 flex items-center justify-center w-6 h-6 rounded-md text-[#9ca3af] opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none hover:bg-[#fef2f2] hover:text-[#dc2626] transition-all"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="3 6 5 6 21 6" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          <line x1="10" y1="11" x2="10" y2="17" />
+          <line x1="14" y1="11" x2="14" y2="17" />
+        </svg>
+      </button>
+    </div>
   );
 }
 

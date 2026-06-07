@@ -11,6 +11,7 @@ type AccessStatus =
   | "trial"
   | "processing"
   | "payment_timeout"
+  | "payment_required"
   | "expired"
   | "trial_expired"
   | "inactive"

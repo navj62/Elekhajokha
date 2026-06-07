@@ -69,3 +69,41 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ alerts: items, unreadCount, hasMore, nextCursor });
 }
+
+// ─────────────────────────────────────────────
+// DELETE /api/notifications
+//
+// Body (optional):
+//   { ids: ["id1", "id2"] }  → delete those specific alerts
+//   {} or empty body         → delete ALL of this user's alerts
+//
+// Always scoped by userId, so a user can never delete another user's alerts
+// even if they pass foreign ids.
+// ─────────────────────────────────────────────
+export async function DELETE(req: NextRequest) {
+  const { userId: clerkUserId } = await auth();
+  if (!clerkUserId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { clerkUserId },
+    select: { id: true },
+  });
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  // Gracefully handle empty bodies without crashing
+  const body = await req.json().catch(() => ({}));
+  const ids = Array.isArray(body?.ids) ? body.ids : undefined;
+
+  const result = await prisma.pledgeAlert.deleteMany({
+    where: {
+      userId: user.id,
+      ...(ids ? { id: { in: ids } } : {}),
+    },
+  });
+
+  return NextResponse.json({ deleted: result.count });
+}

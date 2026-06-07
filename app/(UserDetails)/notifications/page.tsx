@@ -78,6 +78,13 @@ function toTitleCase(str: string) {
   return str.charAt(0) + str.slice(1).toLowerCase().replace(/_/g, " ");
 }
 
+// Older alerts baked the raw pledge id into the message ("Pledge <id> moved
+// to …"). Swap that exact prefix for the human item label. New alerts already
+// use the label, so the replace is a harmless no-op for them.
+function displayMessage(alert: Alert, itemLabel: string): string {
+  return alert.message.replace(`Pledge ${alert.pledge.id}`, itemLabel);
+}
+
 function formatRelativeTime(dateStr: string): string {
   const diff  = Date.now() - new Date(dateStr).getTime();
   const mins  = Math.floor(diff / 60000);
@@ -109,6 +116,7 @@ export default function NotificationsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [filterUnread, setFilterUnread] = useState<FilterUnread>("all");
   const [filterTier,   setFilterTier]   = useState<FilterTier>("all");
+  const [deletingAll, setDeletingAll]   = useState(false);
 
   const fetchAlerts = useCallback(async (reset = true) => {
     if (reset) setLoading(true);
@@ -154,6 +162,44 @@ export default function NotificationsPage() {
     });
   };
 
+  // Delete a single notification — optimistic, refetch on failure to resync.
+  const deleteOne = async (id: string) => {
+    const target = alerts.find((a) => a.id === id);
+    if (!target) return;
+    setAlerts((prev) => prev.filter((a) => a.id !== id));
+    if (!target.isRead) setUnreadCount((c) => Math.max(0, c - 1));
+    try {
+      const res = await fetch("/api/notifications", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [id] }),
+      });
+      if (!res.ok) throw new Error("delete failed");
+    } catch {
+      fetchAlerts(true); // resync from server on failure
+    }
+  };
+
+  // Delete every notification — confirm first, optimistic, rollback on failure.
+  const deleteAll = async () => {
+    if (alerts.length === 0) return;
+    if (!window.confirm("Delete all notifications? This cannot be undone.")) return;
+    setDeletingAll(true);
+    const prevAlerts = alerts;
+    const prevUnread = unreadCount;
+    setAlerts([]);
+    setUnreadCount(0);
+    try {
+      const res = await fetch("/api/notifications", { method: "DELETE" });
+      if (!res.ok) throw new Error("delete failed");
+    } catch {
+      setAlerts(prevAlerts);   // rollback
+      setUnreadCount(prevUnread);
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   const visible = filterTier === "all"
     ? alerts
     : alerts.filter((a) => a.newTier === filterTier);
@@ -174,15 +220,26 @@ export default function NotificationsPage() {
               </p>
             )}
           </div>
-          {unreadCount > 0 && (
-            <button
-              onClick={markAllRead}
-              disabled={markingRead}
-              className="text-sm text-[#4f46e5] hover:text-[#4338ca] font-medium disabled:opacity-50 transition-colors"
-            >
-              {markingRead ? "Marking…" : "Mark all read"}
-            </button>
-          )}
+          <div className="flex items-center gap-4 shrink-0">
+            {unreadCount > 0 && (
+              <button
+                onClick={markAllRead}
+                disabled={markingRead}
+                className="text-sm text-[#4f46e5] hover:text-[#4338ca] font-medium disabled:opacity-50 transition-colors"
+              >
+                {markingRead ? "Marking…" : "Mark all read"}
+              </button>
+            )}
+            {alerts.length > 0 && (
+              <button
+                onClick={deleteAll}
+                disabled={deletingAll}
+                className="text-sm text-[#dc2626] hover:text-[#b91c1c] font-medium disabled:opacity-50 transition-colors"
+              >
+                {deletingAll ? "Deleting…" : "Delete all"}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filters */}
@@ -238,7 +295,7 @@ export default function NotificationsPage() {
         ) : (
           <div className="space-y-2">
             {visible.map((alert) => (
-              <AlertCard key={alert.id} alert={alert} onRead={markOneRead} />
+              <AlertCard key={alert.id} alert={alert} onRead={markOneRead} onDelete={deleteOne} />
             ))}
             {hasMore && filterTier === "all" && (
               <button
@@ -260,27 +317,30 @@ export default function NotificationsPage() {
 // ALERT CARD
 // ─────────────────────────────────────────────
 
-function AlertCard({ alert, onRead }: { alert: Alert; onRead: (id: string) => void }) {
+function AlertCard({ alert, onRead, onDelete }: {
+  alert: Alert;
+  onRead: (id: string) => void;
+  onDelete: (id: string) => void;
+}) {
   const tierConfig = TIER_CONFIG[alert.newTier];
   const itemLabel  = formatItemNames(alert.pledge.items);
 
   const handleClick = () => onRead(alert.id);
 
+  // The delete button must live OUTSIDE the <Link> — a <button> nested in an
+  // <a> is invalid HTML. So the card is a relative/group wrapper holding the
+  // Link plus a sibling delete button revealed on hover.
   return (
-    // ← entire card is a link to the pledge detail page
-    <Link
-      href={`/customers/${alert.pledge.customerId}/pledges/${alert.pledge.id}`}
-      onClick={handleClick}
-      className={`relative block bg-white rounded-xl border transition-all group ${
-        !alert.isRead
-          ? "border-[#e5e7eb] shadow-sm hover:shadow-md"
-          : "border-[#f3f4f6] hover:border-[#e5e7eb]"
-      }`}
-    >
-      {!alert.isRead && (
-        <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#4f46e5]" />
-      )}
-
+    <div className="relative group">
+      <Link
+        href={`/customers/${alert.pledge.customerId}/pledges/${alert.pledge.id}`}
+        onClick={handleClick}
+        className={`block bg-white rounded-xl border transition-all ${
+          !alert.isRead
+            ? "border-[#e5e7eb] shadow-sm hover:shadow-md"
+            : "border-[#f3f4f6] hover:border-[#e5e7eb]"
+        }`}
+      >
       <div className="p-4">
         <div className="flex items-start gap-3">
           <span className="text-lg leading-none mt-0.5 shrink-0">
@@ -291,6 +351,9 @@ function AlertCard({ alert, onRead }: { alert: Alert; onRead: (id: string) => vo
             {/* Customer + item name + time */}
             <div className="flex items-center justify-between gap-2 mb-0.5">
               <div className="flex items-center gap-1.5 min-w-0">
+                {!alert.isRead && (
+                  <span className="w-2 h-2 rounded-full bg-[#4f46e5] shrink-0" />
+                )}
                 <span className="font-semibold text-[#1a1a1a] text-sm truncate">
                   {alert.customer.name}
                 </span>
@@ -299,14 +362,15 @@ function AlertCard({ alert, onRead }: { alert: Alert; onRead: (id: string) => vo
                   {itemLabel}
                 </span>
               </div>
-              <span className="text-xs text-[#9ca3af] shrink-0">
+              {/* Time fades out on hover so the delete button can take its spot */}
+              <span className="text-xs text-[#9ca3af] shrink-0 transition-opacity group-hover:opacity-0">
                 {formatRelativeTime(alert.createdAt)}
               </span>
             </div>
 
             {/* Message */}
             <p className="text-sm text-[#4b5563] leading-snug mb-3">
-              {alert.message}
+              {displayMessage(alert, itemLabel)}
             </p>
 
             {/* Tier + metrics */}
@@ -364,7 +428,25 @@ function AlertCard({ alert, onRead }: { alert: Alert; onRead: (id: string) => vo
           </div>
         </div>
       </div>
-    </Link>
+      </Link>
+
+      {/* Delete button — sibling of the Link (valid HTML), revealed on hover.
+          Sits where the timestamp was; clicking it never navigates. */}
+      <button
+        type="button"
+        onClick={() => onDelete(alert.id)}
+        aria-label="Delete notification"
+        title="Delete notification"
+        className="absolute top-3.5 right-3 z-10 flex items-center justify-center w-7 h-7 rounded-lg text-[#9ca3af] opacity-0 group-hover:opacity-100 focus:opacity-100 focus:outline-none hover:bg-[#fef2f2] hover:text-[#dc2626] transition-all"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="3 6 5 6 21 6" />
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+          <line x1="10" y1="11" x2="10" y2="17" />
+          <line x1="14" y1="11" x2="14" y2="17" />
+        </svg>
+      </button>
+    </div>
   );
 }
 

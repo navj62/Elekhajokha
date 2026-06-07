@@ -66,6 +66,21 @@ if (!user) {
       });
     }
 
+    // Anti-farming: don't mint a new subscription (which would grant a fresh
+    // 10-min grace window) within 24h of a prior window that expired unpaid.
+    if (
+      user.lastGraceExpiredAt &&
+      Date.now() - user.lastGraceExpiredAt.getTime() < 24 * 60 * 60 * 1000
+    ) {
+      return NextResponse.json(
+        {
+          error: "GRACE_LIMIT",
+          message: "Please wait 24 hours before creating a new subscription.",
+        },
+        { status: 429 }
+      );
+    }
+
     const subscription = await razorpay.subscriptions.create({
       plan_id: PLANS[plan as keyof typeof PLANS],
       customer_notify: 1,

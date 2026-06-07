@@ -34,7 +34,7 @@ export async function GET() {
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
   // ── Run all queries in parallel ──
-  const [snapshots, mtdNewPledges, mtdReleasedPledges, mtdLoanAmount] =
+  const [snapshots, mtdNewPledges, mtdReleasedPledges, mtdLoanAmount, topRegions] =
     await Promise.all([
       // Latest 2 snapshots — today + yesterday for trend
       prisma.financialSnapshot.findMany({
@@ -68,6 +68,21 @@ export async function GET() {
         },
         _sum: { loanAmount: true },
       }),
+
+      // Region performance — top 10 regions by customer count (live).
+      // Case-insensitive: INITCAP(LOWER(TRIM(region))) folds "indOrE" / "indore"
+      // into one bucket and title-cases it ("Indore") for display.
+      // COUNT(*)::int keeps it a JS number (avoids bigint deserialization).
+      prisma.$queryRaw<{ region: string; count: number }[]>`
+        SELECT INITCAP(LOWER(TRIM(region))) AS region, COUNT(*)::int AS count
+        FROM "customers"
+        WHERE "userId" = ${user.id}
+          AND "deletedAt" IS NULL
+          AND TRIM(region) <> ''
+        GROUP BY INITCAP(LOWER(TRIM(region)))
+        ORDER BY count DESC, region ASC
+        LIMIT 10
+      `,
     ]);
 
   const today = snapshots[0] ?? null;
@@ -102,5 +117,8 @@ export async function GET() {
       releasedPledges: mtdReleasedPledges,
       loanAmount:      Number(mtdLoanAmount._sum.loanAmount ?? 0),
     },
+
+    // Region performance — top 10 regions by customer count (live, case-insensitive)
+    topRegions,
   });
 }

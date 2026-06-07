@@ -24,6 +24,7 @@ model User {
   subscriptionPlan       SubscriptionPlan?
   razorpayPaymentId      String?
   subscriptionCreatedAt  DateTime?
+  lastGraceExpiredAt     DateTime?
   hadTrial               Boolean            @default(false)
   isActive               Boolean            @default(true)
   lastLoginAt            DateTime?
@@ -61,7 +62,7 @@ model Customer {
   user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   pledges         Pledge[]
   alerts  PledgeAlert[]
-  @@index([userId])
+  @@index([userId, deletedAt])
   @@index([name])
   @@map("customers")
 }
@@ -93,7 +94,7 @@ model Pledge {
 
 
   //snapshot notification
-  lastCalculatedLtv  Decimal?  @db.Decimal(5,2)
+  lastCalculatedLtv  Decimal?  @db.Decimal(8,2)
   lastRiskTier       RiskTier?
   lastEvaluatedAt    DateTime?
   alerts             PledgeAlert[]
@@ -101,7 +102,7 @@ model Pledge {
 lastMarketValue  Decimal? @db.Decimal(14,2)
 
   @@index([status, createdAt])
-  @@index([customerId])
+  @@index([customerId, status])
   @@map("pledges")
 }
 
@@ -168,7 +169,7 @@ model PledgeAudit {
   createdAt            DateTime            @default(now())
   pledge               Pledge              @relation(fields: [pledgeId], references: [id], onDelete: Cascade)
 
-  @@index([pledgeId])
+  @@index([pledgeId, createdAt])
   @@map("pledge_audits")
 }
 

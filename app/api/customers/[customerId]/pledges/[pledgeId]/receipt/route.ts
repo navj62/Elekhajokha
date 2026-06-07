@@ -31,10 +31,14 @@ const user = await prisma.user.findUnique({
       return NextResponse.json({ error: "User not found" }, { status: 404 });
 
 const pledge = await prisma.pledge.findFirst({
-  where: { id: pledgeId, customerId: customerId },
+  where: {
+    id: pledgeId,
+    customerId: customerId,
+    customer: { userId: user.id },   // ← enforce ownership through the relation
+  },
   include: {
     customer: { select: { name: true, address: true } },
-    items: true, // ← fetch pledge items
+    items: true,
   },
 });
 if (!pledge)
@@ -48,7 +52,7 @@ const totalNetWeight = pledge.items
   .reduce((sum, item) => sum + Number(item.netWeight), 0)
   .toFixed(3);
 
-    console.log("RECEIPT pledge:", pledge.id, pledge.customer.name); // ← verify in terminal
+    
 const pdfBuffer = await generateReceiptPDF({
   transactionId: pledge.id.slice(-6).toUpperCase(),
   pledgeDate: new Date(pledge.pledgeDate).toLocaleDateString("en-IN", {

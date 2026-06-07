@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { SubscriptionStatus } from "@prisma/client";
+import { constantTimeEqual } from "@/lib/constantTimeEqual";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,12 +13,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No signature" }, { status: 400 });
     }
 
+    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+    if (!webhookSecret) {
+      console.error("RAZORPAY_WEBHOOK_SECRET is not set");
+      return NextResponse.json({ error: "Server misconfiguration" }, { status: 500 });
+    }
+
     const expectedSignature = crypto
-      .createHmac("sha256", process.env.RAZORPAY_WEBHOOK_SECRET!)
+      .createHmac("sha256", webhookSecret)
       .update(body)
       .digest("hex");
 
-    if (signature !== expectedSignature) {
+    if (!constantTimeEqual(signature, expectedSignature)) {
       return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
     }
 

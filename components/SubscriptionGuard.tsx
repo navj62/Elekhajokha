@@ -202,10 +202,11 @@ export default function SubscriptionGuard({
   }
 
   // ── 7. No access → paywall ────────────────────────────────────────
-  const isTrialExpired   = status === "trial_expired";
-  const isExpired        = status === "expired";
-  const isPaymentTimeout = status === "payment_timeout";
-  const isHalted         = status === "inactive" && reason === "payment_failed";
+  const isTrialExpired    = status === "trial_expired";
+  const isExpired         = status === "expired";
+  const isPaymentTimeout  = status === "payment_timeout";
+  const isPaymentRequired = status === "payment_required";
+  const isHalted          = status === "inactive" && reason === "payment_failed";
 
   // shouldBlur only when no access AND not halted
   const shouldBlur = !hasAccess && !isHalted;
@@ -218,6 +219,8 @@ export default function SubscriptionGuard({
     ? "Subscription Expired"
     : isPaymentTimeout
     ? "Payment Session Expired"
+    : isPaymentRequired
+    ? "Free Window Expired"
     : "Subscription Required";
 
   const description = isHalted
@@ -228,6 +231,8 @@ export default function SubscriptionGuard({
     ? "Your subscription has expired. Renew to continue using "
     : isPaymentTimeout
     ? "Your payment session expired. Please try subscribing again to access "
+    : isPaymentRequired
+    ? "Your free window has expired. Please subscribe to continue using "
     : "Subscribe to e-lekha-jokha to access ";
 
   const ctaLabel = isHalted
@@ -238,6 +243,8 @@ export default function SubscriptionGuard({
     ? "Subscribe Now"
     : isPaymentTimeout
     ? "Try Again"
+    : isPaymentRequired
+    ? "Subscribe Now"
     : "View Plans";
 
   const FEATURES = [

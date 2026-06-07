@@ -210,7 +210,7 @@ export async function GET(_req: Request, context: RouteContext) {
 /* ------------------------------------------------------------------ */
 /*  DELETE /api/customers/[customerId]/pledges/[pledgeId]              */
 /* ------------------------------------------------------------------ */
-export async function DELETE(_req: Request, context: RouteContext) {
+export async function DELETE(req: Request, context: RouteContext) {
   try {
     const { userId: clerkUserId } = await auth();
     if (!clerkUserId)
@@ -238,7 +238,27 @@ export async function DELETE(_req: Request, context: RouteContext) {
     if (pledge.status === "RELEASED")
       return NextResponse.json({ error: "Released pledges cannot be deleted" }, { status: 400 });
 
-    // PledgeItems cascade-deleted via onDelete: Cascade
+    // Guard against silently erasing part-payment history. Deleting cascades to
+    // Transaction rows, so require explicit confirmation when any exist.
+    const confirmDelete =
+      new URL(req.url).searchParams.get("confirmDelete") === "true";
+
+    if (!confirmDelete) {
+      const transactionCount = await prisma.transaction.count({ where: { pledgeId } });
+      if (transactionCount > 0) {
+        return NextResponse.json(
+          {
+            error: "PENDING_TRANSACTIONS",
+            message:
+              "This pledge has recorded part-payment(s). Deleting it will permanently erase that payment history.",
+            transactionCount,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
+    // PledgeItems + Transactions cascade-deleted via onDelete: Cascade
     await prisma.pledge.delete({ where: { id: pledgeId } });
     return NextResponse.json({ success: true });
 

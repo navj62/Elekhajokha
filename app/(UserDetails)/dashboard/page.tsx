@@ -2,7 +2,7 @@
 
 import { SignOutButton, UserButton } from "@clerk/nextjs";
 import { useEffect, useState, useCallback } from "react";
-import { Loader2, TrendingUp, TrendingDown, Minus, RefreshCw, ArrowRight } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, Minus, RefreshCw, ArrowRight, Search } from "lucide-react";
 import Link from "next/link";
 import { NotificationBell } from "@/components/NotificationBell";
 
@@ -53,6 +53,7 @@ interface DashboardData {
     releasedPledges: number;
     loanAmount:      number;
   };
+  topRegions: { region: string; count: number }[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -236,6 +237,128 @@ function RiskTierBar({
 }
 
 /* ------------------------------------------------------------------ */
+/*  Region Performance                                                  */
+/* ------------------------------------------------------------------ */
+
+function RegionPerformance({ regions }: { regions: { region: string; count: number }[] }) {
+  if (regions.length === 0) {
+    return <p className="text-sm text-[#a89f94]">No customers yet</p>;
+  }
+
+  const max = Math.max(...regions.map((r) => r.count));
+
+  return (
+    <div className="space-y-2.5">
+      {regions.map((r, i) => (
+        <div key={r.region} className="space-y-1">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[#3d3730] font-medium">
+              <span className="text-[#c4bdb5] mr-1.5 tabular-nums">{i + 1}.</span>
+              {r.region}
+            </span>
+            <span className="text-[#7a7168] font-semibold tabular-nums">
+              {r.count} customer{r.count !== 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-[#f0eeea] overflow-hidden">
+            <div
+              className="h-full rounded-full bg-[#b08d57] transition-all duration-700"
+              style={{ width: `${(r.count / max) * 100}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Region Panel — search + top regions                                 */
+/* ------------------------------------------------------------------ */
+
+function RegionPanel({ defaultRegions }: { defaultRegions: { region: string; count: number }[] }) {
+  const [query, setQuery]         = useState("");
+  const [results, setResults]     = useState<{ region: string; count: number }[] | null>(null);
+  const [searching, setSearching] = useState(false);
+
+  // Debounced, case-insensitive region search. The cancelled flag drops stale
+  // responses so fast typing can't render an out-of-order result.
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) { setResults(null); setSearching(false); return; }
+
+    let cancelled = false;
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/dashboard/region-search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (!cancelled && res.ok) setResults(data.regions ?? []);
+      } catch {
+        if (!cancelled) setResults([]);
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 300);
+
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [query]);
+
+  const isSearching = query.trim().length > 0;
+  const shown       = isSearching ? (results ?? []) : defaultRegions;
+  const matchTotal  = isSearching && results ? results.reduce((s, r) => s + r.count, 0) : 0;
+
+  return (
+    <div className="rounded-2xl border border-[#ede9e3] bg-white p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-[#a89f94] uppercase tracking-wider">
+          Customers by Region
+        </p>
+        {!isSearching && defaultRegions.length > 0 && (
+          <span className="text-[10px] text-[#c4bdb5]">Top {defaultRegions.length}</span>
+        )}
+      </div>
+
+      {/* Search box */}
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#c4bdb5]" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search a region…"
+          className="w-full pl-9 pr-9 py-2 text-sm rounded-xl border border-[#ede9e3] bg-[#faf9f7] text-[#1a1814] placeholder:text-[#c4bdb5] focus:outline-none focus:border-[#b08d57] focus:bg-white transition-colors"
+        />
+        {searching && (
+          <Loader2 size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#b08d57] animate-spin" />
+        )}
+      </div>
+
+      {/* Search summary */}
+      {isSearching && !searching && (
+        <p className="text-xs text-[#7a7168]">
+          {results && results.length > 0 ? (
+            <>
+              Found <span className="font-semibold text-[#3d3730]">{matchTotal}</span>{" "}
+              customer{matchTotal !== 1 ? "s" : ""} in {results.length} region{results.length !== 1 ? "s" : ""} matching “{query.trim()}”
+            </>
+          ) : (
+            <>No regions match “{query.trim()}”</>
+          )}
+        </p>
+      )}
+
+      {/* Results / default list */}
+      {shown.length > 0 ? (
+        <RegionPerformance regions={shown} />
+      ) : !isSearching ? (
+        <p className="text-sm text-[#a89f94]">No customers yet</p>
+      ) : null}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Stat Card                                                           */
 /* ------------------------------------------------------------------ */
 
@@ -265,24 +388,22 @@ function StatCard({
 /* ------------------------------------------------------------------ */
 
 function SnapshotSection({ data }: { data: DashboardData }) {
-  const { snapshot, trend, mtd } = data;
+  const { snapshot, trend, mtd, topRegions } = data;
 
-  if (!snapshot) {
-    return (
-      <div className="rounded-2xl border border-[#ede9e3] bg-[#faf9f7] px-6 py-10 text-center">
-        <p className="text-[#7a7168] text-sm font-medium">No snapshot yet</p>
-        <p className="text-xs text-[#c4bdb5] mt-1">
-          Runs after the first cron evaluation
-        </p>
-      </div>
-    );
-  }
-
-  const ltv        = Number(snapshot.overallLtv ?? 0);
+  const ltv        = Number(snapshot?.overallLtv ?? 0);
   const ltvChange  = trend.ltvChange;
 
   return (
     <div className="space-y-4">
+      {!snapshot ? (
+        <div className="rounded-2xl border border-[#ede9e3] bg-[#faf9f7] px-6 py-10 text-center">
+          <p className="text-[#7a7168] text-sm font-medium">No snapshot yet</p>
+          <p className="text-xs text-[#c4bdb5] mt-1">
+            Runs after the first cron evaluation
+          </p>
+        </div>
+      ) : (
+        <>
       {/* Row 1 — LTV + Risk breakdown */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Overall LTV */}
@@ -381,6 +502,11 @@ function SnapshotSection({ data }: { data: DashboardData }) {
           <p className="text-xs text-[#a89f94] mt-0.5">Overdue</p>
         </div>
       </div>
+        </>
+      )}
+
+      {/* Region performance + search — live & customer-based; renders even with no cron snapshot yet */}
+      <RegionPanel defaultRegions={topRegions} />
     </div>
   );
 }
@@ -496,6 +622,7 @@ export default function DashboardPage() {
               snapshot: null,
               trend: { ltvChange: null, direction: null },
               mtd: { newPledges: 0, releasedPledges: 0, loanAmount: 0 },
+              topRegions: [],
             }} />
           )}
         </section>

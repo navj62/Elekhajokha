@@ -117,13 +117,32 @@ export default function CustomerDetailPage() {
   }, [customerId]);
 
   /* ---- Delete pledge ------------------------------------------ */
-  async function handleDelete(pledgeId: string) {
+  async function handleDelete(pledgeId: string, confirmDelete = false) {
     if (!customer) return;
-    if (!window.confirm("Delete this pledge? This cannot be undone.")) return;
+    // Skip the first prompt on the confirmed retry.
+    if (!confirmDelete && !window.confirm("Delete this pledge? This cannot be undone.")) return;
     setDeletingId(pledgeId);
     try {
-      const res  = await fetch(`/api/pledges/${pledgeId}`, { method: "DELETE" });
+      const url =
+        `/api/customers/${customerId}/pledges/${pledgeId}` +
+        (confirmDelete ? "?confirmDelete=true" : "");
+      const res  = await fetch(url, { method: "DELETE" });
       const data = await res.json();
+
+      // Server guards against erasing part-payment history — confirm, then retry.
+      if (res.status === 409 && data?.error === "PENDING_TRANSACTIONS") {
+        const n = data.transactionCount ?? 0;
+        if (
+          window.confirm(
+            `This pledge has ${n} part-payment(s) recorded. Deleting it will ` +
+            `permanently erase that history. Delete anyway?`
+          )
+        ) {
+          await handleDelete(pledgeId, true);
+        }
+        return;
+      }
+
       if (!res.ok) throw new Error(data?.error || "Unable to delete pledge.");
       setCustomer({
         ...customer,

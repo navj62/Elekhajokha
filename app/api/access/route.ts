@@ -39,6 +39,7 @@ export async function GET() {
         subscriptionPlan:      true,
         subscriptionEndDate:   true,
         subscriptionCreatedAt: true,
+        lastGraceExpiredAt:    true,
         isActive:              true,
         deletedAt:             true,
         hadTrial:              true, // required — SubscribePage reads this on every response
@@ -62,6 +63,7 @@ if (!user) {
       subscriptionPlan: true,
       subscriptionEndDate: true,
       subscriptionCreatedAt: true,
+      lastGraceExpiredAt: true,
       isActive: true,
       deletedAt: true,
       hadTrial: true,
@@ -123,6 +125,19 @@ if (!user) {
       const ageMs = now.getTime() - user.subscriptionCreatedAt.getTime();
 
       if (ageMs < GRACE_PERIOD_MS) {
+        // Anti-farming: refuse a fresh window if a prior window was wasted
+        // (created, never paid) within the last 24h — otherwise a non-paying
+        // user could mint subscriptions in a loop for endless free windows.
+        if (
+          user.lastGraceExpiredAt !== null &&
+          now.getTime() - user.lastGraceExpiredAt.getTime() < MS_PER_DAY
+        ) {
+          return NextResponse.json(
+            { hasAccess: false, status: "payment_required", hadTrial: user.hadTrial },
+            { status: 402 }
+          );
+        }
+
         // Payment genuinely in progress — tell frontend to poll
         return NextResponse.json({
           hasAccess: true,
@@ -131,7 +146,20 @@ if (!user) {
         });
       }
 
-      // Grace window expired — webhook never came, payment likely abandoned
+      // Grace window expired — webhook never came, payment likely abandoned.
+      // Stamp the expiry ONCE per window (anchored to this subscriptionCreatedAt)
+      // so repeated polls don't slide the 24h cooldown forward.
+      const stampedThisWindow =
+        user.lastGraceExpiredAt !== null &&
+        user.lastGraceExpiredAt.getTime() >= user.subscriptionCreatedAt.getTime();
+
+      if (!stampedThisWindow) {
+        await prisma.user.update({
+          where: { clerkUserId: userId },
+          data:  { lastGraceExpiredAt: now },
+        });
+      }
+
       return NextResponse.json(
         { hasAccess: false, status: "payment_timeout", hadTrial: user.hadTrial },
         { status: 402 }
@@ -140,6 +168,14 @@ if (!user) {
 
     // ── 🟢 ACTIVE ─────────────────────────────────────────────────────────
     if (user.subscriptionStatus === SubscriptionStatus.active) {
+      // Paying clears any wasted-window mark (one write, then no-op).
+      if (user.lastGraceExpiredAt !== null) {
+        await prisma.user.update({
+          where: { clerkUserId: userId },
+          data:  { lastGraceExpiredAt: null },
+        });
+      }
+
       const isExpired =
         !!user.subscriptionEndDate &&
         user.subscriptionEndDate.getTime() < now.getTime();
