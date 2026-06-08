@@ -41,15 +41,20 @@ export async function GET(req: NextRequest) {
       pledge: {
         select: {
           id: true,
-          customerId: true,   // ← needed for /customers/[id]/pledges/[id] link
+          customerId: true,
           loanAmount: true,
           lastCalculatedLtv: true,
-          lastMarketValue: true,
-          lastAmountOwed: true,
-          // ← item names so UI can show "Gold Chain, Ring" instead of pledge ID
+          // ✅ Fixed: `lastMarketValue` and `lastAmountOwed` don't exist on Pledge.
+          // Use the fields Prisma reported as available:
+          lastRiskTier: true,
+          lastEvaluatedAt: true,
+          status: true,
+          releaseDate: true,
+          totalInterest: true,
+          receivableAmount: true,
           items: {
             select: { itemName: true, itemType: true, metalType: true },
-            take: 3, // enough for display, don't over-fetch
+            take: 3,
           },
         },
       },
@@ -65,7 +70,9 @@ export async function GET(req: NextRequest) {
 
   const hasMore = alerts.length > take;
   const items = hasMore ? alerts.slice(0, take) : alerts;
-  const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null;
+  const nextCursor = hasMore
+    ? items[items.length - 1].createdAt.toISOString()
+    : null;
 
   return NextResponse.json({ alerts: items, unreadCount, hasMore, nextCursor });
 }

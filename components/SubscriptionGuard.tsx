@@ -165,7 +165,7 @@ export default function SubscriptionGuard({
       <div>
         {/* Trial — no end date (dev/test) */}
         {status === "trial" && daysLeft === null && (
-          <div className="bg-blue-50 border-b border-blue-100 px-4 py-2.5 flex items-center justify-between gap-3 text-sm text-blue-800">
+          <div className="fixed top-[84px] lg:left-[260px] left-0 right-0 z-40 bg-blue-50 border-b border-blue-100 px-10 py-2.5 flex items-center justify-between gap-3 text-sm text-blue-800">
             <span>You&apos;re on a free trial.</span>
             <button
               onClick={() => router.push("/subscribe")}
@@ -178,7 +178,7 @@ export default function SubscriptionGuard({
 
         {/* Stronger trial CTA when ≤5 days left */}
         {status === "trial" && daysLeft !== null && daysLeft <= 5 && (
-          <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2.5 flex items-center justify-between gap-3 text-sm">
+          <div className="fixed top-[84px] lg:left-[260px] left-0 right-0 z-40 bg-yellow-50 border-b border-yellow-200 px-10 py-2.5 flex items-center justify-between gap-3 text-sm">
             <div className="flex items-center gap-2 text-yellow-800">
               <Clock size={14} className="shrink-0" />
               <span>
@@ -194,6 +194,11 @@ export default function SubscriptionGuard({
               Upgrade before trial ends
             </button>
           </div>
+        )}
+
+        {/* Push content down if banner is fixed */}
+        {status === "trial" && (
+          <div className="h-10"></div>
         )}
 
         {children}
