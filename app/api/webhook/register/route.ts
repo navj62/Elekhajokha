@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { WebhookEvent } from "@clerk/nextjs/server";
 import { createClerkClient } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { SubscriptionStatus } from "@prisma/client";
 
 const clerk = createClerkClient({
   secretKey: process.env.CLERK_SECRET_KEY!,
@@ -87,6 +88,10 @@ export async function POST(req: Request) {
           lastName,
           profileImageUrl,
           isActive: true,
+          // Explicit no-access-but-valid state — never rely on the schema
+          // default. A new user has not subscribed; "expired" matches the
+          // lazy-create sites and avoids the created+null invalid_state 409.
+          subscriptionStatus: SubscriptionStatus.expired,
         },
       });
 

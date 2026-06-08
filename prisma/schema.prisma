@@ -18,7 +18,7 @@ model User {
   address                String?
   gender                 Gender?
   profileImageUrl        String?
-  subscriptionStatus     SubscriptionStatus @default(created)
+  subscriptionStatus     SubscriptionStatus @default(expired)
   subscriptionEndDate    DateTime?
   razorpaySubscriptionId String?            @unique
   subscriptionPlan       SubscriptionPlan?

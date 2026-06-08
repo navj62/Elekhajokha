@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { SubscriptionStatus } from "@prisma/client";
 import { constantTimeEqual } from "@/lib/constantTimeEqual";
+import { subscriptionGrantsAccess } from "@/lib/razorpaySubscription";
 
 export async function POST(req: NextRequest) {
   try {
@@ -79,15 +80,30 @@ export async function POST(req: NextRequest) {
       }
 
       case "subscription.completed": {
-        await prisma.user.update({
-          where: { id: user.id },
-          data: {
-            subscriptionStatus: SubscriptionStatus.expired,
-            subscriptionEndDate: new Date(),
-          },
-        });
-
-        console.log("🔚 Expired →", subscriptionId);
+        // total_count=1 one-time plans settle to `completed` right after the
+        // charge — that's a PAID success, not an expiry. Grant access until
+        // current_end; the /api/access ACTIVE branch downgrades to "expired"
+        // on its own once that date passes. Only a `completed` sub that never
+        // collected (paid_count 0) is treated as a real expiry.
+        if (subscriptionGrantsAccess(subscription)) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              subscriptionStatus: SubscriptionStatus.active,
+              subscriptionEndDate: endDate,
+            },
+          });
+          console.log("✅ Completed (paid) → active until", endDate, "→", subscriptionId);
+        } else {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              subscriptionStatus: SubscriptionStatus.expired,
+              subscriptionEndDate: new Date(),
+            },
+          });
+          console.log("🔚 Completed (unpaid) → expired →", subscriptionId);
+        }
         break;
       }
 

@@ -70,7 +70,10 @@ export function useAccess(): UseAccessReturn {
     }
 
     try {
-      const res = await fetch("/api/access");
+      // no-store: never serve a stale cached access response. After paying,
+      // the user lands here freshly and must see the just-written "active"
+      // status, not a cached "processing"/"created" from minutes ago.
+      const res = await fetch("/api/access", { cache: "no-store" });
 
       // Always parse JSON regardless of HTTP status code.
       // The access route returns meaningful data on 402, 403, 404 etc.

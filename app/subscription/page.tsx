@@ -247,10 +247,53 @@ export default function SubscribePage() {
         description:     `${activePlan.label} — ${activePlan.duration}`,
         prefill,
         theme:           { color: "#16a34a" },
-        handler: function () {
-          isPaymentProcessing.current = false;
-          setLoading(false);
-          router.push("/dashboard");
+        handler: async function (response: {
+          razorpay_payment_id?: string;
+          razorpay_subscription_id?: string;
+          razorpay_signature?: string;
+        }) {
+          // Razorpay captured the payment — now verify server-side BEFORE
+          // granting access. Only redirect once /api/verify-payment confirms
+          // the subscription is genuinely active.
+          setLoading(true);
+          setPaymentError(null);
+          try {
+            const verifyRes = await fetch("/api/verify-payment", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_payment_id:      response.razorpay_payment_id,
+                razorpay_subscription_id: response.razorpay_subscription_id,
+                razorpay_signature:       response.razorpay_signature,
+              }),
+            });
+
+            const verifyData: { success?: boolean; error?: string } =
+              await verifyRes.json().catch(() => ({}));
+
+            if (!verifyRes.ok || !verifyData.success) {
+              // Verification failed — do NOT redirect; surface the error.
+              setPaymentError(
+                verifyData.error
+                  ? `Payment verification failed (${verifyData.error}). If you were charged, please contact support.`
+                  : "Payment verification failed. If you were charged, please contact support."
+              );
+              return;
+            }
+
+            // Verified & active — refresh server state, then go to dashboard.
+            router.push("/dashboard");
+            router.refresh();
+          } catch {
+            // The verify-payment call itself failed (network/other). Don't
+            // redirect into a paywall — the webhook is the async safety net.
+            setPaymentError(
+              "Couldn't verify your payment due to a network error. If you were charged, it will be confirmed shortly — please refresh in a moment."
+            );
+          } finally {
+            setLoading(false);
+            isPaymentProcessing.current = false;
+          }
         },
         modal: {
           ondismiss: () => {
