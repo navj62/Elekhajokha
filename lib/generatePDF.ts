@@ -226,8 +226,6 @@ export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buf
     doc.end();
   });
 }
-import https from "https";
-import http from "http";
 
 const DEFAULT_SHOPOWNER_TERMS = [
   "• मेरे द्वारा गिरवी रखी गई उपरोक्त रकम मेरे स्वामित्व, पूर्ण प्रामाणिक, आविवादित संपत्ति है।",
@@ -245,34 +243,42 @@ const DEFAULT_CUSTOMER_TERMS = [
   "• असुविधा व समय के बचत हेतु रकम छुड़ाने से 1 घंटा पूर्व कृपया इस नंबर पर फोन करे।",
 ];
 
+type ReceiptItem = {
+  name: string;
+  grossWeight: number;
+  netWeight: number;
+};
+
 type ReceiptData = {
   transactionId: string;
   pledgeDate: string;
   customerName: string;
   customerAddress: string;
   loanAmount: number;
-  itemName: string;
-  itemWeight: string;
+  items: ReceiptItem[];
   remark: string | null;
   shopName: string;
   shopAddress: string;
   shopMobile: string;
   itemPhoto: string | null;
   username: string;
-  shopownerTerms: string | null; // ← new
-  customerTerms: string | null;  // ← new
+  shopownerTerms: string | null;
+  customerTerms: string | null;
 };
 
-function fetchImageBuffer(url: string): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const client = url.startsWith("https") ? https : http;
-    client.get(url, (res) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (chunk: Buffer) => chunks.push(chunk));
-      res.on("end", () => resolve(Buffer.concat(chunks)));
-      res.on("error", reject);
-    }).on("error", reject);
-  });
+async function fetchImageBuffer(url: string): Promise<Buffer | null> {
+  try {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) {
+      console.error("Image fetch HTTP error:", res.status);
+      return null;
+    }
+    const arrayBuffer = await res.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  } catch (e) {
+    console.error("fetchImageBuffer error:", e);
+    return null;
+  }
 }
 
 export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
@@ -284,16 +290,20 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const fontPath = path.join(process.cwd(), "public/fonts/NotoSansDevanagari_Condensed-Bold.ttf");
-    doc.registerFont("HindiBold", fontPath);
+    // ── Register Hindi font with fallback ───────────────
+    const fontPath = path.join(process.cwd(), "public", "fonts", "NotoSansDevanagari_Condensed-Bold.ttf");
+    let hindiFont = "Helvetica";
+    try {
+      doc.registerFont("HindiBold", fontPath);
+      hindiFont = "HindiBold";
+    } catch {
+      console.warn("Hindi font not found, using Helvetica fallback");
+    }
 
+    // ── Fetch image ──────────────────────────────────────
     let imageBuffer: Buffer | null = null;
     if (data.itemPhoto) {
-      try {
-        imageBuffer = await fetchImageBuffer(data.itemPhoto);
-      } catch {
-        imageBuffer = null;
-      }
+      imageBuffer = await fetchImageBuffer(data.itemPhoto);
     }
 
     const PW = doc.page.width;
@@ -303,12 +313,14 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
     const drawCopy = (offsetX: number, copyLabel: string, img: Buffer | null) => {
       const pad = 20;
       const W = half - pad * 2;
+      const tX = offsetX + pad + 5;
+      const tW = W - 10;
 
       doc.rect(offsetX + pad, 20, W, PH - 40).strokeColor("#000").lineWidth(1).stroke();
 
       let y = 30;
 
-      // ── Receipt badge ────────────────────────────────────
+      // ── Receipt badge ─────────────────────────────────
       const badgeW = 70;
       const badgeX = offsetX + pad + W / 2 - badgeW / 2;
       doc.rect(badgeX, y, badgeW, 16).fill("#000");
@@ -331,66 +343,93 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
         .text(`(${copyLabel})`, offsetX + pad, y, { width: W, align: "center" });
 
       y += 10;
-      doc.moveTo(offsetX + pad, y).lineTo(offsetX + pad + W, y).strokeColor("#000").lineWidth(0.5).stroke();
+      doc.moveTo(offsetX + pad, y).lineTo(offsetX + pad + W, y)
+        .strokeColor("#000").lineWidth(0.5).stroke();
 
-      // ── Transaction info ─────────────────────────────────
+      // ── Transaction info ──────────────────────────────
       y += 8;
       doc.fillColor("#000").fontSize(8).font("Helvetica-Bold");
       doc.text(`Transaction ID - ${data.transactionId}`, offsetX + pad + 5, y);
-      doc.text(`Pledge Date - ${data.pledgeDate}`, offsetX + pad + 5, y, { width: W - 10, align: "right" });
+      doc.text(`Pledge Date - ${data.pledgeDate}`, offsetX + pad + 5, y, {
+        width: W - 10, align: "right",
+      });
+
+      // ── Customer info (handles long address) ──────────
+      const labelX = offsetX + pad + 5;
+      const valueX = offsetX + pad + 85;
+      const valueW = W - 90;
 
       y += 14;
-      doc.font("Helvetica-Bold").text("Customer Name", offsetX + pad + 5, y);
-      doc.font("Helvetica").text(`: ${data.customerName}`, offsetX + pad + 85, y);
+      doc.font("Helvetica-Bold").text("Customer Name", labelX, y);
+      doc.font("Helvetica").text(`: ${data.customerName}`, valueX, y, { width: valueW });
+      y += Math.max(12, doc.heightOfString(`: ${data.customerName}`, { width: valueW }) + 2);
 
-      y += 12;
-      doc.font("Helvetica-Bold").text("Address", offsetX + pad + 5, y);
-      doc.font("Helvetica").text(`: ${data.customerAddress}`, offsetX + pad + 85, y);
+      doc.font("Helvetica-Bold").text("Address", labelX, y);
+      doc.font("Helvetica").text(`: ${data.customerAddress}`, valueX, y, { width: valueW });
+      y += Math.max(12, doc.heightOfString(`: ${data.customerAddress}`, { width: valueW }) + 2);
 
-      y += 12;
-      doc.font("Helvetica-Bold").text("Loan Amount", offsetX + pad + 5, y);
-      doc.font("Helvetica").text(`: ${data.loanAmount.toLocaleString("en-IN")}`, offsetX + pad + 85, y);
-
-      // ── Items table ───────────────────────────────────────
-      y += 14;
-      const tX = offsetX + pad + 5;
-      const tW = W - 10;
-      const col1 = tW * 0.5;
-      const col2 = tW * 0.25;
-      const col3 = tW * 0.25;
-
-      doc.rect(tX, y, tW, 14).fill("#000");
-      doc.fillColor("white").font("Helvetica-Bold").fontSize(8);
-      doc.text("Item Name", tX + 3, y + 3, { width: col1 });
-      doc.text("Weight",    tX + col1 + 3, y + 3, { width: col2 });
-      doc.text("Remark",    tX + col1 + col2 + 3, y + 3, { width: col3 });
-
-      y += 14;
-      doc.rect(tX, y, tW, 14).strokeColor("#000").lineWidth(0.5).stroke();
-      doc.fillColor("#000").font("Helvetica").fontSize(8);
-      doc.text(data.itemName,     tX + 3, y + 3, { width: col1 });
-      doc.text(data.itemWeight,   tX + col1 + 3, y + 3, { width: col2 });
-      doc.text(data.remark ?? "", tX + col1 + col2 + 3, y + 3, { width: col3 });
-
-      y += 14;
-      doc.rect(tX, y, tW, 14).strokeColor("#000").lineWidth(0.5).stroke();
-      y += 14;
-      doc.rect(tX, y, tW, 14).strokeColor("#000").lineWidth(0.5).stroke();
+      doc.font("Helvetica-Bold").text("Loan Amount", labelX, y);
+      doc.font("Helvetica").text(`: ${data.loanAmount.toLocaleString("en-IN")}`, valueX, y, { width: valueW });
       y += 14;
 
-      // ── Item photo ───────────────────────────────────────
+      // ── Items table ───────────────────────────────────
+      const col1 = tW * 0.45;
+      const col2 = tW * 0.2;
+      const col3 = tW * 0.2;
+      const col4 = tW * 0.15;
+      const rowH = 14;
+
+      // Header
+      doc.rect(tX, y, tW, rowH).fill("#000");
+      doc.fillColor("white").font("Helvetica-Bold").fontSize(7.5);
+      doc.text("Item Name",  tX + 3,                        y + 3, { width: col1 });
+      doc.text("Gross Wt.",  tX + col1 + 3,                 y + 3, { width: col2 });
+      doc.text("Net Wt.",    tX + col1 + col2 + 3,          y + 3, { width: col3 });
+      doc.text("Remark",     tX + col1 + col2 + col3 + 3,   y + 3, { width: col4 });
+      y += rowH;
+
+      // Item rows
+      const itemsToShow = data.items.length > 0
+        ? data.items
+        : [{ name: "—", grossWeight: 0, netWeight: 0 }];
+
+      itemsToShow.forEach((item, idx) => {
+        doc.rect(tX, y, tW, rowH).strokeColor("#000").lineWidth(0.5).stroke();
+        doc.fillColor("#000").font("Helvetica").fontSize(7.5);
+        doc.text(item.name,                            tX + 3,               y + 3, { width: col1 });
+        doc.text(`${item.grossWeight.toFixed(3)} g`,   tX + col1 + 3,        y + 3, { width: col2 });
+        doc.text(`${item.netWeight.toFixed(3)} g`,     tX + col1 + col2 + 3, y + 3, { width: col3 });
+        if (idx === 0) {
+          doc.text(data.remark ?? "", tX + col1 + col2 + col3 + 3, y + 3, { width: col4 });
+        }
+        y += rowH;
+      });
+
+      // Pad to minimum 3 rows
+      const emptyRows = Math.max(0, 3 - itemsToShow.length);
+      for (let i = 0; i < emptyRows; i++) {
+        doc.rect(tX, y, tW, rowH).strokeColor("#000").lineWidth(0.5).stroke();
+        y += rowH;
+      }
+
+      y += 4;
+
+      // ── Item photo ────────────────────────────────────
+      const photoH = 120;
       if (img) {
         try {
-          doc.image(img, tX + 44, y + 4, {
-            fit: [160, 150],
+          doc.image(img, tX + 4, y + 2, {
+            fit: [110, photoH - 4],
+            align: "left",
+            valign: "top",
           });
-        } catch {
-          // skip silently
+        } catch (e) {
+          console.error("Image embed error:", e);
         }
       }
-      y += 160;
+      y += photoH;
 
-      // ── Terms ────────────────────────────────────────────
+      // ── Terms ─────────────────────────────────────────
       const rawTerms = copyLabel === "Shopowner Copy"
         ? data.shopownerTerms
         : data.customerTerms;
@@ -401,27 +440,33 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
           ? DEFAULT_SHOPOWNER_TERMS
           : DEFAULT_CUSTOMER_TERMS;
 
-      doc.fontSize(6.5).font("HindiBold").fillColor("#000");
+      const sigBoxY = PH - 75;
+      let termsY = y;
+
+      doc.fontSize(6.5).font(hindiFont).fillColor("#000");
       termLines.forEach((line) => {
-        doc.text(line.trim(), tX, y, { width: tW });
-        y += doc.currentLineHeight() + 2;
+        const lineH = doc.heightOfString(line.trim(), { width: tW }) + 2;
+        if (termsY + lineH < sigBoxY - 5) {
+          doc.text(line.trim(), tX, termsY, { width: tW });
+          termsY += lineH;
+        }
       });
 
-      // ── Signature boxes ───────────────────────────────────
-      y = PH - 75;
+      // ── Signature boxes ───────────────────────────────
+      y = sigBoxY;
       const sigW = tW / 2 - 5;
 
       if (copyLabel === "Shopowner Copy") {
         doc.rect(tX, y, tW / 2 - 3, 40).strokeColor("#000").lineWidth(0.5).stroke();
         doc.rect(tX + tW / 2 + 3, y, tW / 2 - 3, 40).strokeColor("#000").lineWidth(0.5).stroke();
-        doc.fontSize(7).font("HindiBold").fillColor("#000");
+        doc.fontSize(7).font(hindiFont).fillColor("#000");
         doc.text("रूपये नगद प्राप्त किये", tX + 3, y + 3, { width: sigW });
         doc.text("रकम पुन: प्राप्त की दिनांक:-", tX + tW / 2 + 6, y + 3, { width: sigW });
 
         y += 42;
         doc.rect(tX, y, tW / 2 - 3, 14).fill("#000");
         doc.rect(tX + tW / 2 + 3, y, tW / 2 - 3, 14).fill("#000");
-        doc.fillColor("white").fontSize(7).font("HindiBold");
+        doc.fillColor("white").fontSize(7).font(hindiFont);
         doc.text("रकम रखनेवाले के हस्ताक्षर/अंगूठा", tX + 3, y + 4, { width: sigW });
         doc.text("रकम छुडाने वाले के हस्ताक्षर/अंगूठा", tX + tW / 2 + 6, y + 4, { width: sigW });
       } else {
