@@ -1,12 +1,23 @@
 // app/api/access/route.ts
 import { NextResponse }       from "next/server";
 import { auth }               from "@clerk/nextjs/server";
+import Razorpay               from "razorpay";
 import { prisma }             from "@/lib/prisma";
 import { SubscriptionStatus } from "@prisma/client";
+import { subscriptionGrantsAccess, subscriptionEndDate } from "@/lib/razorpaySubscription";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const MS_PER_DAY      = 1000 * 60 * 60 * 24;
 const GRACE_PERIOD_MS = 10 * 60 * 1000; // 10 min grace window after create-subscription
+
+// Razorpay client for the self-heal path — returns null (rather than throwing)
+// if keys are unset, so a misconfiguration never breaks the access check.
+function getRazorpayClient(): Razorpay | null {
+  const key_id     = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+  const key_secret = process.env.RAZORPAY_KEY_SECRET;
+  if (!key_id || !key_secret) return null;
+  return new Razorpay({ key_id, key_secret });
+}
 
 // Maps Prisma enum → frontend-safe reason string for "inactive" status.
 // Never send raw DB enums to the client — rename-safe.
@@ -35,13 +46,15 @@ export async function GET() {
     let user = await prisma.user.findUnique({
       where:  { clerkUserId: userId },
       select: {
-        subscriptionStatus:    true,
-        subscriptionPlan:      true,
-        subscriptionEndDate:   true,
-        subscriptionCreatedAt: true,
-        isActive:              true,
-        deletedAt:             true,
-        hadTrial:              true, // required — SubscribePage reads this on every response
+        subscriptionStatus:     true,
+        subscriptionPlan:       true,
+        subscriptionEndDate:    true,
+        subscriptionCreatedAt:  true,
+        razorpaySubscriptionId: true, // needed for the created→active self-heal
+        lastGraceExpiredAt:     true,
+        isActive:               true,
+        deletedAt:              true,
+        hadTrial:               true, // required — SubscribePage reads this on every response
       },
     });
 
@@ -62,6 +75,8 @@ if (!user) {
       subscriptionPlan: true,
       subscriptionEndDate: true,
       subscriptionCreatedAt: true,
+      razorpaySubscriptionId: true,
+      lastGraceExpiredAt: true,
       isActive: true,
       deletedAt: true,
       hadTrial: true,
@@ -111,18 +126,78 @@ if (!user) {
     // paying would have hasAccess: true forever.
     if (user.subscriptionStatus === SubscriptionStatus.created) {
       if (!user.subscriptionCreatedAt) {
+        // Data inconsistency (a row born `created` with no timestamp). Treat it
+        // as `expired` — a no-access-but-VALID state the client can act on —
+        // and return 200, NEVER a 409 the client would poll forever.
         console.error(
-          `[/api/access] userId:${userId} — status=created but subscriptionCreatedAt is null`
+          `[/api/access] userId:${userId} — status=created but subscriptionCreatedAt is null; treating as expired`
         );
         return NextResponse.json(
-          { hasAccess: false, status: "invalid_state", hadTrial: user.hadTrial },
-          { status: 409 }
+          { hasAccess: false, status: "expired", hadTrial: user.hadTrial },
+          { status: 200 }
         );
+      }
+
+      // ── SELF-HEAL ──────────────────────────────────────────────────────
+      // If neither verify-payment nor the webhook updated this row but Razorpay
+      // already reports the subscription live, fix it here and grant access.
+      // Cheap by construction: only runs in the `created` branch and only when
+      // a Razorpay subscription id exists. A Razorpay API failure must NOT block
+      // a user still inside the grace window — on any error we fall through to
+      // the normal grace/timeout logic below.
+      if (user.razorpaySubscriptionId) {
+        const razorpay = getRazorpayClient();
+        if (razorpay) {
+          try {
+            const sub = await razorpay.subscriptions.fetch(user.razorpaySubscriptionId);
+            if (subscriptionGrantsAccess(sub)) {
+              const endDate = subscriptionEndDate(sub);
+
+              await prisma.user.update({
+                where: { clerkUserId: userId },
+                data: {
+                  subscriptionStatus:  SubscriptionStatus.active,
+                  subscriptionEndDate: endDate,
+                  lastGraceExpiredAt:  null,
+                },
+              });
+
+              console.log(`[/api/access] self-healed ${userId} → active (sub ${sub.status})`);
+
+              return NextResponse.json({
+                hasAccess: true,
+                status:    "active",
+                hadTrial:  user.hadTrial,
+                plan:      user.subscriptionPlan,
+                endDate,
+                daysLeft:  endDate
+                  ? Math.ceil((endDate.getTime() - now.getTime()) / MS_PER_DAY)
+                  : null,
+              });
+            }
+          } catch (err) {
+            console.error(`[/api/access] self-heal fetch failed for ${userId}:`, err);
+            // fall through to grace/timeout logic
+          }
+        }
       }
 
       const ageMs = now.getTime() - user.subscriptionCreatedAt.getTime();
 
       if (ageMs < GRACE_PERIOD_MS) {
+        // Anti-farming: refuse a fresh window if a prior window was wasted
+        // (created, never paid) within the last 24h — otherwise a non-paying
+        // user could mint subscriptions in a loop for endless free windows.
+        if (
+          user.lastGraceExpiredAt !== null &&
+          now.getTime() - user.lastGraceExpiredAt.getTime() < MS_PER_DAY
+        ) {
+          return NextResponse.json(
+            { hasAccess: false, status: "payment_required", hadTrial: user.hadTrial },
+            { status: 402 }
+          );
+        }
+
         // Payment genuinely in progress — tell frontend to poll
         return NextResponse.json({
           hasAccess: true,
@@ -131,7 +206,20 @@ if (!user) {
         });
       }
 
-      // Grace window expired — webhook never came, payment likely abandoned
+      // Grace window expired — webhook never came, payment likely abandoned.
+      // Stamp the expiry ONCE per window (anchored to this subscriptionCreatedAt)
+      // so repeated polls don't slide the 24h cooldown forward.
+      const stampedThisWindow =
+        user.lastGraceExpiredAt !== null &&
+        user.lastGraceExpiredAt.getTime() >= user.subscriptionCreatedAt.getTime();
+
+      if (!stampedThisWindow) {
+        await prisma.user.update({
+          where: { clerkUserId: userId },
+          data:  { lastGraceExpiredAt: now },
+        });
+      }
+
       return NextResponse.json(
         { hasAccess: false, status: "payment_timeout", hadTrial: user.hadTrial },
         { status: 402 }
@@ -140,6 +228,14 @@ if (!user) {
 
     // ── 🟢 ACTIVE ─────────────────────────────────────────────────────────
     if (user.subscriptionStatus === SubscriptionStatus.active) {
+      // Paying clears any wasted-window mark (one write, then no-op).
+      if (user.lastGraceExpiredAt !== null) {
+        await prisma.user.update({
+          where: { clerkUserId: userId },
+          data:  { lastGraceExpiredAt: null },
+        });
+      }
+
       const isExpired =
         !!user.subscriptionEndDate &&
         user.subscriptionEndDate.getTime() < now.getTime();

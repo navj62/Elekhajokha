@@ -21,23 +21,46 @@ export async function GET(req: NextRequest) {
       orderBy: { pledgeDate: "desc" },
       include: {
         customer: { select: { name: true, mobile: true } },
+        // itemType/itemName live on PledgeItem, not Pledge. The report is one
+        // row per pledge, so fetch the first item as a representative label and
+        // count the rest for a "+N" suffix (same pattern as the customer detail route).
+        items: {
+          take: 1,
+          select: { itemName: true, itemType: true, metalType: true },
+        },
+        _count: { select: { items: true } },
       },
     });
 
-    const result = pledges.map((p, i) => ({
-      index: i + 1,
-      customerName: p.customer?.name ?? "—",
-      pledgeDate: new Date(p.pledgeDate).toLocaleDateString("en-IN", {
-        day: "2-digit", month: "short", year: "numeric",
-      }),
-      itemType: p.itemType,
-      itemName: p.itemName,
-      loanAmount: Number(p.loanAmount),
-      status: p.status,
-      totalInterest: p.totalInterest ? Number(p.totalInterest) : null,
-      receivableAmount: p.receivableAmount ? Number(p.receivableAmount) : null,
-      itemPhoto: p.itemPhoto ?? null,
-    }));
+    // "NECKLACE" → "Necklace"
+    const titleCase = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
+
+    const result = pledges.map((p, i) => {
+      const firstItem  = p.items[0];
+      const extraItems = p._count.items - 1;
+
+      const itemName = firstItem
+        ? (firstItem.itemName?.trim() || titleCase(firstItem.metalType)) +
+          (extraItems > 0 ? ` +${extraItems}` : "")
+        : "—";
+
+      const itemType = firstItem ? titleCase(firstItem.itemType) : "—";
+
+      return {
+        index: i + 1,
+        customerName: p.customer?.name ?? "—",
+        pledgeDate: new Date(p.pledgeDate).toLocaleDateString("en-IN", {
+          day: "2-digit", month: "short", year: "numeric",
+        }),
+        itemType,
+        itemName,
+        loanAmount: Number(p.loanAmount),
+        status: p.status,
+        totalInterest: p.totalInterest ? Number(p.totalInterest) : null,
+        receivableAmount: p.receivableAmount ? Number(p.receivableAmount) : null,
+        itemPhoto: p.itemPhoto ?? null,
+      };
+    });
 
     if (format === "pdf") {
       const pdfBuffer = await generatePledgePDF("Pledge Report", result);

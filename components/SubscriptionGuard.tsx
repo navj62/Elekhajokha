@@ -165,7 +165,7 @@ export default function SubscriptionGuard({
       <div>
         {/* Trial — no end date (dev/test) */}
         {status === "trial" && daysLeft === null && (
-          <div className="bg-blue-50 border-b border-blue-100 px-4 py-2.5 flex items-center justify-between gap-3 text-sm text-blue-800">
+          <div className="fixed top-[84px] lg:left-[260px] left-0 right-0 z-40 bg-blue-50 border-b border-blue-100 px-10 py-2.5 flex items-center justify-between gap-3 text-sm text-blue-800">
             <span>You&apos;re on a free trial.</span>
             <button
               onClick={() => router.push("/subscribe")}
@@ -178,7 +178,7 @@ export default function SubscriptionGuard({
 
         {/* Stronger trial CTA when ≤5 days left */}
         {status === "trial" && daysLeft !== null && daysLeft <= 5 && (
-          <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-2.5 flex items-center justify-between gap-3 text-sm">
+          <div className="fixed top-[84px] lg:left-[260px] left-0 right-0 z-40 bg-yellow-50 border-b border-yellow-200 px-10 py-2.5 flex items-center justify-between gap-3 text-sm">
             <div className="flex items-center gap-2 text-yellow-800">
               <Clock size={14} className="shrink-0" />
               <span>
@@ -196,16 +196,22 @@ export default function SubscriptionGuard({
           </div>
         )}
 
+        {/* Push content down if banner is fixed */}
+        {status === "trial" && (
+          <div className="h-10"></div>
+        )}
+
         {children}
       </div>
     );
   }
 
   // ── 7. No access → paywall ────────────────────────────────────────
-  const isTrialExpired   = status === "trial_expired";
-  const isExpired        = status === "expired";
-  const isPaymentTimeout = status === "payment_timeout";
-  const isHalted         = status === "inactive" && reason === "payment_failed";
+  const isTrialExpired    = status === "trial_expired";
+  const isExpired         = status === "expired";
+  const isPaymentTimeout  = status === "payment_timeout";
+  const isPaymentRequired = status === "payment_required";
+  const isHalted          = status === "inactive" && reason === "payment_failed";
 
   // shouldBlur only when no access AND not halted
   const shouldBlur = !hasAccess && !isHalted;
@@ -218,6 +224,8 @@ export default function SubscriptionGuard({
     ? "Subscription Expired"
     : isPaymentTimeout
     ? "Payment Session Expired"
+    : isPaymentRequired
+    ? "Free Window Expired"
     : "Subscription Required";
 
   const description = isHalted
@@ -228,6 +236,8 @@ export default function SubscriptionGuard({
     ? "Your subscription has expired. Renew to continue using "
     : isPaymentTimeout
     ? "Your payment session expired. Please try subscribing again to access "
+    : isPaymentRequired
+    ? "Your free window has expired. Please subscribe to continue using "
     : "Subscribe to e-lekha-jokha to access ";
 
   const ctaLabel = isHalted
@@ -238,6 +248,8 @@ export default function SubscriptionGuard({
     ? "Subscribe Now"
     : isPaymentTimeout
     ? "Try Again"
+    : isPaymentRequired
+    ? "Subscribe Now"
     : "View Plans";
 
   const FEATURES = [

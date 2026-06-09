@@ -54,6 +54,23 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (!loanAmount || !interestRate || !compoundingDuration || !pledgeDate)
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
 
+    // ── Bounds: keep money inputs sane before they reach interest/LTV math ──
+    // Compare on Number(), but keep the original strings for Decimal storage.
+    const loanAmountNum   = Number(loanAmount);
+    const interestRateNum = Number(interestRate);
+
+    if (isNaN(loanAmountNum) || loanAmountNum <= 0 || loanAmountNum > 10_00_00_000)
+      return NextResponse.json(
+        { error: "Loan amount must be greater than 0 and at most 10,00,00,000" },
+        { status: 400 }
+      );
+
+    if (isNaN(interestRateNum) || interestRateNum < 0 || interestRateNum > 100)
+      return NextResponse.json(
+        { error: "Interest rate must be between 0 and 100" },
+        { status: 400 }
+      );
+
     // ── Items ─────────────────────────────────────────────────────
     const itemsRaw = formData.get("items")?.toString();
     if (!itemsRaw)
@@ -76,10 +93,19 @@ export async function POST(req: NextRequest, context: RouteContext) {
         itemErrors.push(`Item[${i}]: invalid itemType "${item.itemType}"`);
       if (!VALID_METAL_TYPES.includes(item.metalType))
         itemErrors.push(`Item[${i}]: invalid metalType "${item.metalType}"`);
-      for (const f of ["grossWeight", "netWeight", "purity", "netWeightOfMetal"]) {
-        if (item[f] === undefined || item[f] === "" || isNaN(Number(item[f])))
+      // netWeightOfMetal is no longer trusted from the payload — it's derived
+      // server-side from netWeight × purity, so only the inputs are validated.
+      for (const f of ["grossWeight", "netWeight", "purity"]) {
+        const v = Number(item[f]);
+        if (item[f] === undefined || item[f] === "" || isNaN(v))
           itemErrors.push(`Item[${i}]: missing or invalid "${f}"`);
+        else if (v <= 0)
+          itemErrors.push(`Item[${i}]: "${f}" must be greater than 0`);
+        else if (f === "purity" && v > 100)
+          itemErrors.push(`Item[${i}]: "purity" must be at most 100`);
       }
+      if (Number(item.netWeight) > Number(item.grossWeight))
+        itemErrors.push(`Item[${i}]: "netWeight" must not exceed "grossWeight"`);
     });
 
     if (itemErrors.length)
@@ -91,14 +117,20 @@ export async function POST(req: NextRequest, context: RouteContext) {
       itemPhoto = await uploadImage(imageFile, `ELEKHAJOKHA/pledges/${customerId}`);
     }
 
+    // Derive pure-metal content server-side instead of trusting the client.
+    // Round each item to 3 dp BEFORE summing — matches the client's toFixed(3)
+    // then-sum order exactly, so untampered submissions stay byte-identical.
+    const metalContent = (item: { netWeight: unknown; purity: unknown }): number =>
+      Math.round(Number(item.netWeight) * (Number(item.purity) / 100) * 1000) / 1000;
+
     // ── Compute totals from items ─────────────────────────────────
     const netWeightOfGold = rawItems
       .filter(i => i.metalType === "GOLD")
-      .reduce((sum, i) => sum + Number(i.netWeightOfMetal), 0);
+      .reduce((sum, i) => sum + metalContent(i), 0);
 
     const netWeightOfSilver = rawItems
       .filter(i => i.metalType === "SILVER")
-      .reduce((sum, i) => sum + Number(i.netWeightOfMetal), 0);
+      .reduce((sum, i) => sum + metalContent(i), 0);
 
     // ── Create pledge + items in one transaction ──────────────────
     const pledge = await prisma.pledge.create({
@@ -122,7 +154,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
             grossWeight:      toDecimal(item.grossWeight),
             netWeight:        toDecimal(item.netWeight),
             purity:           toDecimal(item.purity),
-            netWeightOfMetal: toDecimal(item.netWeightOfMetal),
+            netWeightOfMetal: new Prisma.Decimal(metalContent(item).toFixed(3)),
           })),
         },
       },
@@ -133,7 +165,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
   } catch (err: any) {
     console.error("PLEDGE CREATE ERROR:", err);
-    return NextResponse.json({ error: "Server Error", message: err.message }, { status: 500 });
+    return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }
 

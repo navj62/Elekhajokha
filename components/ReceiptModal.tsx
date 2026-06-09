@@ -50,7 +50,7 @@ export default function ReceiptModal({ customerId, pledgeId }: Props) {
     <>
       <button
         onClick={openReceipt}
-        className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-3 py-1.5 rounded-lg transition"
+        className="bg-[#E5E3D9] hover:bg-[#D5D3C9] text-[#2C2C2C] text-[13px] font-semibold px-4 py-2 rounded-[10px] transition-colors"
       >
         View Receipt
       </button>

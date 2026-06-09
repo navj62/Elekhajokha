@@ -87,18 +87,9 @@ function loadRazorpay(): Promise<boolean> {
 // ── Icons ─────────────────────────────────────────────────────────────────────
 function Check() {
   return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden>
-      <circle cx="7.5" cy="7.5" r="7.5" fill="#16a34a" opacity="0.12" />
-      <path d="M4 7.5L6.5 10L11 5" stroke="#16a34a" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function TrialCheck() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" aria-hidden>
-      <circle cx="7.5" cy="7.5" r="7.5" fill="#6366f1" opacity="0.12" />
-      <path d="M4 7.5L6.5 10L11 5" stroke="#6366f1" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#555B3F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="9 12 11 14 15 10" />
     </svg>
   );
 }
@@ -247,10 +238,53 @@ export default function SubscribePage() {
         description:     `${activePlan.label} — ${activePlan.duration}`,
         prefill,
         theme:           { color: "#16a34a" },
-        handler: function () {
-          isPaymentProcessing.current = false;
-          setLoading(false);
-          router.push("/dashboard");
+        handler: async function (response: {
+          razorpay_payment_id?: string;
+          razorpay_subscription_id?: string;
+          razorpay_signature?: string;
+        }) {
+          // Razorpay captured the payment — now verify server-side BEFORE
+          // granting access. Only redirect once /api/verify-payment confirms
+          // the subscription is genuinely active.
+          setLoading(true);
+          setPaymentError(null);
+          try {
+            const verifyRes = await fetch("/api/verify-payment", {
+              method:  "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_payment_id:      response.razorpay_payment_id,
+                razorpay_subscription_id: response.razorpay_subscription_id,
+                razorpay_signature:       response.razorpay_signature,
+              }),
+            });
+
+            const verifyData: { success?: boolean; error?: string } =
+              await verifyRes.json().catch(() => ({}));
+
+            if (!verifyRes.ok || !verifyData.success) {
+              // Verification failed — do NOT redirect; surface the error.
+              setPaymentError(
+                verifyData.error
+                  ? `Payment verification failed (${verifyData.error}). If you were charged, please contact support.`
+                  : "Payment verification failed. If you were charged, please contact support."
+              );
+              return;
+            }
+
+            // Verified & active — refresh server state, then go to dashboard.
+            router.push("/dashboard");
+            router.refresh();
+          } catch {
+            // The verify-payment call itself failed (network/other). Don't
+            // redirect into a paywall — the webhook is the async safety net.
+            setPaymentError(
+              "Couldn't verify your payment due to a network error. If you were charged, it will be confirmed shortly — please refresh in a moment."
+            );
+          } finally {
+            setLoading(false);
+            isPaymentProcessing.current = false;
+          }
         },
         modal: {
           ondismiss: () => {
@@ -289,8 +323,8 @@ export default function SubscribePage() {
   // ── Mount loading ─────────────────────────────────────────────────────────
   if (accessLoading) {
     return (
-      <div style={styles.page}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, color: "#6b7280", fontSize: "0.875rem" }}>
+      <div className="min-h-screen bg-[#F5F4EF] flex items-center justify-center">
+        <div className="text-[#6F6F6F] flex items-center gap-2">
           <Spinner dark /> Checking your account…
         </div>
       </div>
@@ -299,226 +333,214 @@ export default function SubscribePage() {
 
   // ── UI ────────────────────────────────────────────────────────────────────
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
+    <div className="min-h-screen h-screen bg-[#F5F4EF] text-[#2C2C2C] font-sans flex flex-col pt-8 pb-16 px-6 relative overflow-y-auto">
+      
+      {/* Back Button */}
+      <button 
+        onClick={() => router.back()}
+        className="absolute top-6 left-6 md:top-8 md:left-10 w-11 h-11 bg-white border border-[#ECEAE4] rounded-full flex items-center justify-center text-[#2C2C2C] shadow-sm hover:bg-[#FAFAF8] hover:border-[#DEDCD1] transition-all z-50 group"
+        aria-label="Go back"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-hover:-translate-x-0.5"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+      </button>
 
-        {/* Header */}
-        <div style={styles.header}>
-          <h2 style={styles.title}>Choose your plan</h2>
-          <p style={styles.subtitle}>All plans include full platform access. No hidden fees.</p>
+      <div className="max-w-[1100px] mx-auto w-full flex-1 flex flex-col relative z-10 justify-center">
+        
+        {/* Header Content */}
+        <div className="text-center mb-6 flex flex-col items-center">
+          <div className="bg-[#EAE8DD] text-[#555B3F] text-[9px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1.5 mb-4 uppercase tracking-wider">
+            <svg width="10" height="12" viewBox="0 0 10 12" fill="none">
+              <path fillRule="evenodd" clipRule="evenodd" d="M2.5 4.5V3C2.5 1.61929 3.61929 0.5 5 0.5C6.38071 0.5 7.5 1.61929 7.5 3V4.5H8.5C9.05228 4.5 9.5 4.94772 9.5 5.5V10.5C9.5 11.0523 9.05228 11.5 8.5 11.5H1.5C0.947715 11.5 0.5 11.0523 0.5 10.5V5.5C0.5 4.94772 0.947715 4.5 1.5 4.5H2.5ZM5 1.5C4.17157 1.5 3.5 2.17157 3.5 3V4.5H6.5V3C6.5 2.17157 5.82843 1.5 5 1.5Z" fill="#555B3F"/>
+            </svg>
+            SECURE & ENCRYPTED
+          </div>
+          <h1 className="text-[36px] md:text-[42px] font-semibold tracking-tight text-[#2C2C2C] leading-tight mb-2">Choose your plan</h1>
+          <p className="text-[#6F6F6F] text-[14px]">Start your free trial or subscribe to continue using ELEKHAJOKHA.</p>
         </div>
 
         {/* Trial banner for current trial users */}
         {accessInfo?.status === "trial" && (
-          <div style={styles.trialActiveBanner}>
-            ⏳ You&apos;re currently on a free trial. Upgrade below to get full access after it ends.
+          <div className="max-w-[900px] mx-auto w-full bg-[#FAFAF8] border border-[#ECEAE4] rounded-[16px] p-3 text-[13px] text-[#6F6F6F] text-center mb-6 shadow-sm">
+            ⏳ You're currently on a free trial. Upgrade below to get full access after it ends.
+          </div>
+        )}
+        
+        {/* Errors */}
+        {(trialError || paymentError) && (
+          <div className="max-w-[900px] mx-auto w-full bg-[#FCEAE9] border border-[#F5C2C7] rounded-[16px] p-3 text-[13px] text-[#C94A4A] text-center mb-6 flex items-center justify-center gap-3">
+             <span className="font-bold">⚠</span> {trialError || paymentError}
           </div>
         )}
 
-        {/* Free Trial Card */}
-        <div style={{ ...styles.trialCard, opacity: trialAlreadyUsed ? 0.5 : 1 }}>
-          <div style={styles.trialTop}>
-            <div>
-              <div style={styles.planLabelRow}>
-                <span style={styles.planLabel}>Free Trial</span>
-                {trialAlreadyUsed
-                  ? <span style={{ ...styles.trialBadge, background: "#fee2e2", color: "#dc2626" }}>Already used</span>
-                  : <span style={styles.trialBadge}>No card needed</span>
-                }
-              </div>
-              <div style={styles.planMeta}>
-                {trialAlreadyUsed ? "Your free trial has been used" : "15 days free · Full access"}
-              </div>
+        {/* Pricing Cards Row */}
+        <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 px-4 md:px-0">
+          
+          {/* Free Trial Card */}
+          <div className="bg-white rounded-[24px] border border-[#ECEAE4] p-6 flex flex-col relative h-full">
+            <h3 className="text-[18px] font-bold text-[#2C2C2C] mb-2">Free Trial</h3>
+            <div className="flex items-baseline gap-1 mb-1">
+              <span className="text-[36px] font-bold text-[#2C2C2C] leading-none">₹0</span>
             </div>
-            <div style={styles.priceBlock}>
-              <span style={styles.trialPrice}>₹0</span>
-              <div style={{ fontSize: "0.72rem", color: "#6b7280", textAlign: "right" }}>15 days</div>
-            </div>
-          </div>
-
-          {!trialAlreadyUsed && (
-            <ul style={styles.featureList} aria-label="Trial features">
-              {TRIAL_FEATURES.map((f) => (
-                <li key={f} style={styles.featureItem}>
-                  <TrialCheck /><span>{f}</span>
+            <p className="text-[#6F6F6F] text-[13px] mb-4 pb-3 border-b border-[#F4F3EE]">15 days free</p>
+            
+            <ul className="flex flex-col gap-3 mb-6 flex-1">
+              {TRIAL_FEATURES.map(f => (
+                <li key={f} className="flex items-start gap-3 text-[13px] font-medium text-[#6F6F6F]">
+                  <div className="mt-0.5"><Check /></div>
+                  {f}
                 </li>
               ))}
             </ul>
-          )}
-
-          {trialError && (
-            <div role="alert" style={styles.errorBox}>
-              <span>⚠</span>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <span>{trialError}</span>
-                <button onClick={handleStartTrial} style={styles.retryBtn}>Try again</button>
-              </div>
-            </div>
-          )}
-
-          <button
-            onClick={handleStartTrial}
-            disabled={trialLoading || trialAlreadyUsed}
-            aria-busy={trialLoading}
-            style={{ ...styles.trialBtn, ...(trialLoading || trialAlreadyUsed ? styles.ctaDisabled : {}) }}
-          >
-            {trialLoading
-              ? <span style={styles.ctaInner}><Spinner /> Starting trial…</span>
-              : trialAlreadyUsed
-              ? "Trial already used"
-              : "Start Free Trial →"
-            }
-          </button>
-        </div>
-
-        {/* Divider */}
-        <div style={styles.divider}>
-          <div style={styles.dividerLine} />
-          <span style={styles.dividerText}>or choose a paid plan</span>
-          <div style={styles.dividerLine} />
-        </div>
-
-        {/* Paid Plans */}
-        <div style={styles.planList}>
-          {PLANS.map((plan) => {
-            const active = selected === plan.id;
-            return (
-              <button
-                key={plan.id}
-                onClick={() => setSelected(plan.id)}
-                aria-pressed={active}
-                style={{ ...styles.planBtn, ...(active ? styles.planBtnActive : {}) }}
-              >
-                <div style={styles.planRow}>
-                  <div>
-                    <div style={styles.planLabelRow}>
-                      <span style={styles.planLabel}>{plan.label}</span>
-                      {plan.badge && <span style={styles.badge}>{plan.badge}</span>}
-                    </div>
-                    <div style={styles.planMeta}>{plan.perMonth} &bull; {plan.duration}</div>
-                  </div>
-                  <div style={styles.priceBlock}>
-                    <span style={styles.price}>₹{plan.price}</span>
-                    {plan.savings && <span style={styles.savings}>{plan.savings}</span>}
-                  </div>
-                </div>
-
-                {active && (
-                  <ul style={styles.featureList} aria-label="Plan features">
-                    {plan.features.map((f) => (
-                      <li key={f} style={styles.featureItem}>
-                        <Check /><span>{f}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                <div style={styles.radioRow}>
-                  <span style={{ ...styles.radio, ...(active ? styles.radioActive : {}) }}>
-                    {active && <span style={styles.radioDot} />}
-                  </span>
-                  <span style={styles.radioLabel}>{active ? "Selected" : "Select this plan"}</span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {paymentError && (
-          <div role="alert" style={styles.errorBox}>
-            <span>⚠</span>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <span>{paymentError}</span>
-              <button onClick={handleSubscribe} style={styles.retryBtn}>Try again</button>
-            </div>
+            
+            <button 
+              onClick={handleStartTrial}
+              disabled={trialLoading || trialAlreadyUsed}
+              className="w-full py-3 rounded-[12px] bg-[#EAE8DD] text-[#555B3F] font-bold text-[13px] transition-colors hover:bg-[#DEDCD1] disabled:opacity-50 mt-auto"
+            >
+              {trialLoading ? "Starting..." : trialAlreadyUsed ? "Trial Used" : "Start Free Trial"}
+            </button>
           </div>
-        )}
 
-        <button
-          onClick={handleSubscribe}
-          disabled={loading || !sdkReady}
-          aria-busy={loading}
-          style={{ ...styles.cta, ...(loading || !sdkReady ? styles.ctaDisabled : {}) }}
-        >
-          {loading ? (
-            <span style={styles.ctaInner}><Spinner /> Opening checkout…</span>
-          ) : !sdkReady ? (
-            <span style={styles.ctaInner}><Spinner /> Loading…</span>
-          ) : (
-            "Secure Checkout →"
-          )}
-        </button>
+          {/* Half Yearly Card */}
+          <div 
+             onClick={() => setSelected('HALF_YEARLY')}
+             className={`bg-white rounded-[24px] border transition-all p-6 flex flex-col relative cursor-pointer h-full ${selected === 'HALF_YEARLY' ? 'border-[#555B3F] shadow-lg ring-1 ring-[#555B3F]' : 'border-[#ECEAE4] hover:border-[#DEDCD1]'}`}
+          >
+            <h3 className="text-[18px] font-bold text-[#2C2C2C] mb-2">Half-Yearly</h3>
+            <div className="flex items-baseline gap-1 mb-1">
+              <span className="text-[36px] font-bold text-[#2C2C2C] leading-none">₹999</span>
+            </div>
+            <p className="text-[#6F6F6F] text-[13px] mb-4 pb-3 border-b border-[#F4F3EE] flex flex-col gap-0.5">
+              <span>6 months access (₹166/month)</span>
+            </p>
+            
+            <ul className="flex flex-col gap-3 mb-6 flex-1">
+              {PLANS[0].features.map(f => (
+                <li key={f} className="flex items-start gap-3 text-[13px] font-medium text-[#6F6F6F]">
+                  <div className="mt-0.5"><Check /></div>
+                  {f}
+                </li>
+              ))}
+            </ul>
+            
+            <button 
+               onClick={(e) => { e.stopPropagation(); setSelected('HALF_YEARLY'); handleSubscribe(); }}
+               disabled={loading || !sdkReady}
+               className="w-full py-3 rounded-[12px] bg-[#EAE8DD] text-[#555B3F] font-bold text-[13px] transition-colors hover:bg-[#DEDCD1] disabled:opacity-50 flex items-center justify-center mt-auto"
+            >
+              {loading && selected === 'HALF_YEARLY' ? <Spinner dark /> : "Select Plan"}
+            </button>
+          </div>
 
-        <p style={styles.trust}>🔒 Secured by Razorpay &nbsp;•&nbsp; One-time payment</p>
+          {/* Yearly Card (Best Value) */}
+          <div 
+             onClick={() => setSelected('YEARLY')}
+             className={`bg-white rounded-[24px] border transition-all p-6 flex flex-col relative cursor-pointer h-full ${selected === 'YEARLY' ? 'border-[#555B3F] shadow-[0_12px_40px_rgba(85,91,63,0.15)] ring-1 ring-[#555B3F]' : 'border-[#ECEAE4] hover:border-[#DEDCD1]'}`}
+          >
+            <div className="absolute top-0 right-0 bg-[#555B3F] text-white text-[10px] font-bold px-3 py-1 rounded-tr-[24px] rounded-bl-[12px]">
+              Best Value
+            </div>
+            
+            <h3 className="text-[18px] font-bold text-[#2C2C2C] mb-2">Yearly</h3>
+            <div className="flex items-baseline gap-1 mb-1">
+              <span className="text-[36px] font-bold text-[#2C2C2C] leading-none">₹1499</span>
+            </div>
+            <p className="text-[#6F6F6F] text-[13px] mb-4 pb-3 border-b border-[#F4F3EE] flex flex-col gap-0.5">
+              <span>12 months access (₹124/mo)</span>
+              <span className="font-bold text-[#555B3F]">Save ₹499</span>
+            </p>
+            
+            <ul className="flex flex-col gap-3 mb-6 flex-1">
+              {PLANS[1].features.map(f => (
+                <li key={f} className="flex items-start gap-3 text-[13px] font-medium text-[#6F6F6F]">
+                  <div className="mt-0.5"><Check /></div>
+                  {f}
+                </li>
+              ))}
+            </ul>
+            
+            <button 
+              onClick={(e) => { e.stopPropagation(); setSelected('YEARLY'); handleSubscribe(); }}
+              disabled={loading || !sdkReady}
+              className="w-full py-3 rounded-[12px] bg-[#555B3F] text-white font-bold text-[13px] transition-colors hover:bg-[#4B5036] disabled:opacity-50 flex items-center justify-center mt-auto shadow-md"
+            >
+               {loading && selected === 'YEARLY' ? <Spinner /> : "Select Plan"}
+            </button>
+          </div>
+
+        </div>
+
+        {/* Checkout Info */}
+        <div className="border-t border-[#EAE8DD] pt-8 pb-4 w-full mx-auto flex flex-col md:flex-row items-center justify-center gap-6 md:gap-10">
+          <div className="flex items-start gap-3">
+             <div className="mt-0.5">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2C2C2C" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+             </div>
+             <div>
+               <h4 className="font-bold text-[#2C2C2C] text-[13px] mb-0.5">Secure Checkout</h4>
+               <p className="text-[12px] text-[#6F6F6F]">Payment is encrypted</p>
+             </div>
+          </div>
+          <div className="flex items-start gap-3">
+             <div className="mt-0.5">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2C2C2C" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+             </div>
+             <div>
+               <h4 className="font-bold text-[#2C2C2C] text-[13px] mb-0.5">Cancel anytime</h4>
+               <p className="text-[12px] text-[#6F6F6F]">No questions asked</p>
+             </div>
+          </div>
+          <div className="flex items-start gap-3">
+             <div className="mt-0.5">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2C2C2C" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2v5Z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/></svg>
+             </div>
+             <div>
+               <h4 className="font-bold text-[#2C2C2C] text-[13px] mb-0.5">24/7 Support</h4>
+               <p className="text-[12px] text-[#6F6F6F]">We're here to help</p>
+             </div>
+          </div>
+          <div className="flex items-start gap-3">
+             <div className="mt-0.5 text-[#555B3F]">
+               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+             </div>
+             <div>
+               <h4 className="font-bold text-[#2C2C2C] text-[13px] mb-0.5">Razorpay secure</h4>
+               <p className="text-[12px] text-[#6F6F6F]">100% safe transactions</p>
+             </div>
+          </div>
+        </div>
+
       </div>
 
+      {/* Minimal Footer */}
+      <div className="w-full bg-[#EBE9E0] py-6 px-10 absolute bottom-0 left-0 right-0 flex flex-col md:flex-row items-center justify-between text-[12px] font-medium text-[#6F6F6F]">
+        <div className="font-bold text-[#2C2C2C]">ELEKHAJOKHA</div>
+        <div className="flex items-center gap-6 mt-4 md:mt-0">
+          <a href="#" className="hover:text-[#2C2C2C] transition-colors">Security Architecture</a>
+          <a href="#" className="hover:text-[#2C2C2C] transition-colors">Privacy Protocol</a>
+          <a href="#" className="hover:text-[#2C2C2C] transition-colors">Compliance</a>
+          <a href="#" className="hover:text-[#2C2C2C] transition-colors">Support</a>
+        </div>
+        <div className="mt-4 md:mt-0 text-right">
+          © {new Date().getFullYear()} ELEKHAJOKHA. Secure financial infrastructure.
+        </div>
+      </div>
+      
       {/* Trial success popup */}
       {trialSuccess && (
-        <div style={styles.overlay} role="dialog" aria-modal aria-label="Trial started">
-          <div style={styles.popup}>
-            <div style={{ ...styles.popupIcon, background: "#eef2ff", border: "2px solid #c7d2fe", color: "#4f46e5" }}>✓</div>
-            <h3 style={styles.popupTitle}>Trial Started!</h3>
-            <p style={styles.popupDesc}>
-              Your <strong>15-day free trial</strong> is now active.<br />
-              Redirecting to dashboard…
-            </p>
-            <div style={styles.popupDots}>
-              {(["0s", "0.2s", "0.4s"] as const).map((delay) => (
-                <span key={delay} style={{ ...styles.dot, background: "#6366f1", animationDelay: delay }} />
-              ))}
-            </div>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[24px] p-8 w-full max-w-[400px] text-center shadow-xl">
+             <div className="w-14 h-14 bg-[#FAFAF8] border border-[#ECEAE4] rounded-full flex items-center justify-center mx-auto mb-5">
+               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#555B3F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+             </div>
+             <h3 className="text-[20px] font-bold text-[#2C2C2C] mb-2">Trial Started!</h3>
+             <p className="text-[14px] text-[#6F6F6F] mb-6">
+               Your <strong>15-day free trial</strong> is now active.<br/>Redirecting to dashboard...
+             </p>
           </div>
         </div>
       )}
+
     </div>
   );
 }
-
-// ── Styles ────────────────────────────────────────────────────────────────────
-const styles: Record<string, React.CSSProperties> = {
-  page:             { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "2rem 1rem", background: "#f9fafb" },
-  card:             { width: "100%", maxWidth: 480, background: "#ffffff", borderRadius: 16, boxShadow: "0 4px 24px rgba(0,0,0,0.08)", padding: "2rem" },
-  header:           { marginBottom: "1.5rem" },
-  title:            { margin: 0, fontSize: "1.4rem", fontWeight: 700, color: "#111" },
-  subtitle:         { margin: "0.3rem 0 0", fontSize: "0.875rem", color: "#6b7280" },
-  trialActiveBanner:{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", fontSize: "0.82rem", color: "#92400e", marginBottom: "1rem" },
-  trialCard:        { border: "1.5px solid #c7d2fe", background: "#f5f3ff", borderRadius: 12, padding: "14px 16px", marginBottom: "1.25rem", display: "flex", flexDirection: "column", gap: 10, transition: "opacity 0.2s" },
-  trialTop:         { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
-  trialBadge:       { fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "#6366f1", background: "#e0e7ff", padding: "2px 7px", borderRadius: 99 },
-  trialPrice:       { display: "block", fontSize: "1.1rem", fontWeight: 700, color: "#111" },
-  trialBtn:         { width: "100%", padding: "11px", background: "#6366f1", color: "#fff", border: "none", borderRadius: 10, fontWeight: 700, fontSize: "0.95rem", cursor: "pointer", transition: "opacity 0.15s" },
-  divider:          { display: "flex", alignItems: "center", gap: 10, marginBottom: "1.25rem" },
-  dividerLine:      { flex: 1, height: 1, background: "#e5e7eb" },
-  dividerText:      { fontSize: "0.75rem", color: "#9ca3af", whiteSpace: "nowrap" },
-  planList:         { display: "flex", flexDirection: "column", gap: 10, marginBottom: "1.25rem" },
-  planBtn:          { width: "100%", padding: "14px 16px", borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#fff", textAlign: "left", cursor: "pointer", transition: "border-color 0.15s, background 0.15s, box-shadow 0.15s" },
-  planBtnActive:    { border: "2px solid #16a34a", background: "#f0fdf4", boxShadow: "0 0 0 3px rgba(22,163,74,0.08)" },
-  planRow:          { display: "flex", justifyContent: "space-between", alignItems: "flex-start" },
-  planLabelRow:     { display: "flex", alignItems: "center", gap: 8 },
-  planLabel:        { fontWeight: 600, fontSize: "0.95rem", color: "#111" },
-  badge:            { fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em", color: "#16a34a", background: "#dcfce7", padding: "2px 7px", borderRadius: 99 },
-  planMeta:         { fontSize: "0.78rem", color: "#6b7280", marginTop: 3 },
-  priceBlock:       { textAlign: "right" },
-  price:            { display: "block", fontSize: "1.1rem", fontWeight: 700, color: "#111" },
-  savings:          { fontSize: "0.72rem", color: "#16a34a", fontWeight: 600 },
-  featureList:      { listStyle: "none", margin: "12px 0 4px", padding: 0, display: "flex", flexDirection: "column", gap: 7 },
-  featureItem:      { display: "flex", alignItems: "center", gap: 8, fontSize: "0.82rem", color: "#374151" },
-  radioRow:         { display: "flex", alignItems: "center", gap: 7, marginTop: 12 },
-  radio:            { width: 16, height: 16, borderRadius: "50%", border: "1.5px solid #d1d5db", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  radioActive:      { border: "1.5px solid #16a34a" },
-  radioDot:         { width: 8, height: 8, borderRadius: "50%", background: "#16a34a" },
-  radioLabel:       { fontSize: "0.78rem", color: "#6b7280" },
-  errorBox:         { display: "flex", alignItems: "flex-start", gap: 8, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", padding: "10px 14px", borderRadius: 10, fontSize: "0.85rem", marginBottom: "1rem" },
-  cta:              { width: "100%", padding: "13px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 12, fontWeight: 700, fontSize: "1rem", cursor: "pointer", transition: "opacity 0.15s" },
-  ctaDisabled:      { opacity: 0.7, cursor: "not-allowed" },
-  ctaInner:         { display: "flex", alignItems: "center", justifyContent: "center", gap: 8 },
-  retryBtn:         { alignSelf: "flex-start", background: "none", border: "1px solid #fca5a5", borderRadius: 6, color: "#991b1b", fontSize: "0.78rem", fontWeight: 600, padding: "3px 10px", cursor: "pointer" },
-  trust:            { textAlign: "center", marginTop: 12, fontSize: "0.75rem", color: "#9ca3af" },
-  overlay:          { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
-  popup:            { background: "#fff", borderRadius: 20, padding: "2.5rem 2rem", maxWidth: 360, width: "90%", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, boxShadow: "0 24px 64px rgba(0,0,0,0.18)" },
-  popupIcon:        { width: 60, height: 60, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.6rem", fontWeight: 700 },
-  popupTitle:       { margin: 0, fontSize: "1.25rem", fontWeight: 700, color: "#111" },
-  popupDesc:        { margin: 0, fontSize: "0.875rem", color: "#6b7280", lineHeight: 1.7 },
-  popupDots:        { display: "flex", gap: 6, marginTop: 4 },
-  dot:              { width: 7, height: 7, borderRadius: "50%", animation: "rzp-bounce 1s infinite ease-in-out" },
-};

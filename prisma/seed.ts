@@ -10,7 +10,7 @@ const prisma = new PrismaClient({ adapter })
 
 neonConfig.webSocketConstructor = ws as unknown as typeof WebSocket
 // ─── Config ────────────────────────────────────────────────────────────────
-const USER_ID   = '5cfd6ef0-4bf4-45eb-990f-7b593b2cf3e5'
+const USER_ID   = 'c75f2112-9ca4-4688-a941-f27835e16e39'
 const GOLD_PPG  = 9500   // ₹ per gram (22K equivalent)
 const SILVER_PPG = 110   // ₹ per gram
  

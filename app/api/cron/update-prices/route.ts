@@ -1,6 +1,7 @@
 // app/api/cron/update-prices/route.ts
 
 import { updatePrices } from "@/lib/storePrices";
+import { constantTimeEqual } from "@/lib/constantTimeEqual";
 
 /**
  * GET /api/cron/update-prices
@@ -25,7 +26,7 @@ export async function GET(req: Request) {
   }
 
   const auth = req.headers.get("authorization");
-  if (auth !== `Bearer ${secret}`) {
+  if (!auth || !constantTimeEqual(auth, `Bearer ${secret}`)) {
     console.warn("⛔ Unauthorized cron attempt");
     return Response.json(
       { success: false, error: "Unauthorized" },
