@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Bell, CheckCheck, ChevronDown } from "lucide-react";
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -43,11 +45,11 @@ type FilterTier   = "all" | RiskTier;
 // CONSTANTS
 // ─────────────────────────────────────────────
 
-const TIER_CONFIG: Record<RiskTier, { label: string; color: string; bg: string; dot: string }> = {
-  SAFE:       { label: "Safe",       color: "#16a34a", bg: "#f0fdf4", dot: "#22c55e" },
-  WATCH:      { label: "Watch",      color: "#d97706", bg: "#fffbeb", dot: "#f59e0b" },
-  AT_RISK:    { label: "At Risk",    color: "#dc2626", bg: "#fef2f2", dot: "#ef4444" },
-  UNDERWATER: { label: "Underwater", color: "#7c3aed", bg: "#faf5ff", dot: "#8b5cf6" },
+const TIER_CONFIG: Record<RiskTier, { label: string; color: string; bg: string; dot: string; border: string }> = {
+  SAFE:       { label: "Safe",       color: "#4A6741", bg: "#EDF3EB", dot: "#5A8555", border: "#B3CEB0" },
+  WATCH:      { label: "Watch",      color: "#7A5C1E", bg: "#FBF4E3", dot: "#C9A84C", border: "#DFC98A" },
+  AT_RISK:    { label: "At Risk",    color: "#8B3A3A", bg: "#FAF0EF", dot: "#C97070", border: "#DFB3B0" },
+  UNDERWATER: { label: "Underwater", color: "#4A3A6B", bg: "#F3F0FA", dot: "#8B78C9", border: "#C3B8DF" },
 };
 
 const ALERT_ICON: Record<AlertType, string> = {
@@ -60,16 +62,11 @@ const ALERT_ICON: Record<AlertType, string> = {
 // HELPERS
 // ─────────────────────────────────────────────
 
-// "Gold Chain, Ring +1 more" from items array
 function formatItemNames(items: PledgeItem[]): string {
   if (!items || items.length === 0) return "Pledge";
-
   const names = items.map((item) =>
-    item.itemName?.trim()
-      ? item.itemName.trim()
-      : toTitleCase(item.itemType)
+    item.itemName?.trim() ? item.itemName.trim() : toTitleCase(item.itemType)
   );
-
   if (names.length <= 2) return names.join(", ");
   return `${names[0]}, ${names[1]} +${names.length - 2} more`;
 }
@@ -100,6 +97,7 @@ function formatCurrency(val: string | null): string {
 // ─────────────────────────────────────────────
 
 export default function NotificationsPage() {
+  const router = useRouter();
   const [alerts, setAlerts]           = useState<Alert[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading]         = useState(true);
@@ -143,10 +141,8 @@ export default function NotificationsPage() {
 
   const markOneRead = async (id: string) => {
     if (alerts.find((a) => a.id === id)?.isRead) return;
-    // Optimistically remove from list immediately — no waiting for API
     setAlerts((prev) => prev.filter((a) => a.id !== id));
     setUnreadCount((c) => Math.max(0, c - 1));
-    // Fire-and-forget — persist in background
     fetch("/api/notifications/read", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -159,48 +155,138 @@ export default function NotificationsPage() {
     : alerts.filter((a) => a.newTier === filterTier);
 
   return (
-    <div className="min-h-screen bg-[#f8f7f4]">
-      <div className="max-w-3xl mx-auto px-4 py-8">
+    <div style={{ minHeight: "100vh", background: "var(--main-bg)" }}>
+      <div style={{ maxWidth: "760px", margin: "0 auto", padding: "28px 24px 48px" }}>
 
-        {/* Header */}
-        <div className="flex items-start justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-semibold text-[#1a1a1a] tracking-tight">
-              Notifications
-            </h1>
-            {unreadCount > 0 && (
-              <p className="text-sm text-[#6b7280] mt-1">
-                {unreadCount} unread alert{unreadCount !== 1 ? "s" : ""}
-              </p>
-            )}
+        {/* ── Back Button ── */}
+        <button
+          onClick={() => router.back()}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            marginBottom: "24px",
+            padding: "7px 14px 7px 10px",
+            borderRadius: "8px",
+            border: "1px solid var(--border-light)",
+            background: "var(--card-bg)",
+            color: "var(--text-secondary)",
+            fontSize: "13px",
+            fontWeight: 500,
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--sidebar-bg)";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--card-bg)";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--text-secondary)";
+          }}
+        >
+          <ArrowLeft size={15} strokeWidth={2.2} />
+          Back
+        </button>
+
+        {/* ── Page Header ── */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "28px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{
+              width: "40px",
+              height: "40px",
+              borderRadius: "10px",
+              background: "var(--sidebar-active-bg)",
+              display: "grid",
+              placeItems: "center",
+            }}>
+              <Bell size={18} strokeWidth={2} style={{ color: "var(--primary-brand)" }} />
+            </div>
+            <div>
+              <h1 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: 0, letterSpacing: "-0.3px" }}>
+                Notifications
+              </h1>
+              {unreadCount > 0 && (
+                <p style={{ fontSize: "12.5px", color: "var(--text-secondary)", margin: "2px 0 0" }}>
+                  {unreadCount} unread alert{unreadCount !== 1 ? "s" : ""}
+                </p>
+              )}
+            </div>
           </div>
+
           {unreadCount > 0 && (
             <button
               onClick={markAllRead}
               disabled={markingRead}
-              className="text-sm text-[#4f46e5] hover:text-[#4338ca] font-medium disabled:opacity-50 transition-colors"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 14px",
+                borderRadius: "8px",
+                border: "1px solid var(--border-light)",
+                background: "var(--card-bg)",
+                color: "var(--primary-brand)",
+                fontSize: "12.5px",
+                fontWeight: 600,
+                cursor: markingRead ? "not-allowed" : "pointer",
+                opacity: markingRead ? 0.5 : 1,
+                transition: "all 0.15s ease",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+              }}
+              onMouseEnter={(e) => {
+                if (!markingRead) (e.currentTarget as HTMLButtonElement).style.background = "var(--sidebar-bg)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = "var(--card-bg)";
+              }}
             >
+              <CheckCheck size={14} strokeWidth={2.2} />
               {markingRead ? "Marking…" : "Mark all read"}
             </button>
           )}
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap gap-2 mb-6">
-          <div className="flex bg-white border border-[#e5e7eb] rounded-lg p-0.5 gap-0.5">
+        {/* ── Filters ── */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", marginBottom: "20px" }}>
+
+          {/* Unread toggle */}
+          <div style={{
+            display: "flex",
+            background: "var(--card-bg)",
+            border: "1px solid var(--border-light)",
+            borderRadius: "10px",
+            padding: "3px",
+            gap: "2px",
+          }}>
             {(["all", "unread"] as FilterUnread[]).map((f) => (
               <button
                 key={f}
                 onClick={() => setFilterUnread(f)}
-                className={`px-3 py-1.5 text-sm rounded-md font-medium transition-all ${
-                  filterUnread === f
-                    ? "bg-[#1a1a1a] text-white"
-                    : "text-[#6b7280] hover:text-[#1a1a1a]"
-                }`}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: "8px",
+                  border: "none",
+                  fontSize: "12.5px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                  background: filterUnread === f ? "var(--primary-brand)" : "transparent",
+                  color: filterUnread === f ? "#fff" : "var(--text-secondary)",
+                }}
               >
                 {f === "all" ? "All" : "Unread"}
                 {f === "unread" && unreadCount > 0 && (
-                  <span className="ml-1.5 bg-[#ef4444] text-white text-xs rounded-full px-1.5 py-0.5">
+                  <span style={{
+                    marginLeft: "6px",
+                    background: filterUnread === "unread" ? "rgba(255,255,255,0.25)" : "var(--notif-badge)",
+                    color: filterUnread === "unread" ? "#fff" : "var(--text-primary)",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    borderRadius: "999px",
+                    padding: "1px 7px",
+                  }}>
                     {unreadCount}
                   </span>
                 )}
@@ -208,7 +294,8 @@ export default function NotificationsPage() {
             ))}
           </div>
 
-          <div className="flex flex-wrap gap-1.5">
+          {/* Tier filters */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
             {(["all", "SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as FilterTier[]).map((tier) => {
               const config   = tier !== "all" ? TIER_CONFIG[tier as RiskTier] : null;
               const isActive = filterTier === tier;
@@ -216,12 +303,17 @@ export default function NotificationsPage() {
                 <button
                   key={tier}
                   onClick={() => setFilterTier(tier)}
-                  style={isActive && config ? { backgroundColor: config.bg, color: config.color, borderColor: config.color } : {}}
-                  className={`px-3 py-1.5 text-sm rounded-lg border font-medium transition-all ${
-                    isActive
-                      ? "border-current"
-                      : "bg-white border-[#e5e7eb] text-[#6b7280] hover:border-[#d1d5db] hover:text-[#374151]"
-                  }`}
+                  style={{
+                    padding: "6px 13px",
+                    borderRadius: "8px",
+                    border: `1px solid ${isActive && config ? config.border : "var(--border-light)"}`,
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                    background: isActive && config ? config.bg : "var(--card-bg)",
+                    color: isActive && config ? config.color : "var(--text-secondary)",
+                  }}
                 >
                   {tier === "all" ? "All tiers" : TIER_CONFIG[tier as RiskTier].label}
                 </button>
@@ -230,22 +322,44 @@ export default function NotificationsPage() {
           </div>
         </div>
 
-        {/* List */}
+        {/* ── Divider ── */}
+        <div style={{ height: "1px", background: "var(--divider-soft)", marginBottom: "16px" }} />
+
+        {/* ── List ── */}
         {loading ? (
           <SkeletonList />
         ) : visible.length === 0 ? (
           <EmptyState filter={filterUnread} />
         ) : (
-          <div className="space-y-2">
-            {visible.map((alert) => (
-              <AlertCard key={alert.id} alert={alert} onRead={markOneRead} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {visible.map((alert, i) => (
+              <AlertCard key={alert.id} alert={alert} onRead={markOneRead} index={i} />
             ))}
+
             {hasMore && filterTier === "all" && (
               <button
                 onClick={() => fetchAlerts(false)}
                 disabled={loadingMore}
-                className="w-full py-3 text-sm text-[#6b7280] hover:text-[#374151] font-medium transition-colors disabled:opacity-50"
+                style={{
+                  width: "100%",
+                  padding: "12px",
+                  marginTop: "4px",
+                  borderRadius: "10px",
+                  border: "1px dashed var(--border-light)",
+                  background: "transparent",
+                  color: "var(--text-secondary)",
+                  fontSize: "13px",
+                  fontWeight: 500,
+                  cursor: loadingMore ? "not-allowed" : "pointer",
+                  opacity: loadingMore ? 0.5 : 1,
+                  transition: "all 0.15s ease",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                }}
               >
+                <ChevronDown size={14} />
                 {loadingMore ? "Loading…" : "Load more"}
               </button>
             )}
@@ -260,93 +374,153 @@ export default function NotificationsPage() {
 // ALERT CARD
 // ─────────────────────────────────────────────
 
-function AlertCard({ alert, onRead }: { alert: Alert; onRead: (id: string) => void }) {
+function AlertCard({ alert, onRead, index }: { alert: Alert; onRead: (id: string) => void; index: number }) {
   const tierConfig = TIER_CONFIG[alert.newTier];
   const itemLabel  = formatItemNames(alert.pledge.items);
+  const [hovered, setHovered] = useState(false);
 
   const handleClick = () => onRead(alert.id);
 
   return (
-    // ← entire card is a link to the pledge detail page
     <Link
       href={`/customers/${alert.pledge.customerId}/pledges/${alert.pledge.id}`}
       onClick={handleClick}
-      className={`relative block bg-white rounded-xl border transition-all group ${
-        !alert.isRead
-          ? "border-[#e5e7eb] shadow-sm hover:shadow-md"
-          : "border-[#f3f4f6] hover:border-[#e5e7eb]"
-      }`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        position: "relative",
+        display: "block",
+        background: hovered
+          ? "var(--card-alt)"
+          : !alert.isRead
+          ? "var(--card-bg)"
+          : "var(--card-bg)",
+        borderRadius: "12px",
+        border: `1px solid ${hovered ? "var(--secondary-light)" : !alert.isRead ? "var(--border-light)" : "var(--divider-soft)"}`,
+        boxShadow: !alert.isRead
+          ? hovered ? "0 4px 16px rgba(86,92,63,0.10)" : "0 2px 8px rgba(0,0,0,0.05)"
+          : "none",
+        textDecoration: "none",
+        transition: "all 0.18s ease",
+        opacity: alert.isRead ? 0.75 : 1,
+        animationDelay: `${index * 40}ms`,
+        animation: "fadeSlideUp 0.35s ease-out both",
+      }}
     >
+      {/* Unread indicator stripe */}
       {!alert.isRead && (
-        <span className="absolute top-4 right-4 w-2 h-2 rounded-full bg-[#4f46e5]" />
+        <span style={{
+          position: "absolute",
+          left: 0,
+          top: "12px",
+          bottom: "12px",
+          width: "3px",
+          borderRadius: "0 3px 3px 0",
+          background: "var(--primary-brand)",
+        }} />
       )}
 
-      <div className="p-4">
-        <div className="flex items-start gap-3">
-          <span className="text-lg leading-none mt-0.5 shrink-0">
+      <div style={{ padding: "14px 16px 14px 18px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+
+          {/* Alert icon */}
+          <span style={{
+            fontSize: "18px",
+            lineHeight: 1,
+            marginTop: "2px",
+            flexShrink: 0,
+            width: "32px",
+            height: "32px",
+            borderRadius: "8px",
+            background: tierConfig.bg,
+            display: "grid",
+            placeItems: "center",
+          }}>
             {ALERT_ICON[alert.alertType]}
           </span>
 
-          <div className="flex-1 min-w-0">
-            {/* Customer + item name + time */}
-            <div className="flex items-center justify-between gap-2 mb-0.5">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="font-semibold text-[#1a1a1a] text-sm truncate">
+          <div style={{ flex: 1, minWidth: 0 }}>
+
+            {/* Top row: customer · item | time */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "4px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0, overflow: "hidden" }}>
+                <span style={{ fontWeight: 700, fontSize: "13.5px", color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {alert.customer.name}
                 </span>
-                <span className="text-[#d1d5db] text-xs shrink-0">·</span>
-                <span className="text-xs text-[#6b7280] truncate">
+                <span style={{ color: "var(--text-muted)", fontSize: "11px", flexShrink: 0 }}>·</span>
+                <span style={{ fontSize: "12px", color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {itemLabel}
                 </span>
               </div>
-              <span className="text-xs text-[#9ca3af] shrink-0">
+              <span style={{ fontSize: "11.5px", color: "var(--text-muted)", flexShrink: 0 }}>
                 {formatRelativeTime(alert.createdAt)}
               </span>
             </div>
 
             {/* Message */}
-            <p className="text-sm text-[#4b5563] leading-snug mb-3">
+            <p style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: "1.5", margin: "0 0 10px" }}>
               {alert.message}
             </p>
 
-            {/* Tier + metrics */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-semibold"
-                style={{ backgroundColor: tierConfig.bg, color: tierConfig.color }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: tierConfig.dot }} />
+            {/* Tier badges + metrics */}
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
+
+              {/* New tier badge */}
+              <span style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "3px 9px",
+                borderRadius: "6px",
+                fontSize: "11.5px",
+                fontWeight: 700,
+                background: tierConfig.bg,
+                color: tierConfig.color,
+                border: `1px solid ${tierConfig.border}`,
+              }}>
+                <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: tierConfig.dot, flexShrink: 0 }} />
                 {tierConfig.label}
               </span>
 
+              {/* Old tier badge */}
               {alert.oldTier && alert.oldTier !== alert.newTier && (
                 <>
-                  <span className="text-xs text-[#d1d5db]">from</span>
-                  <span
-                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium opacity-60"
-                    style={{ backgroundColor: TIER_CONFIG[alert.oldTier].bg, color: TIER_CONFIG[alert.oldTier].color }}
-                  >
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>from</span>
+                  <span style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "3px 9px",
+                    borderRadius: "6px",
+                    fontSize: "11.5px",
+                    fontWeight: 600,
+                    background: TIER_CONFIG[alert.oldTier].bg,
+                    color: TIER_CONFIG[alert.oldTier].color,
+                    opacity: 0.65,
+                  }}>
                     {TIER_CONFIG[alert.oldTier].label}
                   </span>
                 </>
               )}
 
+              {/* LTV */}
               {alert.pledge.lastCalculatedLtv && (
                 <>
-                  <span className="text-[#e5e7eb] text-xs">·</span>
-                  <span className="text-xs text-[#6b7280]">
-                    LTV <span className="font-medium text-[#374151]">
+                  <span style={{ color: "var(--divider-soft)", fontSize: "12px" }}>·</span>
+                  <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
+                    LTV <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
                       {Number(alert.pledge.lastCalculatedLtv).toFixed(1)}%
                     </span>
                   </span>
                 </>
               )}
 
+              {/* Owed */}
               {alert.pledge.lastAmountOwed && (
                 <>
-                  <span className="text-[#e5e7eb] text-xs">·</span>
-                  <span className="text-xs text-[#6b7280]">
-                    Owed <span className="font-medium text-[#374151]">
+                  <span style={{ color: "var(--divider-soft)", fontSize: "12px" }}>·</span>
+                  <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
+                    Owed <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
                       {formatCurrency(alert.pledge.lastAmountOwed)}
                     </span>
                   </span>
@@ -354,9 +528,18 @@ function AlertCard({ alert, onRead }: { alert: Alert; onRead: (id: string) => vo
               )}
 
               {/* View pledge arrow */}
-              <span className="ml-auto text-xs text-[#9ca3af] group-hover:text-[#4f46e5] transition-colors flex items-center gap-0.5">
+              <span style={{
+                marginLeft: "auto",
+                fontSize: "11.5px",
+                color: hovered ? "var(--primary-brand)" : "var(--text-muted)",
+                display: "flex",
+                alignItems: "center",
+                gap: "3px",
+                transition: "color 0.15s",
+                fontWeight: 500,
+              }}>
                 View pledge
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M5 12h14M12 5l7 7-7 7" />
                 </svg>
               </span>
@@ -368,17 +551,26 @@ function AlertCard({ alert, onRead }: { alert: Alert; onRead: (id: string) => vo
   );
 }
 
+// ─────────────────────────────────────────────
+// SKELETON
+// ─────────────────────────────────────────────
+
 function SkeletonList() {
   return (
-    <div className="space-y-2">
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       {[...Array(5)].map((_, i) => (
-        <div key={i} className="bg-white rounded-xl border border-[#f3f4f6] p-4">
-          <div className="flex gap-3">
-            <div className="w-7 h-7 rounded-lg bg-[#f3f4f6] animate-pulse shrink-0" />
-            <div className="flex-1 space-y-2">
-              <div className="h-4 bg-[#f3f4f6] rounded animate-pulse w-1/3" />
-              <div className="h-3 bg-[#f3f4f6] rounded animate-pulse w-4/5" />
-              <div className="h-3 bg-[#f3f4f6] rounded animate-pulse w-2/4" />
+        <div key={i} style={{
+          background: "var(--card-bg)",
+          borderRadius: "12px",
+          border: "1px solid var(--divider-soft)",
+          padding: "14px 16px",
+        }}>
+          <div style={{ display: "flex", gap: "12px" }}>
+            <div className="skeleton" style={{ width: "32px", height: "32px", borderRadius: "8px", flexShrink: 0 }} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div className="skeleton" style={{ height: "13px", borderRadius: "6px", width: "35%" }} />
+              <div className="skeleton" style={{ height: "12px", borderRadius: "6px", width: "78%" }} />
+              <div className="skeleton" style={{ height: "11px", borderRadius: "6px", width: "50%" }} />
             </div>
           </div>
         </div>
@@ -387,14 +579,29 @@ function SkeletonList() {
   );
 }
 
+// ─────────────────────────────────────────────
+// EMPTY STATE
+// ─────────────────────────────────────────────
+
 function EmptyState({ filter }: { filter: FilterUnread }) {
   return (
-    <div className="text-center py-20">
-      <div className="text-4xl mb-4">{filter === "unread" ? "✅" : "🔔"}</div>
-      <p className="text-[#374151] font-medium">
-        {filter === "unread" ? "All caught up" : "No notifications yet"}
+    <div style={{ textAlign: "center", padding: "64px 0" }}>
+      <div style={{
+        width: "64px",
+        height: "64px",
+        borderRadius: "16px",
+        background: "var(--sidebar-bg)",
+        display: "grid",
+        placeItems: "center",
+        margin: "0 auto 16px",
+        fontSize: "28px",
+      }}>
+        {filter === "unread" ? "✅" : "🔔"}
+      </div>
+      <p style={{ fontWeight: 700, fontSize: "15px", color: "var(--text-primary)", margin: "0 0 6px" }}>
+        {filter === "unread" ? "All caught up!" : "No notifications yet"}
       </p>
-      <p className="text-sm text-[#9ca3af] mt-1">
+      <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: 0 }}>
         {filter === "unread" ? "No unread alerts right now" : "Risk tier changes will appear here"}
       </p>
     </div>

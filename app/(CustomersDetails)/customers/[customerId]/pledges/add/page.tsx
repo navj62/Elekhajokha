@@ -701,7 +701,9 @@ export default function AddPledgePage() {
                   <div className="bg-[#FAFAF8] rounded-[12px] px-6 py-4 flex items-center justify-between border border-[#ECEAE4]">
                     <span className="text-[13px] font-bold text-[#6F6F6F]">Net Metal Weight</span>
                     <span className="text-[16px] font-bold text-[#2C2C2C]">
-                      {item.netWeight ? `${Number(item.netWeight).toFixed(2)} g` : "- g"}
+                      {item.netWeight && item.purity
+                        ? `${((Number(item.netWeight) * Number(item.purity)) / 100).toFixed(2)} g`
+                        : "- g"}
                     </span>
                   </div>
                 </div>
