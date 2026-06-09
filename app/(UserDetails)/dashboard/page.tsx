@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, Suspense } from "react";
 import {
   Users,
   Archive,
@@ -30,6 +30,10 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import {
+  MonthlyPerformanceSection,
+  MonthlyPerformanceSkeleton,
+} from "@/components/dashboard/MonthlyPerformanceSection";
 
 /* ================================================================== */
 /*  Types                                                               */
@@ -1313,6 +1317,13 @@ export default function DashboardPage() {
             })
           )}
         </div>
+      </section>
+
+      {/* ── Monthly Performance (12-month rollup) — appended below existing sections ── */}
+      <section className="mb-6">
+        <Suspense fallback={<MonthlyPerformanceSkeleton />}>
+          <MonthlyPerformanceSection />
+        </Suspense>
       </section>
 
       {/* Font import */}
