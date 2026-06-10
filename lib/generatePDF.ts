@@ -22,11 +22,11 @@ export function generateCustomerPDF(title: string, rows: Row[]): Promise<Buffer>
 
     const pageWidth = doc.page.width - 80; // 40 margin each side
     const col = {
-      no:      { x: 40,  w: 30  },
-      name:    { x: 70,  w: 160 },
-      mobile:  { x: 230, w: 120 },
-      pledges: { x: 350, w: 80  },
-      total:   { x: 430, w: 130 },
+      no:      { x: 40,  w: 25  },
+      name:    { x: 65,  w: 150 },
+      mobile:  { x: 215, w: 110 },
+      pledges: { x: 325, w: 75  },
+      total:   { x: 390, w: 155 },
     };
     const rowH = 24;
 
@@ -124,8 +124,9 @@ export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buf
     const pageWidth = doc.page.width - 80;
 
     const statusColor = (s: string) => {
-      if (s === "ACTIVE")   return "#16a34a";
-      if (s === "OVERDUE")  return "#dc2626";
+      if (s === "ACTIVE")   return "#dc2626"; // red
+      if (s === "RELEASED") return "#16a34a"; // green
+      if (s === "OVERDUE")  return "#ea580c"; // orange
       return "#6b7280";
     };
 
@@ -152,16 +153,14 @@ export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buf
     // ── Column layout ───────────────────────────────────────
     const col = {
       no:         { x: 40,  w: 25  },
-      customer:   { x: 65,  w: 95  },
-      date:       { x: 160, w: 62  },
-      item:       { x: 222, w: 80  },
-      type:       { x: 302, w: 40  },
-      loan:       { x: 342, w: 60  },
-      interest:   { x: 402, w: 55  },
-      receivable: { x: 457, w: 60  },
-      status:     { x: 517, w: 38  }, // 517 + 38 = 555 = 40 margin + 515 ✓
+      customer:   { x: 65,  w: 100 },
+      date:       { x: 165, w: 70  },
+      item:       { x: 235, w: 105 },
+      loan:       { x: 340, w: 75  },
+      receivable: { x: 390, w: 90  },
+      status:     { x: 480, w: 75  },
     };
-    const rowH = 26;
+    const rowH = 30;
 
     // ── Table header ────────────────────────────────────────
     let y = 110;
@@ -171,9 +170,7 @@ export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buf
     doc.text("Customer",    col.customer.x,   y + 9, { width: col.customer.w,   align: "left"   });
     doc.text("Date",        col.date.x,       y + 9, { width: col.date.w,       align: "left"   });
     doc.text("Item",        col.item.x,       y + 9, { width: col.item.w,       align: "left"   });
-    doc.text("Type",        col.type.x,       y + 9, { width: col.type.w,       align: "center" });
     doc.text("Loan",        col.loan.x,       y + 9, { width: col.loan.w,       align: "right"  });
-    doc.text("Interest",    col.interest.x,   y + 9, { width: col.interest.w,   align: "right"  });
     doc.text("Receivable",  col.receivable.x, y + 9, { width: col.receivable.w, align: "right"  });
     doc.text("Status",      col.status.x,     y + 9, { width: col.status.w,     align: "center" });
     y += rowH;
@@ -193,12 +190,8 @@ export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buf
       doc.text(r.customerName,            col.customer.x,   y + 9, { width: col.customer.w,   align: "left"   });
       doc.text(r.pledgeDate,              col.date.x,       y + 9, { width: col.date.w,       align: "left"   });
       doc.text(r.itemName,                col.item.x,       y + 9, { width: col.item.w,       align: "left"   });
-      doc.text(r.itemType,                col.type.x,       y + 9, { width: col.type.w,       align: "center" });
       doc.text(`Rs.${r.loanAmount.toLocaleString("en-IN")}`,
                                           col.loan.x,       y + 9, { width: col.loan.w,       align: "right"  });
-      doc.text(r.totalInterest != null
-        ? `Rs.${r.totalInterest.toLocaleString("en-IN")}` : "—",
-                                          col.interest.x,   y + 9, { width: col.interest.w,   align: "right"  });
       doc.text(r.receivableAmount != null
         ? `Rs.${r.receivableAmount.toLocaleString("en-IN")}` : "—",
                                           col.receivable.x, y + 9, { width: col.receivable.w, align: "right"  });
@@ -373,10 +366,10 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
       y += 14;
 
       // ── Items table ───────────────────────────────────
-      const col1 = tW * 0.45;
-      const col2 = tW * 0.2;
-      const col3 = tW * 0.2;
-      const col4 = tW * 0.15;
+      const col1 = tW * 0.35;
+      const col2 = tW * 0.18;
+      const col3 = tW * 0.18;
+      const col4 = tW * 0.29;
       const rowH = 14;
 
       // Header
@@ -394,15 +387,19 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
         : [{ name: "—", grossWeight: 0, netWeight: 0 }];
 
       itemsToShow.forEach((item, idx) => {
-        doc.rect(tX, y, tW, rowH).strokeColor("#000").lineWidth(0.5).stroke();
+        const remarkText = idx === 0 ? (data.remark ?? "") : "";
+        const nameH   = doc.heightOfString(item.name,    { width: col1 - 6 });
+        const remarkH = doc.heightOfString(remarkText,   { width: col4 - 6 });
+        const dynRowH = Math.max(rowH, nameH + 6, remarkH + 6);
+        doc.rect(tX, y, tW, dynRowH).strokeColor("#000").lineWidth(0.5).stroke();
         doc.fillColor("#000").font("Helvetica").fontSize(7.5);
-        doc.text(item.name,                            tX + 3,               y + 3, { width: col1 });
-        doc.text(`${item.grossWeight.toFixed(3)} g`,   tX + col1 + 3,        y + 3, { width: col2 });
-        doc.text(`${item.netWeight.toFixed(3)} g`,     tX + col1 + col2 + 3, y + 3, { width: col3 });
+        doc.text(item.name,                            tX + 3,               y + 3, { width: col1 - 6 });
+        doc.text(`${item.grossWeight.toFixed(3)} g`,   tX + col1 + 3,        y + 3, { width: col2 - 6 });
+        doc.text(`${item.netWeight.toFixed(3)} g`,     tX + col1 + col2 + 3, y + 3, { width: col3 - 6 });
         if (idx === 0) {
-          doc.text(data.remark ?? "", tX + col1 + col2 + col3 + 3, y + 3, { width: col4 });
+          doc.text(remarkText, tX + col1 + col2 + col3 + 3, y + 3, { width: col4 - 6 });
         }
-        y += rowH;
+        y += dynRowH;
       });
 
       // Pad to minimum 3 rows
