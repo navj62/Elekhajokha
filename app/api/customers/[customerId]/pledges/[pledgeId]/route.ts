@@ -196,8 +196,25 @@ export async function GET(_req: Request, context: RouteContext) {
     if (!pledge)
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
 
+    // This pledge's part-payment history (ownership enforced via the relation).
+    const transactions = await prisma.transaction.findMany({
+      where: {
+        pledgeId,
+        pledge: { customer: { userId: user.id } },
+      },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id:        true,
+        type:      true,
+        amount:    true,
+        createdAt: true,
+        note:      true,
+      },
+    });
+
     return NextResponse.json({
       pledge,
+      transactions,
       user: { id: user.id, username: user.username },
     });
 

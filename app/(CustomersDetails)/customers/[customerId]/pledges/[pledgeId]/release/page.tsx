@@ -13,6 +13,11 @@ import {
 import { Button }                   from "@/components/ui/button";
 import { Label }                    from "@/components/ui/label";
 import { Input }                    from "@/components/ui/input";
+import { Switch }                   from "@/components/ui/switch";
+import { Badge }                    from "@/components/ui/badge";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { Alert, AlertDescription }  from "@/components/ui/alert";
 import { calculateHybridInterest }  from "@/lib/interest";
 
@@ -29,6 +34,14 @@ interface PledgeItem {
   netWeight:        number;
   purity:           number;
   netWeightOfMetal: number;
+}
+
+interface Transaction {
+  id:        string;
+  type:      "REPAYMENT_PRINCIPAL" | "REPAYMENT_INTEREST" | "TOPUP";
+  amount:    number;
+  createdAt: string;
+  note:      string | null;
 }
 
 interface Pledge {
@@ -70,6 +83,12 @@ const fmtDate = (iso: string) =>
 const titleCase = (str: string) =>
   str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 
+const TXN_LABEL: Record<Transaction["type"], string> = {
+  REPAYMENT_PRINCIPAL: "Principal Payment",
+  REPAYMENT_INTEREST:  "Interest Payment",
+  TOPUP:               "Top-up",
+};
+
 function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex justify-between items-center py-2.5 border-b border-gray-50 last:border-0 text-sm">
@@ -95,12 +114,18 @@ export default function ReleasePledgePage() {
   const params = useParams<{ customerId: string; pledgeId: string }>();
   const router = useRouter();
 
-  const [pledge,   setPledge]   = useState<Pledge | null>(null);
-  const [fetching, setFetching] = useState(true);
-  const [fetchErr, setFetchErr] = useState("");
+  const [pledge,       setPledge]       = useState<Pledge | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [fetching,     setFetching]     = useState(true);
+  const [fetchErr,     setFetchErr]     = useState("");
 
   const today = new Date().toISOString().split("T")[0];
   const [releaseDate, setReleaseDate] = useState(today);
+
+  /* Compounding controls — seeded from the pledge's stored values on load. */
+  const [allowCompounding,    setAllowCompounding]    = useState(false);
+  const [compoundingDuration, setCompoundingDuration] =
+    useState<"MONTHLY" | "HALFYEARLY" | "YEARLY">("MONTHLY");
 
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState("");
@@ -119,6 +144,9 @@ export default function ReleasePledgePage() {
       const p = data?.pledge ?? data;
       if (!p?.id) throw new Error("Invalid pledge data");
       setPledge(p);
+      setTransactions(Array.isArray(data?.transactions) ? data.transactions : []);
+      setAllowCompounding(Boolean(p.allowCompounding));
+      setCompoundingDuration(p.compoundingDuration ?? "MONTHLY");
     } catch (e) {
       setFetchErr(e instanceof Error ? e.message : "Failed to load pledge");
     } finally {
@@ -143,10 +171,10 @@ export default function ReleasePledgePage() {
       Number(pledge.interestRate),
       new Date(pledge.pledgeDate),
       new Date(releaseDate),
-      pledge.allowCompounding,
-      pledge.compoundingDuration
+      allowCompounding,
+      compoundingDuration
     );
-  }, [pledge, releaseDate, isBeforePledge]);
+  }, [pledge, releaseDate, isBeforePledge, allowCompounding, compoundingDuration]);
 
   /* ── Release ── */
   async function handleRelease() {
@@ -161,8 +189,8 @@ export default function ReleasePledgePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             releaseDate,
-            allowCompounding:    pledge.allowCompounding,
-            compoundingDuration: pledge.compoundingDuration,
+            allowCompounding,
+            compoundingDuration,
           }),
         }
       );
