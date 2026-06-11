@@ -417,8 +417,6 @@ export function generateReceiptPDF(data: ReceiptData): Promise<Buffer> {
         try {
           doc.image(img, tX + 4, y + 2, {
             fit: [110, photoH - 4],
-            align: "left",
-            valign: "top",
           });
         } catch (e) {
           console.error("Image embed error:", e);

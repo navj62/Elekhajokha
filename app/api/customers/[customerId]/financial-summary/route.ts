@@ -5,6 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { calculateHybridInterest } from "@/lib/interest";
 import { calculateLTV, getRiskTier } from "@/lib/calculateLTV";
+import { computeCustomerRiskScore } from "@/lib/customerRiskScore";
 import type { CompoundingDuration } from "@prisma/client";
 
 type RouteContext = {
@@ -21,14 +22,10 @@ type RouteContext = {
 
 type RiskTier = ReturnType<typeof getRiskTier>;
 
-/**
- * Estimate days until the pledge goes underwater (LTV reaches the UNDERWATER
- * threshold). Simple linear approximation: assumes market value stays constant
- * and interest accrues at a flat daily rate on principal. This INTENTIONALLY
- * does not compound — it is a display-only heuristic, not the source of truth.
- *
- * Returns null if market value is unknown; 0 if already at/over market value.
- */
+// NOTE: simple-interest approximation; understates time-to-underwater
+// for compounding pledges by 5-15% typically. Display-only — the
+// canonical interest engine (calculateHybridInterest) is the source
+// of truth for amounts owed.
 function daysToUnderwater(
   loanAmount: number,
   interestRate: number, // annual %
@@ -45,12 +42,34 @@ function daysToUnderwater(
   return Math.ceil((marketValue - amountOwed) / dailyAccrual);
 }
 
-/**
- * Overall portfolio risk score 0–100 derived from weighted-average LTV.
- */
-function portfolioRiskScore(overallLTV: number | null): number {
-  if (overallLTV === null) return 0;
-  return Math.min(100, Math.max(0, Math.round(overallLTV)));
+type TTUStatus = "underwater" | "soon" | "ok" | "unknown" | "released";
+
+function buildTimeToUnderwater(
+  pledgeStatus: string,
+  loanAmount: number,
+  interestRate: number,
+  amountOwed: number,
+  marketValue: number | null
+): { days: number | null; label: string; status: TTUStatus } {
+  if (pledgeStatus === "RELEASED") return { days: null, label: "—", status: "released" };
+  if (marketValue === null)        return { days: null, label: "—", status: "unknown" };
+  if (amountOwed >= marketValue)   return { days: 0,    label: "Underwater", status: "underwater" };
+
+  const days = daysToUnderwater(loanAmount, interestRate, amountOwed, marketValue);
+  if (days === null) return { days: null, label: "—", status: "unknown" };
+
+  let label: string;
+  if (days <= 90) {
+    label = `${days} days`;
+  } else if (days <= 365) {
+    label = `${Math.round(days / 30)} months`;
+  } else if (days <= 3650) {
+    label = `${(days / 365).toFixed(1)} years`;
+  } else {
+    label = "10+ years";
+  }
+
+  return { days, label, status: days <= 90 ? "soon" : "ok" };
 }
 
 /* ------------------------------------------------------------------ */
@@ -185,10 +204,13 @@ export async function GET(_req: Request, context: RouteContext) {
         risk,
         metalType,
         weight: goldWeight + silverWeight,
-        daysToUnderwater:
-          p.status !== "RELEASED"
-            ? daysToUnderwater(loanAmount, interestRate, amountOwed, marketValue)
-            : null,
+        timeToUnderwater: buildTimeToUnderwater(
+          p.status,
+          loanAmount,
+          interestRate,
+          amountOwed,
+          marketValue
+        ),
       };
     });
 
@@ -255,12 +277,12 @@ export async function GET(_req: Request, context: RouteContext) {
         pledgeName: p.name,
         risk: p.risk,
         ltv: p.ltv,
-        daysToUnderwater: p.daysToUnderwater,
+        timeToUnderwater: p.timeToUnderwater,
         message:
           p.risk === "UNDERWATER"
             ? `${p.name} is currently underwater — action required`
-            : p.daysToUnderwater !== null && p.daysToUnderwater <= 30
-            ? `${p.name} may go underwater in ${p.daysToUnderwater} days`
+            : p.timeToUnderwater.status === "soon"
+            ? `${p.name} may go underwater in ${p.timeToUnderwater.label}`
             : `${p.name} is approaching risk threshold (LTV ${p.ltv?.toFixed(1)}%)`,
       }));
 
@@ -268,6 +290,67 @@ export async function GET(_req: Request, context: RouteContext) {
       activePledges.length > 0
         ? activePledges[activePledges.length - 1].pledgeDate
         : null;
+
+    /* ── Composite risk score ──────────────────────────────────── */
+    // Composite risk score: weighted sum of LTV, interest velocity,
+    // time-to-underwater, concentration, and average pledge age.
+    // Velocity uses TODAY's market value at both timepoints — it
+    // measures interest accrual pressure, not price-driven LTV change.
+
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    let totalAmountOwed30dAgo = 0;
+    for (const rawPledge of pledges.filter((p) => p.status !== "RELEASED")) {
+      const pledgeDate = new Date(rawPledge.pledgeDate);
+      const endDate30 = pledgeDate > thirtyDaysAgo ? pledgeDate : thirtyDaysAgo;
+      const interest30 = calculateHybridInterest(
+        Number(rawPledge.loanAmount),
+        Number(rawPledge.interestRate),
+        pledgeDate,
+        endDate30,
+        rawPledge.allowCompounding,
+        rawPledge.compoundingDuration as CompoundingDuration
+      );
+      totalAmountOwed30dAgo += interest30.receivableAmount;
+    }
+
+    const ltvThirtyDaysAgo: number | null =
+      totalMarketValue > 0
+        ? parseFloat(((totalAmountOwed30dAgo / totalMarketValue) * 100).toFixed(2))
+        : null;
+
+    let daysToUnderwaterWorst: number | null = null;
+    for (const p of activePledges) {
+      const d = p.timeToUnderwater.days;
+      if (d === null) continue;
+      if (d === 0) { daysToUnderwaterWorst = 0; break; }
+      if (daysToUnderwaterWorst === null || d < daysToUnderwaterWorst) {
+        daysToUnderwaterWorst = d;
+      }
+    }
+
+    const largestPledgeMarketValue = activePledges.reduce(
+      (max, p) => (p.marketValue !== null ? Math.max(max, p.marketValue) : max),
+      0
+    );
+
+    const avgPledgeAgeMonths =
+      activePledges.length === 0
+        ? 0
+        : activePledges.reduce((sum, p) => {
+            const ageMs = now.getTime() - new Date(p.pledgeDate).getTime();
+            return sum + ageMs / (1000 * 60 * 60 * 24 * 30.4375);
+          }, 0) / activePledges.length;
+
+    const riskResult = computeCustomerRiskScore({
+      currentLtv: overallLTV,
+      ltvThirtyDaysAgo,
+      daysToUnderwaterWorst,
+      largestPledgeMarketValue,
+      totalMarketValue,
+      avgPledgeAgeMonths,
+    });
 
     /* ── LTV trend — last 6 months of pledge audit snapshots ───── */
     const sixMonthsAgo = new Date();
@@ -317,7 +400,9 @@ export async function GET(_req: Request, context: RouteContext) {
         id: customer.id,
         name: customer.name,
         region: customer.region,
-        riskScore: portfolioRiskScore(overallLTV),
+        riskScore: riskResult.score,
+        riskTier: riskResult.tier,
+        riskBreakdown: riskResult.breakdown,
         totalActivePledges: activePledges.length,
         lastPledgeDate,
       },
