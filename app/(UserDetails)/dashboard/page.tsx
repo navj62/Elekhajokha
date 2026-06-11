@@ -34,6 +34,10 @@ import {
   MonthlyPerformanceSection,
   MonthlyPerformanceSkeleton,
 } from "@/components/dashboard/MonthlyPerformanceSection";
+import {
+  AgingAnalysisSection,
+  AgingAnalysisSkeleton,
+} from "@/components/dashboard/AgingAnalysisSection";
 
 /* ================================================================== */
 /*  Types                                                               */
@@ -1319,7 +1323,14 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* ── Monthly Performance (12-month rollup) — appended below existing sections ── */}
+      {/* ── Aging Analysis (active loan book by age — stock) ── */}
+      <section className="mb-6">
+        <Suspense fallback={<AgingAnalysisSkeleton />}>
+          <AgingAnalysisSection />
+        </Suspense>
+      </section>
+
+      {/* ── Monthly Performance (12-month rollup — flow) — appended below existing sections ── */}
       <section className="mb-6">
         <Suspense fallback={<MonthlyPerformanceSkeleton />}>
           <MonthlyPerformanceSection />

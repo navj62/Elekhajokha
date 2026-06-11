@@ -72,8 +72,10 @@ interface SummaryData {
       concentration:    number;
       age:              number;
     };
-    totalActivePledges: number;
-    lastPledgeDate:     string | null;
+    totalActivePledges:      number;
+    lastPledgeDate:          string | null;
+    lifetimeInterestEarned:  number;
+    lifetimeReleasedPledges: number;
   };
   metrics: {
     totalLoanAmount:   number;
@@ -439,7 +441,7 @@ export default function FinancialSummaryPage() {
       {/* ══════════════════════════════════════════════
           SECTION 2 — KPI Strip
       ══════════════════════════════════════════════ */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
         {(
           [
             {
@@ -448,6 +450,7 @@ export default function FinancialSummaryPage() {
               value: "₹" + Math.round(metrics.totalLoanAmount).toLocaleString("en-IN"),
               sub:   null,
               red:   false,
+              color: null,
             },
             {
               key:   "owed",
@@ -455,6 +458,7 @@ export default function FinancialSummaryPage() {
               value: "₹" + Math.round(metrics.totalAmountOwed).toLocaleString("en-IN"),
               sub:   "incl. accrued interest",
               red:   false,
+              color: null,
             },
             {
               key:   "pledges",
@@ -462,6 +466,7 @@ export default function FinancialSummaryPage() {
               value: String(metrics.activePledges),
               sub:   null,
               red:   false,
+              color: null,
             },
             {
               key:   "gold",
@@ -469,6 +474,7 @@ export default function FinancialSummaryPage() {
               value: `${metrics.totalGoldWeight}g`,
               sub:   null,
               red:   false,
+              color: null,
             },
             {
               key:   "silver",
@@ -476,6 +482,7 @@ export default function FinancialSummaryPage() {
               value: `${metrics.totalSilverWeight}g`,
               sub:   null,
               red:   false,
+              color: null,
             },
             {
               key:   "underwater",
@@ -483,14 +490,37 @@ export default function FinancialSummaryPage() {
               value: String(metrics.underwaterPledges),
               sub:   null,
               red:   metrics.underwaterPledges > 0,
+              color: null,
+            },
+            {
+              key:   "interest",
+              label: "Interest Earned",
+              // EXACT (not abbreviated) — this is the most meaningful number
+              // on the page for evaluating customer profitability.
+              // Show "—" when nothing has been redeemed yet (≠ "₹0").
+              value:
+                customer.lifetimeReleasedPledges === 0
+                  ? "—"
+                  : "₹" +
+                    Math.round(customer.lifetimeInterestEarned).toLocaleString("en-IN"),
+              sub:
+                customer.lifetimeReleasedPledges === 0
+                  ? "no released pledges yet"
+                  : `from ${customer.lifetimeReleasedPledges} released pledge${
+                      customer.lifetimeReleasedPledges === 1 ? "" : "s"
+                    }`,
+              red:   false,
+              color: customer.lifetimeReleasedPledges === 0 ? null : "#565C3F",
             },
           ] as const
-        ).map(({ key, label, value, sub, red }) => (
+        ).map(({ key, label, value, sub, red, color }) => (
           <Card key={key} className="flex flex-col gap-1 !p-5">
             <SectionLabel>{label}</SectionLabel>
             <p
               className="text-2xl font-bold tabular-nums"
-              style={{ color: red ? "#B91C1C" : "var(--text-primary)" }}
+              style={{
+                color: color ?? (red ? "#B91C1C" : "var(--text-primary)"),
+              }}
             >
               {value}
             </p>

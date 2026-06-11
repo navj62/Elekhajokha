@@ -104,8 +104,8 @@ export async function GET(_req: Request, context: RouteContext) {
     if (!customer)
       return NextResponse.json({ error: "Customer not found" }, { status: 404 });
 
-    /* ── Latest metal prices ───────────────────────────────────── */
-    const [goldPrice, silverPrice] = await Promise.all([
+    /* ── Latest metal prices + lifetime interest earned ─────────── */
+    const [goldPrice, silverPrice, lifetimeInterest] = await Promise.all([
       prisma.metalPrice.findFirst({
         where: { metal: "GOLD" },
         orderBy: { createdAt: "desc" },
@@ -116,7 +116,20 @@ export async function GET(_req: Request, context: RouteContext) {
         orderBy: { createdAt: "desc" },
         select: { inrPerGram: true },
       }),
+      // Sum of interest ever collected from this customer across released
+      // pledges. Ownership-scoped via the customer 404 guard above.
+      prisma.pledgeAudit.aggregate({
+        where: {
+          pledge: { customerId },
+          action: "RELEASED",
+        },
+        _sum: { totalInterest: true },
+        _count: { _all: true },
+      }),
     ]);
+
+    const lifetimeInterestEarned = Number(lifetimeInterest._sum.totalInterest ?? 0);
+    const lifetimeReleasedPledges = lifetimeInterest._count._all;
 
     const goldPerGram = goldPrice ? Number(goldPrice.inrPerGram) : null;
     const silverPerGram = silverPrice ? Number(silverPrice.inrPerGram) : null;
@@ -405,6 +418,8 @@ export async function GET(_req: Request, context: RouteContext) {
         riskBreakdown: riskResult.breakdown,
         totalActivePledges: activePledges.length,
         lastPledgeDate,
+        lifetimeInterestEarned,
+        lifetimeReleasedPledges,
       },
       metrics: {
         totalLoanAmount,
