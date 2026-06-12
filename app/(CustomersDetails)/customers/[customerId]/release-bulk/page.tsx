@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Loader2, ArrowLeft, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Loader2, ArrowLeft, AlertTriangle, CheckCircle2, MapPin, Phone } from "lucide-react";
 import { calculateHybridInterest } from "@/lib/interest";
 
 /* ------------------------------------------------------------------ */
@@ -14,6 +14,7 @@ type Compounding = "MONTHLY" | "HALFYEARLY" | "YEARLY";
 interface PreflightPledge {
   id: string;
   pledgeDate: string;
+  durationMonths: number;
   loanAmount: number;
   interestRate: number;
   allowCompounding: boolean;
@@ -25,9 +26,16 @@ interface PreflightPledge {
   previewLtv: number | null;
 }
 
+interface CustomerInfo {
+  name: string;
+  mobile: string | null;
+  address: string | null;
+}
+
 interface PreflightResponse {
   success: true;
   customerName: string;
+  customer: CustomerInfo;
   pledges: PreflightPledge[];
   totals: { principal: number; interest: number; receivable: number; count: number };
   prices: { goldPerGram: number | null; silverPerGram: number | null; updatedAt: string | null };
@@ -51,6 +59,9 @@ const fmtDate = (iso: string) =>
   new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
 const toDateInput = (iso: string) => new Date(iso).toISOString().split("T")[0];
+
+const getInitials = (name: string) =>
+  name.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase();
 
 const COMPOUNDING_OPTIONS: Compounding[] = ["MONTHLY", "HALFYEARLY", "YEARLY"];
 
@@ -84,6 +95,7 @@ function buildRow(
     ...p,
     allowCompounding,
     compoundingDuration,
+    durationMonths: calc.T,
     marketValue: mv,
     interest: calc.totalInterest,
     receivable: calc.receivableAmount,
@@ -106,6 +118,7 @@ function BulkReleaseInner() {
   const [releaseDate, setReleaseDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [minDate, setMinDate] = useState<string | undefined>(undefined);
   const [customerName, setCustomerName] = useState("");
+  const [customer, setCustomer] = useState<CustomerInfo | null>(null);
   const [rows, setRows] = useState<RowState[]>([]);
 
   const [loading, setLoading] = useState(true);     // preflight in flight
@@ -172,6 +185,7 @@ function BulkReleaseInner() {
         }
 
         setCustomerName(pf.customerName);
+        setCustomer(pf.customer);
         // Picker min = latest pledge date + 1 day (strict "after" on the server).
         const minSelectable = new Date(pf.latestPledgeDate);
         minSelectable.setDate(minSelectable.getDate() + 1);
@@ -333,6 +347,29 @@ function BulkReleaseInner() {
         </div>
       </div>
 
+      {/* Customer Info Card — mirrors single-release customer section */}
+      {customer && (
+        <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm mb-6">
+          <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-2">Customer</p>
+          <div className="bg-[#F9F8F3] rounded-[12px] p-4 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-[#E8EBD8] flex items-center justify-center text-[15px] font-bold text-[#555B3F] shrink-0">
+                {getInitials(customer.name)}
+              </div>
+              <div>
+                <p className="text-[15px] font-semibold text-[#2C2C2C]">{customer.name}</p>
+                <div className="flex items-center gap-1 text-[12px] text-[#6F6F6F] mt-0.5">
+                  <MapPin size={11} className="text-[#8C8F7A]" /> {customer.address || "No address"}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 text-[13px] font-medium text-[#2C2C2C]">
+              <Phone size={13} className="text-[#8C8F7A]" /> {customer.mobile || "—"}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Card 1 — Release Settings */}
       <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm mb-6">
         <p className="text-[10px] uppercase tracking-wider font-bold text-[#8C8F7A] mb-4">Release Settings</p>
@@ -366,6 +403,8 @@ function BulkReleaseInner() {
             <thead>
               <tr className="border-b border-[#ECEAE4] text-[#8C8F7A] text-[10px] font-bold tracking-widest uppercase">
                 <th className="text-left px-4 py-3">Asset</th>
+                <th className="text-left px-4 py-3">Pledge Date</th>
+                <th className="text-right px-4 py-3">Duration</th>
                 <th className="text-right px-4 py-3">Principal</th>
                 <th className="text-right px-4 py-3">Interest</th>
                 <th className="text-right px-4 py-3">Receivable</th>
@@ -377,6 +416,8 @@ function BulkReleaseInner() {
               {rows.map((r) => (
                 <tr key={r.id} className="bg-[#FDFCF9] align-top">
                   <td className="px-4 py-3 font-semibold text-[#2C2C2C]">{r.assetLabel}</td>
+                  <td className="px-4 py-3 text-[#6F6F6F] whitespace-nowrap">{fmtDate(r.pledgeDate)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-[#6F6F6F] whitespace-nowrap">{r.durationMonths.toFixed(2)} months</td>
                   <td className="px-4 py-3 text-right tabular-nums text-[#2C2C2C]">{rupees(r.loanAmount)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-[#B91C1C]">{rupees(r.interest)}</td>
                   <td className="px-4 py-3 text-right tabular-nums font-semibold text-[#2C2C2C]">{rupees(r.receivable)}</td>

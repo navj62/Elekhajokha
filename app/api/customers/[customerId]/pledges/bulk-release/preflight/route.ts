@@ -30,7 +30,7 @@ export async function POST(req: Request, context: RouteContext) {
     /* ---- Customer ownership guard -------------------------------- */
     const customer = await prisma.customer.findFirst({
       where:  { id: customerId, userId: user.id, deletedAt: null },
-      select: { id: true, name: true },
+      select: { id: true, name: true, mobile: true, address: true },
     });
     if (!customer)
       return NextResponse.json({ error: "Customer not found" }, { status: 404 });
@@ -191,6 +191,7 @@ export async function POST(req: Request, context: RouteContext) {
       return {
         id:                  pledge.id,
         pledgeDate:          pledge.pledgeDate.toISOString(),
+        durationMonths:      calc.T,
         loanAmount:          Number(pledge.loanAmount),
         interestRate:        Number(pledge.interestRate),
         allowCompounding:    pledge.allowCompounding,
@@ -210,6 +211,11 @@ export async function POST(req: Request, context: RouteContext) {
     return NextResponse.json({
       success:      true,
       customerName: customer.name,
+      customer: {
+        name:    customer.name,
+        mobile:  customer.mobile,
+        address: customer.address,
+      },
       pledges:      previewPledges,
       totals: {
         principal:  sumPrincipal,

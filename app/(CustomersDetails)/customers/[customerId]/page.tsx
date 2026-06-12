@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
 import {
   Edit3, Plus, Upload, MapPin, Phone,
-  CheckCircle2, Eye, Trash2, Loader2,
+  CheckCircle2, Eye, Unlock, Loader2, CheckSquare, Search, X,
 } from "lucide-react";
 
 import { QRCodeCanvas } from "qrcode.react";
@@ -98,7 +98,71 @@ export default function CustomerDetailPage() {
   const [editForm, setEditForm] = useState({ name: "", mobile: "", address: "", region: "", aadharNo: "" });
   const [savingProfile, setSavingProfile] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showReleased, setShowReleased] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [metalFilter, setMetalFilter] = useState<"ALL" | "GOLD" | "SILVER">("ALL");
+  const [sortBy, setSortBy] = useState("date_desc");
   const toastRef = useRef<NodeJS.Timeout | null>(null);
+
+  /* ---- Client-side search / filter / sort (no API calls) ------ */
+  const displayedPledges = useMemo(() => {
+    let result = customer?.pledges ?? [];
+
+    // 1. Show-released toggle (default OFF → active only)
+    if (!showReleased) {
+      result = result.filter((p) => p.status === "ACTIVE");
+    }
+
+    // 2. Search — asset label + formatted pledge date (case-insensitive)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (p) =>
+          (p.itemLabel?.toLowerCase().includes(q) ?? false) ||
+          formatDate(p.pledgeDate).toLowerCase().includes(q)
+      );
+    }
+
+    // 3. Metal filter — HEURISTIC. The page state has no metalType field
+    //    (the API does not expose it), so we infer the metal from the
+    //    itemLabel text. This is best-effort: a custom itemName that omits
+    //    the metal (e.g. "Necklace") will not match either pill.
+    if (metalFilter !== "ALL") {
+      result = result.filter((p) => {
+        const label = p.itemLabel?.toLowerCase() ?? "";
+        if (metalFilter === "GOLD")
+          return label.includes("gold") || /\b(18|22|24)\s?k\b/.test(label);
+        return label.includes("silver");
+      });
+    }
+
+    // 4. Sort (new array — never mutate state)
+    const sorted = [...result];
+    sorted.sort((a, b) => {
+      switch (sortBy) {
+        case "date_asc":
+          return new Date(a.pledgeDate).getTime() - new Date(b.pledgeDate).getTime();
+        case "loan_desc":
+          return Number(b.loanAmount) - Number(a.loanAmount);
+        case "loan_asc":
+          return Number(a.loanAmount) - Number(b.loanAmount);
+        case "date_desc":
+        default:
+          return new Date(b.pledgeDate).getTime() - new Date(a.pledgeDate).getTime();
+      }
+    });
+    return sorted;
+  }, [customer?.pledges, showReleased, searchQuery, metalFilter, sortBy]);
+
+  const filtersActive =
+    searchQuery.trim() !== "" || metalFilter !== "ALL" || !showReleased;
+
+  function clearFilters() {
+    setSearchQuery("");
+    setMetalFilter("ALL");
+    setSortBy("date_desc");
+    // Note: intentionally does NOT touch showReleased.
+  }
 
   function showToast(msg: string) {
     setToastMsg(msg);
@@ -648,14 +712,112 @@ export default function CustomerDetailPage() {
 
             {/* Transaction History Table */}
             <div className="bg-white rounded-[24px] mt-2 mb-6" style={{ border: "1px solid #ECEAE4" }}>
-              <div
-                className="p-6 flex items-center justify-between"
-                style={{ borderBottom: "1px solid #ECEAE4" }}
-              >
-                <h3 className="text-[17px] font-bold text-[#2C2C2C]">Transaction History</h3>
-                <span className="text-[12px] font-medium text-[#9E9E9E]">
-                  {customer.pledges.length} total
-                </span>
+              <div className="p-6" style={{ borderBottom: "1px solid #ECEAE4" }}>
+                {/* Row 1 — title + selection hint */}
+                <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h3 className="text-[17px] font-bold text-[#2C2C2C]">Pledges</h3>
+                    {activePledges.length > 0 && (
+                      <span
+                        className="flex items-center gap-1.5 text-[12px]"
+                        style={{ color: "var(--text-muted, #9E9E9E)" }}
+                      >
+                        <CheckSquare size={14} />
+                        Select pledges to release multiple at once
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Row 2 — controls */}
+                {customer.pledges.length > 0 && (
+                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                    {/* Left: search + metal pills */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <div className="relative w-full sm:w-[240px]">
+                        <Search
+                          size={15}
+                          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9E9E9E] pointer-events-none"
+                        />
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Search pledges..."
+                          className="w-full h-9 pl-8 pr-8 rounded-[10px] text-[13px] text-[#2C2C2C] bg-white border border-[#ECEAE4] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
+                          style={{ backgroundColor: "var(--card-bg, #FFFFFF)" }}
+                        />
+                        {searchQuery && (
+                          <button
+                            onClick={() => setSearchQuery("")}
+                            aria-label="Clear search"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-[#9E9E9E] hover:text-[#2C2C2C] transition-colors"
+                          >
+                            <X size={15} />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 overflow-x-auto">
+                        {(["ALL", "GOLD", "SILVER"] as const).map((m) => {
+                          const active = metalFilter === m;
+                          const label = m === "ALL" ? "All" : m.charAt(0) + m.slice(1).toLowerCase();
+                          return (
+                            <button
+                              key={m}
+                              onClick={() => setMetalFilter(m)}
+                              className="rounded-full px-3 py-1 text-[12px] font-semibold whitespace-nowrap transition-colors"
+                              style={
+                                active
+                                  ? { backgroundColor: "#565C3F", color: "#FFFFFF" }
+                                  : {
+                                      backgroundColor: "transparent",
+                                      color: "var(--text-muted, #9E9E9E)",
+                                      border: "1px solid var(--border-light, #ECEAE4)",
+                                    }
+                              }
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Right: sort + show-released */}
+                    <div className="flex items-center gap-3 overflow-x-auto">
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[12px] text-[#9E9E9E] whitespace-nowrap">Sort by</span>
+                        <select
+                          value={sortBy}
+                          onChange={(e) => setSortBy(e.target.value)}
+                          className="h-9 px-3 rounded-[10px] text-[13px] text-[#2C2C2C] bg-white border border-[#ECEAE4] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
+                          style={{ backgroundColor: "var(--card-bg, #FFFFFF)" }}
+                        >
+                          <option value="date_desc">Date (newest first)</option>
+                          <option value="date_asc">Date (oldest first)</option>
+                          <option value="loan_desc">Loan Amount (high→low)</option>
+                          <option value="loan_asc">Loan Amount (low→high)</option>
+                          {/* LTV options omitted — lastCalculatedLtv is not available on this view. */}
+                        </select>
+                      </div>
+
+                      <label className="flex items-center gap-2 shrink-0 cursor-pointer">
+                        <Switch checked={showReleased} onCheckedChange={setShowReleased} />
+                        <span className="text-[12px] text-[#6F6F6F] whitespace-nowrap">Show released</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* Result count */}
+                {customer.pledges.length > 0 && (
+                  <p className="text-[12px] mt-3" style={{ color: "var(--text-muted, #9E9E9E)" }}>
+                    {filtersActive
+                      ? `Showing ${displayedPledges.length} of ${customer.pledges.length} pledges`
+                      : `${customer.pledges.length} pledges total`}
+                  </p>
+                )}
               </div>
 
               {customer.pledges.length === 0 ? (
@@ -666,6 +828,16 @@ export default function CustomerDetailPage() {
                       Create First Pledge
                     </button>
                   </Link>
+                </div>
+              ) : displayedPledges.length === 0 ? (
+                <div className="px-6 py-12 text-center">
+                  <p className="text-[13px] font-medium text-[#9E9E9E] mb-3">No pledges match your filters.</p>
+                  <button
+                    onClick={clearFilters}
+                    className="text-[13px] font-semibold text-[#555B3F] hover:text-[#4B5036] underline underline-offset-2 transition-colors"
+                  >
+                    Clear filters
+                  </button>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -691,11 +863,11 @@ export default function CustomerDetailPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {customer.pledges.map((pledge, idx) => (
+                      {displayedPledges.map((pledge, idx) => (
                         <tr
                           key={pledge.id}
                           className="group cursor-pointer transition-colors duration-200"
-                          style={{ borderBottom: idx === customer.pledges.length - 1 ? "none" : "1px solid #ECEAE4" }}
+                          style={{ borderBottom: idx === displayedPledges.length - 1 ? "none" : "1px solid #ECEAE4" }}
                           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#FAFAF7")}
                           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                           onClick={() => router.push(`/customers/${customerId}/pledges/${pledge.id}`)}
@@ -747,9 +919,9 @@ export default function CustomerDetailPage() {
                                 <button
                                   disabled={pledge.status === "RELEASED"}
                                   className="p-2 rounded-full hover:bg-[#EAE9DF] text-[#9E9E9E] hover:text-[#555B3F] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                  title="Release Pledge"
+                                  title="Release this pledge"
                                 >
-                                  <Trash2 size={15} />
+                                  <Unlock size={15} />
                                 </button>
                               </Link>
                             </div>
