@@ -48,6 +48,22 @@ interface Pledge {
   };
 }
 
+type TransactionType = "REPAYMENT_PRINCIPAL" | "REPAYMENT_INTEREST" | "TOPUP";
+
+interface Transaction {
+  id: string;
+  type: TransactionType;
+  amount: number;
+  createdAt: string;
+  note: string | null;
+}
+
+const TXN_LABEL: Record<TransactionType, string> = {
+  REPAYMENT_PRINCIPAL: "Principal Payment",
+  REPAYMENT_INTEREST:  "Interest Payment",
+  TOPUP:               "Top-up",
+};
+
 /* ------------------------------------------------------------------ */
 /* Helpers                                                              */
 /* ------------------------------------------------------------------ */
@@ -78,6 +94,10 @@ export default function ReleasePledgePage() {
 
   const [releaseDate, setReleaseDate] = useState(today);
   const [pledge, setPledge] = useState<Pledge | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [allowCompounding, setAllowCompounding] = useState(false);
+  const [compoundingDuration, setCompoundingDuration] =
+    useState<"MONTHLY" | "HALFYEARLY" | "YEARLY">("MONTHLY");
   const [fetching, setFetching] = useState(true);
   const [fetchErr, setFetchErr] = useState("");
   const [loading, setLoading] = useState(false);
@@ -95,6 +115,10 @@ export default function ReleasePledgePage() {
       const p = data?.pledge ?? data;
       if (!p?.id) throw new Error("Invalid pledge data");
       setPledge(p);
+      setTransactions(Array.isArray(data?.transactions) ? data.transactions : []);
+      // Seed the editable toggle from the pledge's stored values.
+      setAllowCompounding(Boolean(p.allowCompounding));
+      setCompoundingDuration(p.compoundingDuration ?? "MONTHLY");
     } catch (e) {
       setFetchErr(e instanceof Error ? e.message : "Failed to load pledge");
     } finally {
@@ -119,12 +143,23 @@ export default function ReleasePledgePage() {
       Number(pledge.interestRate),
       new Date(pledge.pledgeDate),
       new Date(releaseDate),
-      pledge.allowCompounding,
-      pledge.compoundingDuration
+      allowCompounding,
+      compoundingDuration
     );
-  }, [pledge, releaseDate, isBeforePledge]);
+  }, [pledge, releaseDate, isBeforePledge, allowCompounding, compoundingDuration]);
 
   const canRelease = pledge?.status === "ACTIVE" && calc !== null && !isBeforePledge;
+
+  /* ── Payment history totals ── */
+  const txnTotals = useMemo(() => {
+    let paid = 0;
+    let toppedUp = 0;
+    for (const t of transactions) {
+      if (t.type === "TOPUP") toppedUp += Number(t.amount);
+      else paid += Number(t.amount); // REPAYMENT_PRINCIPAL + REPAYMENT_INTEREST
+    }
+    return { paid, toppedUp };
+  }, [transactions]);
 
   /* ── Release ── */
   async function handleRelease() {
@@ -139,8 +174,8 @@ export default function ReleasePledgePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             releaseDate,
-            allowCompounding: pledge.allowCompounding,
-            compoundingDuration: pledge.compoundingDuration,
+            allowCompounding,
+            compoundingDuration,
           }),
         }
       );
@@ -255,6 +290,65 @@ export default function ReleasePledgePage() {
           {pledge.status === "ACTIVE" && <div className="w-1.5 h-1.5 rounded-full bg-[#555B3F]" />}
           {titleCase(pledge.status)}
         </span>
+      </div>
+
+      {/* ── PAYMENT HISTORY ── */}
+      <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm mb-6">
+        <p className="text-[10px] uppercase tracking-wider font-bold text-[#8C8F7A] mb-4">
+          Payment History
+        </p>
+
+        {transactions.length === 0 ? (
+          <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+            No payments recorded for this pledge.
+          </p>
+        ) : (
+          <>
+            <div className="overflow-x-auto rounded-[12px] border border-[#ECEAE4]">
+              <table className="w-full text-[13px] bg-[#F9F8F3]">
+                <thead>
+                  <tr className="border-b border-[#ECEAE4] text-[#8C8F7A] text-[10px] font-bold tracking-widest uppercase">
+                    <th className="text-left px-4 py-3">Date</th>
+                    <th className="text-left px-4 py-3">Type</th>
+                    <th className="text-right px-4 py-3">Amount</th>
+                    <th className="text-left px-4 py-3">Notes</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#ECEAE4]">
+                  {transactions.map(t => (
+                    <tr key={t.id} className="bg-[#FDFCF9]">
+                      <td className="px-4 py-3 text-[#6F6F6F] whitespace-nowrap">
+                        {fmtDate(t.createdAt)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase bg-[#F0EFEC] text-[#6F6F6F]">
+                          {TXN_LABEL[t.type]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-[#2C2C2C] tabular-nums whitespace-nowrap">
+                        ₹{Number(t.amount).toLocaleString("en-IN")}
+                      </td>
+                      <td className="px-4 py-3 text-[#8C8F7A]">{t.note ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 space-y-1 text-[13px]">
+              {txnTotals.paid > 0 && (
+                <p className="font-semibold text-[#2C2C2C]">
+                  Total paid: ₹{txnTotals.paid.toLocaleString("en-IN")}
+                </p>
+              )}
+              {txnTotals.toppedUp > 0 && (
+                <p className="font-semibold text-[#2C2C2C]">
+                  Total topped up: ₹{txnTotals.toppedUp.toLocaleString("en-IN")}
+                </p>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── MAIN LAYOUT ── */}
@@ -424,10 +518,42 @@ export default function ReleasePledgePage() {
               <label className="block text-[11px] font-bold tracking-widest text-[#2C2C2C] mb-2 uppercase">
                 Interest Method
               </label>
-              <div className="w-full bg-[#F9F8F3] border border-[#ECEAE4] rounded-[12px] px-4 py-3 text-[14px] text-[#6F6F6F] cursor-not-allowed">
-                {pledge.allowCompounding ? `${titleCase(pledge.compoundingDuration)} compounding` : "Simple interest"}
-              </div>
-              <p className="text-[11px] text-[#8C8F7A] mt-1.5 ml-1">Set at pledge creation</p>
+
+              <label className="flex items-center gap-3 cursor-pointer select-none bg-[#F9F8F3] border border-[#ECEAE4] rounded-[12px] px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={allowCompounding}
+                  onChange={e => setAllowCompounding(e.target.checked)}
+                  className="h-4 w-4 accent-[#6B7150] cursor-pointer"
+                />
+                <span className="text-[14px] font-medium text-[#2C2C2C]">Compound interest</span>
+              </label>
+
+              <p className="text-[11px] text-[#8C8F7A] mt-1.5 ml-1 leading-relaxed">
+                Off = simple interest on principal. On = interest compounds per{" "}
+                {titleCase(compoundingDuration)} cycle.
+              </p>
+
+              {allowCompounding && (
+                <div className="mt-3">
+                  <label className="block text-[10px] font-bold tracking-widest text-[#8C8F7A] mb-1.5 uppercase">
+                    Compounding Cycle
+                  </label>
+                  <select
+                    value={compoundingDuration}
+                    onChange={e =>
+                      setCompoundingDuration(
+                        e.target.value as "MONTHLY" | "HALFYEARLY" | "YEARLY"
+                      )
+                    }
+                    className="w-full bg-[#F9F8F3] border border-[#ECEAE4] rounded-[12px] px-4 py-3 text-[14px] text-[#2C2C2C] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
+                  >
+                    <option value="MONTHLY">Monthly</option>
+                    <option value="HALFYEARLY">Half-yearly</option>
+                    <option value="YEARLY">Yearly</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             {/* Calculation Summary */}

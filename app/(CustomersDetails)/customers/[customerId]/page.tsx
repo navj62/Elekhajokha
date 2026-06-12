@@ -97,6 +97,7 @@ export default function CustomerDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", mobile: "", address: "", region: "", aadharNo: "" });
   const [savingProfile, setSavingProfile] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const toastRef = useRef<NodeJS.Timeout | null>(null);
 
   function showToast(msg: string) {
@@ -227,6 +228,35 @@ export default function CustomerDetailPage() {
   const repaid = customer?.pledges.filter((p) => p.status === "RELEASED").reduce((s, p) => s + Number(p.loanAmount), 0) ?? 0;
   const outstanding = totalLoan - repaid;
   const progressValue = totalLoan > 0 ? (repaid / totalLoan) * 100 : 0;
+
+  /* ---- Bulk selection (ACTIVE pledges only) ------------------- */
+  const activePledges = customer?.pledges.filter((p) => p.status === "ACTIVE") ?? [];
+  const allActiveSelected =
+    activePledges.length > 0 && activePledges.every((p) => selectedIds.has(p.id));
+
+  function toggleOne(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllActive() {
+    setSelectedIds((prev) => {
+      if (activePledges.length > 0 && activePledges.every((p) => prev.has(p.id))) {
+        return new Set(); // all selected → clear
+      }
+      return new Set(activePledges.map((p) => p.id));
+    });
+  }
+
+  function releaseSelected() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    router.push(`/customers/${customerId}/release-bulk?ids=${ids.join(",")}`);
+  }
 
   /* ================================================================ */
   return (
@@ -642,6 +672,16 @@ export default function CustomerDetailPage() {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr style={{ borderBottom: "1px solid #ECEAE4" }}>
+                        <th className="pl-6 lg:pl-8 pr-2 py-5 w-[44px]">
+                          <input
+                            type="checkbox"
+                            aria-label="Select all active pledges"
+                            checked={allActiveSelected}
+                            disabled={activePledges.length === 0}
+                            onChange={toggleAllActive}
+                            className="h-4 w-4 accent-[#555B3F] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                          />
+                        </th>
                         <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Pledge Date</th>
                         <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Item</th>
                         <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Loan Amount</th>
@@ -660,6 +700,19 @@ export default function CustomerDetailPage() {
                           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                           onClick={() => router.push(`/customers/${customerId}/pledges/${pledge.id}`)}
                         >
+                          <td
+                            className="pl-6 lg:pl-8 pr-2 py-5"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              aria-label="Select pledge"
+                              checked={selectedIds.has(pledge.id)}
+                              disabled={pledge.status !== "ACTIVE"}
+                              onChange={() => toggleOne(pledge.id)}
+                              className="h-4 w-4 accent-[#555B3F] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                            />
+                          </td>
                           <td className="px-6 lg:px-8 py-5">
                             <div className="text-[13px] font-bold text-[#2C2C2C]">{formatDate(pledge.pledgeDate)}</div>
                           </td>
@@ -761,6 +814,36 @@ export default function CustomerDetailPage() {
                 {savingProfile ? "Saving..." : "Save Changes"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk selection action bar */}
+      {selectedIds.size > 0 && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-40 px-6 lg:px-10 py-4 flex items-center justify-between gap-4"
+          style={{
+            backgroundColor: "var(--card-bg, #FFFFFF)",
+            borderTop: "1px solid var(--border-light, #ECEAE4)",
+            boxShadow: "0 -4px 16px rgba(0,0,0,0.06)",
+          }}
+        >
+          <span className="text-[14px] font-medium text-[#2C2C2C]">
+            {selectedIds.size} pledge{selectedIds.size !== 1 ? "s" : ""} selected
+          </span>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="text-[13px] font-semibold text-[#6F6F6F] hover:text-[#2C2C2C] transition-colors"
+            >
+              Clear
+            </button>
+            <button
+              onClick={releaseSelected}
+              className="flex items-center gap-2 text-[13px] font-bold text-white bg-[#565C3F] hover:bg-[#4B5036] rounded-[12px] px-4 py-2 transition-colors"
+            >
+              Release Selected ({selectedIds.size}) →
+            </button>
           </div>
         </div>
       )}
