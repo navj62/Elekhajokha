@@ -80,7 +80,7 @@ const STATUS_STYLES: Record<
 > = {
   ACTIVE: {
     label: "Active",
-    className: "bg-green-100 text-green-700 border-green-200",
+    className: "bg-green-100 text-[#3b6d11] border-green-200",
   },
   RELEASED: {
     label: "Closed",

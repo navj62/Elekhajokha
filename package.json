@@ -24,6 +24,7 @@
     "class-variance-authority": "0.7.1",
     "cloudinary": "^2.9.0",
     "clsx": "2.1.1",
+    "framer-motion": "^12.40.0",
     "lightningcss": "^1.32.0",
     "lucide-react": "0.563.0",
     "next": "16.2.6",
