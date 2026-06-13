@@ -46,7 +46,19 @@ interface ProcessedPledge {
   risk:             PledgeTier;
   metalType:        "GOLD" | "SILVER";
   weight:           number;
+  goldWeight:       number;
+  silverWeight:     number;
   timeToUnderwater: TimeToUnderwater;
+}
+
+// Human label for which metals a pledge actually holds (handles mixed pledges).
+function metalLabel(goldWeight: number, silverWeight: number): string {
+  const hasGold = goldWeight > 0;
+  const hasSilver = silverWeight > 0;
+  if (hasGold && hasSilver) return "Gold + Silver";
+  if (hasGold) return "Gold";
+  if (hasSilver) return "Silver";
+  return "—";
 }
 
 interface Alert {
@@ -603,6 +615,9 @@ export default function FinancialSummaryPage() {
                       {/* Asset */}
                       <td className="px-5 py-4 font-medium whitespace-nowrap" style={{ color: "var(--text-primary)" }}>
                         {p.name}
+                        <div className="text-[11px] font-normal mt-0.5" style={{ color: "var(--text-muted)" }}>
+                          {metalLabel(p.goldWeight, p.silverWeight)}
+                        </div>
                       </td>
 
                       {/* Principal */}

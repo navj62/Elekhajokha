@@ -45,6 +45,8 @@ export async function GET(_req: Request, context: RouteContext) {
             pledgeDate:  true,
             loanAmount:  true,
             releaseDate: true,
+            netWeightOfGold:   true,
+            netWeightOfSilver: true,
 
             // First item for display label
             items: {
@@ -100,6 +102,8 @@ export async function GET(_req: Request, context: RouteContext) {
           pledgeDate: pledge.pledgeDate.toISOString(),
           loanAmount: Number(pledge.loanAmount),
           releaseDate: pledge.releaseDate?.toISOString() || null,
+          netWeightOfGold: Number(pledge.netWeightOfGold),
+          netWeightOfSilver: Number(pledge.netWeightOfSilver),
           itemLabel,
           itemCount: pledge._count.items,
         };

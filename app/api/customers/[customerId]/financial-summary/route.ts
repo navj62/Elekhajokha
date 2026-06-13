@@ -217,6 +217,8 @@ export async function GET(_req: Request, context: RouteContext) {
         risk,
         metalType,
         weight: goldWeight + silverWeight,
+        goldWeight,
+        silverWeight,
         timeToUnderwater: buildTimeToUnderwater(
           p.status,
           loanAmount,
@@ -238,14 +240,11 @@ export async function GET(_req: Request, context: RouteContext) {
       0
     );
 
-    const totalGoldWeight = activePledges.reduce(
-      (s, p) => s + (p.metalType === "GOLD" ? p.weight : 0),
-      0
-    );
-    const totalSilverWeight = activePledges.reduce(
-      (s, p) => s + (p.metalType === "SILVER" ? p.weight : 0),
-      0
-    );
+    // Sum each metal independently. A mixed pledge (both gold AND silver)
+    // contributes to BOTH totals — do not classify it by a single
+    // dominant metalType, which dropped the smaller metal's weight.
+    const totalGoldWeight = activePledges.reduce((s, p) => s + p.goldWeight, 0);
+    const totalSilverWeight = activePledges.reduce((s, p) => s + p.silverWeight, 0);
 
     const underwaterPledges = activePledges.filter(
       (p) => p.risk === "UNDERWATER"

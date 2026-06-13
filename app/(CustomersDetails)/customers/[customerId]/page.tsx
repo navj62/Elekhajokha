@@ -21,6 +21,8 @@ type Pledge = {
   pledgeDate: string;
   loanAmount: string;
   releaseDate: string | null;
+  netWeightOfGold: number;
+  netWeightOfSilver: number;
   itemLabel: string | null;
   itemCount: number;
 };
@@ -123,17 +125,12 @@ export default function CustomerDetailPage() {
       );
     }
 
-    // 3. Metal filter — HEURISTIC. The page state has no metalType field
-    //    (the API does not expose it), so we infer the metal from the
-    //    itemLabel text. This is best-effort: a custom itemName that omits
-    //    the metal (e.g. "Necklace") will not match either pill.
+    // 3. Metal filter — uses the denormalized per-pledge metal weights.
+    //    A mixed pledge (both gold AND silver) matches BOTH pills.
     if (metalFilter !== "ALL") {
-      result = result.filter((p) => {
-        const label = p.itemLabel?.toLowerCase() ?? "";
-        if (metalFilter === "GOLD")
-          return label.includes("gold") || /\b(18|22|24)\s?k\b/.test(label);
-        return label.includes("silver");
-      });
+      result = result.filter((p) =>
+        metalFilter === "GOLD" ? p.netWeightOfGold > 0 : p.netWeightOfSilver > 0
+      );
     }
 
     // 4. Sort (new array — never mutate state)
