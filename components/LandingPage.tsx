@@ -4,290 +4,323 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Building2, ShieldCheck, Users, Lock, Calculator,
-  FileText, BarChart2, Coins, Check, LogIn,
+  FileText, BarChart2, Coins, Check, LogIn, ArrowRight
 } from "lucide-react";
 
 export default function LandingPage() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen text-white dark:bg-gray-950 font-sans">
+    <div className="min-h-screen text-[#24251f] bg-[#f4f3e8] font-sans antialiased selection:bg-[#737956]/20 selection:text-[#585e3c]">
 
       {/* ── Navbar ─────────────────────────────────────────── */}
-      <nav className="flex items-center justify-between px-8 py-4  border-b border-gray-100 bg-[#30302E] border-gray-100 sticky top-0 z-50">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-[#3b6d11] flex items-center justify-center">
-            <Building2 size={16} className="text-green-100" />
+      <nav className="flex items-center justify-between px-6 md:px-12 py-4 border-b border-[#e2e0d2] bg-[#f0eee1]/90 backdrop-blur-md sticky top-0 z-50">
+        <div className="flex items-center gap-2.5 group cursor-pointer">
+          <div className="w-9 h-9 rounded-xl bg-[#737956] flex items-center justify-center shadow-md shadow-[#737956]/10 transition-transform group-hover:scale-105">
+            <Building2 size={18} className="text-[#f4f3e8]" />
           </div>
-          <span className="text-sm font-medium text-white hover:text-gray-300">
-            E-LekhaJokha
+          <span className="text-base font-semibold tracking-tight text-[#24251f]">
+            Lekha-Jokha
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        
+        <div className="flex items-center gap-4">
           <Link
             href="#features"
-            className="px-4 py-1.5 text-sm text-white hover:text-gray-300 border border-gray-200 rounded-lg transition"
+            className="hidden sm:inline-block px-4 py-2 text-sm text-[#5c5e54] hover:text-[#24251f] font-medium transition-colors"
           >
             Features
           </Link>
           <Link
             href="#pricing"
-            className="px-4 py-1.5 text-sm text-white hover:text-gray-300 border border-gray-200 rounded-lg transition"
+            className="hidden sm:inline-block px-4 py-2 text-sm text-[#5c5e54] hover:text-[#24251f] font-medium transition-colors"
           >
             Pricing
           </Link>
           <Link
             href="/sign-in"
-            className="flex items-center gap-1.5 px-4 py-1.5 text-sm border bg-gray-50 rounded-lg text-gray-700 text-gray-300 transition"
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium border border-[#d6d4c5] hover:border-[#b8b6a5] bg-[#faf9f5] rounded-xl text-[#4a4c42] hover:text-[#24251f] transition-all"
           >
             <LogIn size={14} /> Sign in
           </Link>
           <Link
             href="/sign-up"
-            className="px-4 py-1.5 text-sm bg-[#3b6d11] text-green-50 rounded-lg font-medium transition"
+            className="px-4 py-2 text-sm bg-[#737956] hover:bg-[#5e6346] text-[#faf9f5] rounded-xl font-medium shadow-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
           >
-            Get started →
+            Get started
           </Link>
         </div>
       </nav>
 
       {/* ── Hero ───────────────────────────────────────────── */}
-      <section className="px-8 py-20 text-center bg-[#30302E] dark:bg-gray-950">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 text-[#3b6d11] dark:text-green-400 text-xs font-medium mb-6">
-          <ShieldCheck size={12} /> Trusted by pawnshop owners
-        </div>
-        <h1 className="text-4xl font-medium text-gray-100 leading-tight max-w-2xl mx-auto mb-4">
-          Manage your{" "}
-          <span className="text-[#3b6d11]">pledge business</span>{" "}
-          smarter
-        </h1>
-        <p className="text-base text-[#c2c0b6] max-w-lg mx-auto mb-8 leading-relaxed">
-          E-LekhaJokha is a complete pawnshop management system — track customers,
-          pledges, interest, and generate receipts in seconds.
-        </p>
-        <div className="flex items-center justify-center gap-3 flex-wrap">
-          <Link
-            href="/sign-up"
-            className="px-7 py-2.5 bg-[#3b6d11] text-[#faf9f5] border-gray-200 rounded-lg text-sm font-medium transition"
-          >
-            Start free trial →
-          </Link>
-          <Link
-            href="#features"
-            className="px-7 py-2.5 border border-gray-200 text-[#faf9f5] rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition"
-          >
-            See how it works
-          </Link>
+      <section className="relative px-6 md:px-12 py-24 text-center overflow-hidden bg-gradient-to-b from-[#f0eee1] to-[#f4f3e8]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(115,121,86,0.06)_0%,transparent_60%)] pointer-events-none" />
+        
+        <div className="relative max-w-3xl mx-auto flex flex-col items-center">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#737956]/10 border border-[#737956]/20 text-[#5e6346] text-xs font-semibold mb-8">
+            <ShieldCheck size={14} /> Trusted by pawnshop owners across India
+          </div>
+          
+          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-[#24251f] tracking-tight leading-[1.15] mb-6">
+            Manage your <span className="text-[#737956]">pledge business</span> smarter
+          </h1>
+          
+          <p className="text-base md:text-lg text-[#5c5e54] max-w-xl mb-10 leading-relaxed">
+            E-LekhaJokha is a complete financial workspace management system — track customers,
+            pledges, interest models, and live market values.
+          </p>
+          
+          <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+            <Link
+              href="/sign-up"
+              className="w-full sm:w-auto px-8 py-3.5 bg-[#737956] hover:bg-[#5e6346] text-[#faf9f5] rounded-xl font-medium shadow-md shadow-[#737956]/20 transition-all hover:scale-[1.02] active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              Start free workspace <ArrowRight size={16} />
+            </Link>
+            <Link
+              href="#features"
+              className="w-full sm:w-auto px-8 py-3.5 border border-[#d6d4c5] hover:border-[#b8b6a5] text-[#4a4c42] rounded-xl text-sm font-medium bg-[#faf9f5]/60 hover:bg-[#faf9f5] transition-all"
+            >
+              See features
+            </Link>
+          </div>
         </div>
       </section>
 
-      {/* ── Stats ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 border-y border-gray-100 bg-[#2f2f2d]">
-        {[
-          { num: "15", label: "Days free trial" },
-          { num: "∞",  label: "Customers & pledges" },
-          { num: "PDF", label: "Receipts & reports" },
-        ].map(({ num, label }, i) => (
-          <div
-            key={label}
-            className={`py-6 text-center ${i < 2 ? "border-r border-gray-100 dark:border-gray-800" : ""}`}
-          >
-            <div className="text-2xl font-medium text-[#3b6d11]">{num}</div>
-            <div className="text-xs text-[#c2c0b6] mt-1">{label}</div>
+      {/* ── Live Market Rates Ribbon ───────────────────────── */}
+      <div className="max-w-6xl mx-auto px-6 md:px-12">
+        <div className="flex flex-wrap items-center justify-center gap-6 px-6 py-3.5 bg-[#f0eee1] border border-[#e2e0d2] rounded-xl text-sm font-medium text-[#4a4c42]">
+          <div className="flex items-center gap-2">
+            <Coins size={16} className="text-[#737956]" />
+            <span>Live Market Rates:</span>
           </div>
-        ))}
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <span>Gold: <span className="font-semibold text-[#24251f]">₹1,53,261.6 / 10g</span></span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-slate-400" />
+            <span>Silver: <span className="font-semibold text-[#24251f]">₹242.61 / g</span></span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Stats Cards ────────────────────────────────────── */}
+      <div className="max-w-6xl mx-auto px-6 md:px-12 mt-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 bg-[#faf9f5] border border-[#e2e0d2] rounded-2xl overflow-hidden shadow-sm">
+          {[
+            { num: "15 Days", label: "Risk-free trial, no card needed" },
+            { num: "Unlimited", label: "Customers & secure pledge metrics" },
+            { num: "Bilingual PDF", label: "Instant legal receipts & reports" },
+          ].map(({ num, label }, i) => (
+            <div
+              key={label}
+              className={`p-6 md:py-8 text-center flex flex-col justify-center ${
+                i < 2 ? "border-b md:border-b-0 md:border-r border-[#e2e0d2]" : ""
+              }`}
+            >
+              <div className="text-2xl font-bold text-[#24251f] tracking-tight">{num}</div>
+              <div className="text-xs text-[#5c5e54] mt-1.5 font-semibold uppercase tracking-wider">{label}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* ── Features ───────────────────────────────────────── */}
-      <section id="features" className="px-8 py-16 bg-[#242422]">
-        <p className="text-xs font-medium text-[#3b6d11] uppercase tracking-widest mb-2">
-          Features
-        </p>
-        <h2 className="text-2xl font-medium text-gray-100 mb-2">
-          Everything you need to run your shop
-        </h2>
-        <p className="text-sm text-[#c2c0b6] mb-8 max-w-lg">
-          From customer onboarding to loan tracking and PDF receipts — all in one place.
-        </p>
+      <section id="features" className="px-6 md:px-12 py-20 max-w-7xl mx-auto">
+        <div className="mb-12">
+          <p className="text-xs font-bold text-[#737956] uppercase tracking-widest mb-2">
+            Features Workspace
+          </p>
+          <h2 className="text-3xl font-bold text-[#24251f] tracking-tight mb-3">
+            Everything you need to run your shop
+          </h2>
+          <p className="text-sm md:text-base text-[#5c5e54] max-w-xl leading-relaxed">
+            From easy customer onboarding to accurate gold tracking calculations and custom PDF receipts.
+          </p>
+        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           {[
             {
-              icon: <Users size={18} className="text-[#3b6d11]"/>,
-              title: "Customer management",
-              desc: "Add customers with photo, Aadhaar, address and full contact details.",
+              icon: <Users size={20} className="text-[#737956]"/>,
+              title: "Customer Management",
+              desc: "Add records effortlessly with photos, Aadhaar validation profiles, custom addresses, and absolute data safety.",
             },
             {
-              icon: <Lock size={18} className="text-[#3b6d11]" />,
-              title: "Pledge tracking",
-              desc: "Track gold & silver pledges with item details, weight, purity and loan amounts.",
+              icon: <Lock size={20} className="text-[#737956]" />,
+              title: "Pledge Tracking",
+              desc: "Track gold & silver item details with meticulous precision across weight, purity parameters, and loan totals.",
             },
             {
-              icon: <Calculator size={18} className="text-[#3b6d11]" />,
-              title: "Interest calculation",
-              desc: "Auto-calculate compound or simple interest monthly, half-yearly or yearly.",
+              icon: <Calculator size={20} className="text-[#737956]" />,
+              title: "Interest Calculation",
+              desc: "Auto-calculate compound or basic simple interest parameters mapped across monthly, half-yearly or yearly variables.",
             },
             {
-              icon: <FileText size={18} className="text-[#3b6d11]" />,
-              title: "PDF receipts",
-              desc: "Generate bilingual receipts with your shop name, terms & item photo.",
+              icon: <FileText size={20} className="text-[#737956]" />,
+              title: "PDF Receipts",
+              desc: "Generate clean bilingual documents featuring your shop name, unique workspace terms, and attached item photos.",
             },
             {
-              icon: <BarChart2 size={18} className="text-[#3b6d11]" />,
-              title: "Reports",
-              desc: "Download customer and pledge reports as PDF with totals and summaries.",
+              icon: <BarChart2 size={20} className="text-[#737956]" />,
+              title: "Financial Reports",
+              desc: "Instantly compile complete active loan portfolios and overview summaries directly into organized print documents.",
             },
             {
-              icon: <Coins size={18} className="text-[#3b6d11]" />,
-              title: "Live gold rates",
-              desc: "Real-time gold and silver market prices to calculate accurate LTV values.",
+              icon: <Coins size={20} className="text-[#737956]" />,
+              title: "Live Gold Rates",
+              desc: "Real-time gold and silver spot rates delivered straight into your workspace engine for immediate LTV calculations.",
             },
           ].map(({ icon, title, desc }) => (
             <div
               key={title}
-              className="bg-[#30302E] border border-gray-100 dark:border-gray-800 rounded-xl p-5"
+              className="bg-[#f0eee1] border border-[#e2e0d2] hover:border-[#d6d4c5] rounded-2xl p-6 transition-all duration-200 group"
             >
-              <div className="w-9 h-9 rounded-lg bg-green-50 dark:bg-green-950 flex items-center justify-center mb-3">
+              <div className="w-10 h-10 rounded-xl bg-[#faf9f5] border border-[#e2e0d2] flex items-center justify-center mb-4 transition-colors group-hover:bg-[#737956]/10">
                 {icon}
               </div>
-              <h3 className="text-sm font-medium text-white mb-1.5">
+              <h3 className="text-base font-bold text-[#24251f] mb-2 tracking-tight">
                 {title}
               </h3>
-              <p className="text-xs text-[#c2c0b6] leading-relaxed">{desc}</p>
+              <p className="text-xs md:text-sm text-[#5c5e54] leading-relaxed">{desc}</p>
             </div>
           ))}
         </div>
 
-        {/* Dashboard preview */}
-        <div className="mt-8 bg-[#30302E] border border-gray-100 rounded-xl p-4">
-          <div className="flex items-center gap-1.5 mb-4">
-            <div className="w-2 h-2 rounded-full bg-red-400" />
-            <div className="w-2 h-2 rounded-full bg-yellow-400" />
-            <div className="w-2 h-2 rounded-full bg-green-500" />
-          </div>
-          <div className="grid grid-cols-3 gap-2 mb-4">
-            {[
-              { label: "Total customers", val: "24", tag: "↑ 3 this month", tagColor: "bg-green-50 dark:bg-green-950 text-[#3b6d11] dark:text-green-400" },
-              { label: "Active pledges", val: "18", tag: "₹4,50,000 total", tagColor: "bg-green-50 dark:bg-green-950 text-[#3b6d11] dark:text-green-400" },
-              { label: "Overdue", val: "3", tag: "Needs attention", tagColor: "bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400", valColor: "text-red-500" },
-            ].map(({ label, val, tag, tagColor, valColor }) => (
-              <div key={label} className="bg-[#30302E] border border-gray-100 dark:border-gray-700 rounded-lg p-3">
-                <div className="text-xs text-[#c2c0b6] mb-1">{label}</div>
-                <div className={`text-xl font-medium ${valColor ?? "text-white"}`}>{val}</div>
-                <div className={`text-xs px-1.5 py-0.5 rounded mt-1 inline-block ${tagColor}`}>{tag}</div>
-              </div>
-            ))}
-          </div>
-          <div className="bg-[#30302E] border border-gray-100 rounded-lg overflow-hidden">
-            <div className="grid grid-cols-3 px-3 py-2 border-b border-gray-100 text-xs font-medium text-white">
-              <span>Customer</span><span>Loan amt</span><span>Status</span>
+        {/* Dashboard preview matched to your snapshot */}
+        <div className="mt-12 bg-[#faf9f5] border border-[#e2e0d2] rounded-2xl p-4 md:p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-5 border-b border-[#e2e0d2]/60 pb-4">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full bg-[#737956]/40" />
+              <span className="text-xs text-[#5c5e54] font-semibold">Live Workspace Performance Preview</span>
             </div>
+            <span className="text-xs font-mono px-2 py-0.5 bg-[#f0eee1] rounded border border-[#e2e0d2]">localhost:3000</span>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             {[
-              { name: "Ramesh Kumar", amt: "₹25,000", status: "Active", color: "bg-green-50 dark:bg-green-950 text-[#3b6d11] dark:text-green-400" },
-              { name: "Sunita Devi",  amt: "₹15,000", status: "Released", color: "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-400" },
-              { name: "Mohan Lal",   amt: "₹40,000", status: "Active", color: "bg-green-50 dark:bg-green-950 text-[#3b6d11] dark:text-green-400" },
-            ].map(({ name, amt, status, color }) => (
-              <div key={name} className="grid grid-cols-3 px-3 py-2 border-b last:border-0 border-gray-50 text-xs text-[#c2c0b6]">
-                <span>{name}</span>
-                <span>{amt}</span>
-                <span><span className={`px-1.5 py-0.5 rounded text-xs ${color}`}>{status}</span></span>
+              { label: "Total Customers", val: "0", tag: "Workspace Clean", tagColor: "bg-[#f0eee1] text-[#5c5e54] border-[#e2e0d2]" },
+              { label: "Active Pledges", val: "0", tag: "No active risk", tagColor: "bg-[#f0eee1] text-[#5c5e54] border-[#e2e0d2]" },
+              { label: "Total Balance", val: "₹0", tag: "Synced Today", tagColor: "bg-[#737956]/10 text-[#5e6346] border-[#737956]/20" },
+            ].map(({ label, val, tag, tagColor }) => (
+              <div key={label} className="bg-[#f0eee1]/50 border border-[#e2e0d2] rounded-xl p-4 flex flex-col justify-between">
+                <div>
+                  <div className="text-xs text-[#5c5e54] font-semibold tracking-wide uppercase mb-1">{label}</div>
+                  <div className="text-2xl md:text-3xl font-bold tracking-tight text-[#24251f]">{val}</div>
+                </div>
+                <div className={`text-xs px-2.5 py-1 rounded-md border font-medium mt-3 inline-block self-start ${tagColor}`}>{tag}</div>
               </div>
             ))}
+          </div>
+
+          <div className="bg-[#f0eee1]/30 border border-[#e2e0d2] rounded-xl p-6 text-center text-[#5c5e54] text-sm">
+            No active pledge or workspace metrics registered yet.
           </div>
         </div>
       </section>
 
       {/* ── Pricing ────────────────────────────────────────── */}
-      <section id="pricing" className="px-8 py-16 bg-[#242422]">
-        <p className="text-xs font-medium text-[#3b6d11] uppercase tracking-widest mb-2">
-          Pricing
-        </p>
-        <h2 className="text-2xl font-medium text-white mb-2">
-          Simple, transparent pricing
-        </h2>
-        <p className="text-sm text-gray-300 mb-8">
-          Start with a 15-day free trial. No credit card required.
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
-          {/* Half yearly */}
-          <div className="bg-[#30302E] border border-gray-100 rounded-xl p-6">
-            <div className="text-sm font-medium text-white mb-1">Half yearly</div>
-            <div className="text-3xl font-medium text-white mb-1">
-              ₹999 <span className="text-sm font-normal text-gray-300">/ 6 months</span>
-            </div>
-            <p className="text-xs text-gray-300 mb-5">Best for getting started</p>
-            <ul className="space-y-2 mb-6">
-              {["Unlimited customers", "Unlimited pledges", "PDF receipts & reports", "Live gold/silver rates"].map((f) => (
-                <li key={f} className="flex items-center gap-2 text-xs text-gray-300">
-                  <Check size={13} className="text-[#3b6d11] flex-shrink-0" /> {f}
-                </li>
-              ))}
-            </ul>
-            <Link
-              href="/sign-up"
-              className="block text-center w-full py-2 border border-gray-200 rounded-lg text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition"
-            >
-              Get started
-            </Link>
+      <section id="pricing" className="px-6 md:px-12 py-20 bg-[#f0eee1]/60 border-t border-[#e2e0d2]">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-12">
+            <p className="text-xs font-bold text-[#737956] uppercase tracking-widest mb-2">
+              Subscription Plans
+            </p>
+            <h2 className="text-3xl font-bold text-[#24251f] tracking-tight mb-3">
+              Simple, transparent pricing
+            </h2>
+            <p className="text-sm text-[#5c5e54]">
+              Start with a 15-day free trial. Unlock full metrics immediately.
+            </p>
           </div>
 
-          {/* Yearly */}
-          <div className="bg-[#30302E] border-2 border-green-600 dark:border-green-700 rounded-xl p-6">
-            <div className="flex items-center justify-between mb-1">
-              <div className="text-sm font-medium text-white">Yearly</div>
-              <span className="text-xs bg-green-50 dark:bg-green-950 text-[#3b6d11] dark:text-green-400 px-2 py-0.5 rounded font-medium">
-                Best value
-              </span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto items-stretch">
+            {/* Half yearly */}
+            <div className="bg-[#faf9f5] border border-[#e2e0d2] rounded-2xl p-6 md:p-8 flex flex-col justify-between relative">
+              <div>
+                <div className="text-sm font-bold uppercase tracking-wider text-[#5c5e54] mb-1">Half Yearly</div>
+                <div className="text-4xl font-extrabold text-[#24251f] tracking-tight mb-2">
+                  ₹999 <span className="text-sm font-normal text-[#5c5e54]">/ 6 months</span>
+                </div>
+                <p className="text-xs text-[#5c5e54] mb-6 font-medium">Perfect for new expanding workspaces</p>
+                <div className="h-px bg-[#e2e0d2] w-full mb-6" />
+                <ul className="space-y-3.5 mb-8">
+                  {["Unlimited customer folders", "Unlimited active pledges", "PDF receipts & reports", "Live currency & metal feeds"].map((f) => (
+                    <li key={f} className="flex items-start gap-2.5 text-xs md:text-sm text-[#4a4c42]">
+                      <Check size={16} className="text-[#737956] flex-shrink-0 mt-0.5" /> <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <Link
+                href="/sign-up"
+                className="block text-center w-full py-3 border border-[#d6d4c5] hover:border-[#b8b6a5] rounded-xl text-sm font-medium text-[#4a4c42] bg-[#faf9f5] hover:bg-[#f0eee1] transition-all"
+              >
+                Get started
+              </Link>
             </div>
-            <div className="text-3xl font-medium text-white mb-1">
-              ₹1,699 <span className="text-sm font-normal text-[#c2c0b6]">/ year</span>
+
+            {/* Yearly */}
+            <div className="bg-[#faf9f5] border-2 border-[#737956] rounded-2xl p-6 md:p-8 flex flex-col justify-between relative shadow-sm">
+              <div className="absolute -top-3 right-6 bg-[#737956] text-[#faf9f5] text-xs px-3 py-1 rounded-full font-bold tracking-wide uppercase">
+                Best Value
+              </div>
+              <div>
+                <div className="text-sm font-bold uppercase tracking-wider text-[#737956] mb-1">Yearly Plan</div>
+                <div className="text-4xl font-extrabold text-[#24251f] tracking-tight mb-2">
+                  ₹1,699 <span className="text-sm font-normal text-[#5c5e54]">/ year</span>
+                </div>
+                <p className="text-xs text-[#5e6346] mb-6 font-semibold">Save ₹299 vs regular adjustments</p>
+                <div className="h-px bg-[#e2e0d2] w-full mb-6" />
+                <ul className="space-y-3.5 mb-8">
+                  {["Everything in half yearly access", "Priority engineering workspace help", "Custom structural receipt parameters", "Hindi & English smart printouts"].map((f) => (
+                    <li key={f} className="flex items-start gap-2.5 text-xs md:text-sm text-[#4a4c42]">
+                      <Check size={16} className="text-[#737956] flex-shrink-0 mt-0.5" /> <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <Link
+                href="/sign-up"
+                className="block text-center w-full py-3 bg-[#737956] hover:bg-[#5e6346] text-[#faf9f5] rounded-xl text-sm font-semibold transition-all shadow-sm"
+              >
+                Get started now →
+              </Link>
             </div>
-            <p className="text-xs text-[#c2c0b6] mb-5">Save ₹299 vs half yearly</p>
-            <ul className="space-y-2 mb-6">
-              {["Everything in half yearly", "Priority support", "Custom receipt terms", "Hindi & English receipts"].map((f) => (
-                <li key={f} className="flex items-center gap-2 text-xs text-gray-300">
-                  <Check size={13} className="text-[#3b6d11] flex-shrink-0" /> {f}
-                </li>
-              ))}
-            </ul>
-            <Link
-              href="/sign-up"
-              className="block text-center w-full py-2 bg-[#3b6d11] hover:bg-[#305a0e] text-green-50 rounded-lg text-sm font-medium transition"
-            >
-              Get started →
-            </Link>
           </div>
         </div>
       </section>
 
       {/* ── CTA ────────────────────────────────────────────── */}
-      <section className="px-8 py-16 text-center bg-[#30302E] border-t border-gray-100 ">
-        <h2 className="text-2xl font-medium text-white mb-2">
-          Start managing your shop today
-        </h2>
-        <p className="text-sm text-gray-300 mb-6">
-          Join pawnshop owners who use E-LekhaJokha to save time and reduce errors.
-        </p>
-        <Link
-          href="/sign-up"
-          className="inline-block px-8 py-2.5 bg-[#3b6d11] hover:bg-[#305a0e] text-green-50 rounded-lg text-sm font-medium transition"
-        >
-          Start 15-day free trial →
-        </Link>
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
-          No credit card required · Cancel anytime
-        </p>
+      <section className="px-6 md:px-12 py-20 text-center relative overflow-hidden border-t border-[#e2e0d2]">
+        <div className="relative max-w-2xl mx-auto">
+          <h2 className="text-3xl font-bold text-[#24251f] tracking-tight mb-3">
+            Start managing your shop today
+          </h2>
+          <p className="text-sm text-[#5c5e54] mb-8 max-w-md mx-auto">
+            Experience complete control over loan accounts, customer analytics, and receipts.
+          </p>
+          <Link
+            href="/sign-up"
+            className="inline-flex items-center gap-2 px-8 py-3.5 bg-[#737956] hover:bg-[#5e6346] text-[#faf9f5] rounded-xl font-semibold shadow-md shadow-[#737956]/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            Start 15-day free trial <ArrowRight size={16} />
+          </Link>
+          <p className="text-xs text-[#8a8c80] mt-4 font-medium">
+            No upfront credit card verification · Cancel options available instantly
+          </p>
+        </div>
       </section>
 
       {/* ── Footer ─────────────────────────────────────────── */}
-      <footer className="px-8 py-5 border-t border-gray-100 bg-[#30302E] flex items-center justify-between flex-wrap gap-2">
-        <p className="text-xs text-gray-400 dark:text-gray-500">
-          © 2026 E-LekhaJokha. All rights reserved.
+      <footer className="px-6 md:px-12 py-6 border-t border-[#e2e0d2] bg-[#f0eee1] flex flex-col sm:flex-row items-center justify-between gap-4">
+        <p className="text-xs text-[#8a8c80]">
+          © 2026 Lekha-Jokha. All financial workspace rights reserved.
         </p>
-        <div className="flex gap-4">
-          {["Privacy", "Terms", "Support"].map((l) => (
-            <a key={l} href="#" className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition">
+        <div className="flex gap-6">
+          {["Privacy Policy", "Terms of Use", "Workspace Support"].map((l) => (
+            <a key={l} href="#" className="text-xs text-[#8a8c80] hover:text-[#24251f] font-medium transition-colors">
               {l}
             </a>
           ))}
