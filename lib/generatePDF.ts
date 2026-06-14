@@ -103,16 +103,34 @@ type PledgeRow = {
   index: number;
   customerName: string;
   pledgeDate: string;
+  releaseDate: string | null;
   itemType: string;
   itemName: string;
+  netWeight: number;
+  netWeightOfGold: number;
+  netWeightOfSilver: number;
   loanAmount: number;
-  status: string;
-  totalInterest: number | null;
+  interestAccrued: number;
   receivableAmount: number | null;
-  itemPhoto: string | null;
+  marketValue: number | null;
+  ltv: number | null;
+  status: string;
 };
 
-export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buffer> {
+// LTV thresholds mirror the financial-summary web colors.
+function ltvHex(ltv: number | null): string {
+  if (ltv === null) return "#9ca3af";
+  if (ltv < 65) return "#4D6B2A";
+  if (ltv <= 75) return "#8A6B17";
+  if (ltv <= 90) return "#9A4B14";
+  return "#B91C1C";
+}
+
+export function generatePledgePDF(
+  title: string,
+  rows: PledgeRow[],
+  variant: "active" | "released" = "active"
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 40, size: "A4" });
     const chunks: Buffer[] = [];
@@ -122,13 +140,6 @@ export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buf
     doc.on("error", reject);
 
     const pageWidth = doc.page.width - 80;
-
-    const statusColor = (s: string) => {
-      if (s === "ACTIVE")   return "#dc2626"; // red
-      if (s === "RELEASED") return "#16a34a"; // green
-      if (s === "OVERDUE")  return "#ea580c"; // orange
-      return "#6b7280";
-    };
 
     // ── Header bar ──────────────────────────────────────────
     doc.rect(40, 40, pageWidth, 40).fill("#065f46");
@@ -150,29 +161,75 @@ export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buf
         40, 92, { width: pageWidth, align: "right" }
       );
 
-    // ── Column layout ───────────────────────────────────────
-    const col = {
-      no:         { x: 40,  w: 25  },
-      customer:   { x: 65,  w: 100 },
-      date:       { x: 165, w: 70  },
-      item:       { x: 235, w: 105 },
-      loan:       { x: 340, w: 75  },
-      receivable: { x: 390, w: 90  },
-      status:     { x: 480, w: 75  },
-    };
+    // ── Column layout (portrait A4, content x: 40→555, total 515pt) ──
+    // Active:   Customer(90) Date(55) Pledge(55) GoldWt(42) SilverWt(42)
+    //           Loan(65) Interest(60) Receivable(70) LTV(36) = 515pt
+    // Released: Customer(82) Date(52) Released(52) Pledge(45) NetWt(42)
+    //           Loan(63) Interest(59) Receivable(70) LTV(50) = 515pt
+    const isReleased = variant === "released";
+    const col = isReleased
+      ? {
+          customer:   { x: 40,  w: 82 },
+          date:       { x: 122, w: 52 },
+          released:   { x: 174, w: 52 },
+          pledge:     { x: 226, w: 45 },
+          netwt:      { x: 271, w: 42 },
+          loan:       { x: 313, w: 63 },
+          interest:   { x: 376, w: 59 },
+          receivable: { x: 435, w: 70 },
+          ltv:        { x: 505, w: 50 },
+        }
+      : {
+          customer:   { x: 40,  w: 90 },
+          date:       { x: 130, w: 55 },
+          pledge:     { x: 185, w: 55 },
+          goldwt:     { x: 240, w: 42 },
+          silverwt:   { x: 282, w: 42 },
+          loan:       { x: 324, w: 65 },
+          interest:   { x: 389, w: 60 },
+          receivable: { x: 449, w: 70 },
+          ltv:        { x: 519, w: 36 },
+        };
     const rowH = 30;
+
+    const rupees = (n: number) => `Rs.${Math.round(n).toLocaleString("en-IN")}`;
 
     // ── Table header ────────────────────────────────────────
     let y = 110;
     doc.rect(40, y, pageWidth, rowH).fill("#d1fae5");
     doc.fillColor("#065f46").fontSize(8).font("Helvetica-Bold");
-    doc.text("#",           col.no.x,         y + 9, { width: col.no.w,         align: "center" });
-    doc.text("Customer",    col.customer.x,   y + 9, { width: col.customer.w,   align: "left"   });
-    doc.text("Date",        col.date.x,       y + 9, { width: col.date.w,       align: "left"   });
-    doc.text("Item",        col.item.x,       y + 9, { width: col.item.w,       align: "left"   });
-    doc.text("Loan",        col.loan.x,       y + 9, { width: col.loan.w,       align: "right"  });
-    doc.text("Receivable",  col.receivable.x, y + 9, { width: col.receivable.w, align: "right"  });
-    doc.text("Status",      col.status.x,     y + 9, { width: col.status.w,     align: "center" });
+
+    if (isReleased) {
+      const rc = col as typeof col & {
+        released: { x: number; w: number };
+        pledge:   { x: number; w: number };
+        netwt:    { x: number; w: number };
+      };
+      doc.text("Customer",   rc.customer.x,   y + 9, { width: rc.customer.w,   align: "left"  });
+      doc.text("Date",       rc.date.x,       y + 9, { width: rc.date.w,       align: "left"  });
+      doc.text("Released",   rc.released.x,   y + 9, { width: rc.released.w,   align: "left"  });
+      doc.text("Pledge",     rc.pledge.x,     y + 9, { width: rc.pledge.w,     align: "left"  });
+      doc.text("Net Wt",     rc.netwt.x,      y + 9, { width: rc.netwt.w,      align: "right" });
+      doc.text("Loan",       rc.loan.x,       y + 9, { width: rc.loan.w,       align: "right" });
+      doc.text("Interest",   rc.interest.x,   y + 9, { width: rc.interest.w,   align: "right" });
+      doc.text("Receivable", rc.receivable.x, y + 9, { width: rc.receivable.w, align: "right" });
+      doc.text("LTV",        rc.ltv.x,        y + 9, { width: rc.ltv.w,        align: "right" });
+    } else {
+      const ac = col as typeof col & {
+        pledge:   { x: number; w: number };
+        goldwt:   { x: number; w: number };
+        silverwt: { x: number; w: number };
+      };
+      doc.text("Customer",   ac.customer.x,   y + 9, { width: ac.customer.w,   align: "left"  });
+      doc.text("Date",       ac.date.x,       y + 9, { width: ac.date.w,       align: "left"  });
+      doc.text("Pledge",     ac.pledge.x,     y + 9, { width: ac.pledge.w,     align: "left"  });
+      doc.text("Gold Wt",    ac.goldwt.x,     y + 9, { width: ac.goldwt.w,     align: "right" });
+      doc.text("Silver Wt",  ac.silverwt.x,   y + 9, { width: ac.silverwt.w,   align: "right" });
+      doc.text("Loan",       ac.loan.x,       y + 9, { width: ac.loan.w,       align: "right" });
+      doc.text("Interest",   ac.interest.x,   y + 9, { width: ac.interest.w,   align: "right" });
+      doc.text("Receivable", ac.receivable.x, y + 9, { width: ac.receivable.w, align: "right" });
+      doc.text("LTV",        ac.ltv.x,        y + 9, { width: ac.ltv.w,        align: "right" });
+    }
     y += rowH;
 
     // ── Table rows ──────────────────────────────────────────
@@ -184,21 +241,48 @@ export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buf
 
       doc.rect(40, y, pageWidth, rowH).fill(i % 2 === 0 ? "#f0fdf4" : "white");
       doc.rect(40, y, pageWidth, rowH).strokeColor("#e5e7eb").lineWidth(0.5).stroke();
-
       doc.fillColor("#374151").fontSize(8).font("Helvetica");
-      doc.text(String(r.index),           col.no.x,         y + 9, { width: col.no.w,         align: "center" });
-      doc.text(r.customerName,            col.customer.x,   y + 9, { width: col.customer.w,   align: "left"   });
-      doc.text(r.pledgeDate,              col.date.x,       y + 9, { width: col.date.w,       align: "left"   });
-      doc.text(r.itemName,                col.item.x,       y + 9, { width: col.item.w,       align: "left"   });
-      doc.text(`Rs.${r.loanAmount.toLocaleString("en-IN")}`,
-                                          col.loan.x,       y + 9, { width: col.loan.w,       align: "right"  });
-      doc.text(r.receivableAmount != null
-        ? `Rs.${r.receivableAmount.toLocaleString("en-IN")}` : "—",
-                                          col.receivable.x, y + 9, { width: col.receivable.w, align: "right"  });
 
-      // coloured status text
-      doc.fillColor(statusColor(r.status)).font("Helvetica-Bold");
-      doc.text(r.status,                  col.status.x,     y + 9, { width: col.status.w,     align: "center" });
+      if (isReleased) {
+        const rc = col as typeof col & {
+          released: { x: number; w: number };
+          pledge:   { x: number; w: number };
+          netwt:    { x: number; w: number };
+        };
+        doc.text(r.customerName,                                     rc.customer.x,   y + 9, { width: rc.customer.w,   align: "left"  });
+        doc.text(r.pledgeDate,                                       rc.date.x,       y + 9, { width: rc.date.w,       align: "left"  });
+        doc.text(r.releaseDate ?? "—",                               rc.released.x,   y + 9, { width: rc.released.w,   align: "left"  });
+        doc.text(r.itemName,                                         rc.pledge.x,     y + 9, { width: rc.pledge.w,     align: "left"  });
+        doc.text(r.netWeight > 0 ? `${r.netWeight.toFixed(2)}g` : "—",
+                                                                     rc.netwt.x,      y + 9, { width: rc.netwt.w,      align: "right" });
+        doc.text(rupees(r.loanAmount),                               rc.loan.x,       y + 9, { width: rc.loan.w,       align: "right" });
+        doc.text(r.interestAccrued > 0 ? rupees(r.interestAccrued) : "—",
+                                                                     rc.interest.x,   y + 9, { width: rc.interest.w,   align: "right" });
+        doc.text(r.receivableAmount != null ? rupees(r.receivableAmount) : "—",
+                                                                     rc.receivable.x, y + 9, { width: rc.receivable.w, align: "right" });
+        doc.fillColor(ltvHex(r.ltv)).font("Helvetica-Bold");
+        doc.text(r.ltv != null ? `${r.ltv.toFixed(1)}%` : "—",     rc.ltv.x,        y + 9, { width: rc.ltv.w,        align: "right" });
+      } else {
+        const ac = col as typeof col & {
+          pledge:   { x: number; w: number };
+          goldwt:   { x: number; w: number };
+          silverwt: { x: number; w: number };
+        };
+        doc.text(r.customerName,                                     ac.customer.x,   y + 9, { width: ac.customer.w,   align: "left"  });
+        doc.text(r.pledgeDate,                                       ac.date.x,       y + 9, { width: ac.date.w,       align: "left"  });
+        doc.text(r.itemName,                                         ac.pledge.x,     y + 9, { width: ac.pledge.w,     align: "left"  });
+        doc.text(r.netWeightOfGold > 0 ? `${r.netWeightOfGold.toFixed(2)}g` : "—",
+                                                                     ac.goldwt.x,     y + 9, { width: ac.goldwt.w,     align: "right" });
+        doc.text(r.netWeightOfSilver > 0 ? `${r.netWeightOfSilver.toFixed(2)}g` : "—",
+                                                                     ac.silverwt.x,   y + 9, { width: ac.silverwt.w,   align: "right" });
+        doc.text(rupees(r.loanAmount),                               ac.loan.x,       y + 9, { width: ac.loan.w,       align: "right" });
+        doc.text(r.interestAccrued > 0 ? rupees(r.interestAccrued) : "—",
+                                                                     ac.interest.x,   y + 9, { width: ac.interest.w,   align: "right" });
+        doc.text(r.receivableAmount != null ? rupees(r.receivableAmount) : "—",
+                                                                     ac.receivable.x, y + 9, { width: ac.receivable.w, align: "right" });
+        doc.fillColor(ltvHex(r.ltv)).font("Helvetica-Bold");
+        doc.text(r.ltv != null ? `${r.ltv.toFixed(1)}%` : "—",     ac.ltv.x,        y + 9, { width: ac.ltv.w,        align: "right" });
+      }
 
       y += rowH;
     });
@@ -206,15 +290,33 @@ export function generatePledgePDF(title: string, rows: PledgeRow[]): Promise<Buf
     // ── Totals footer ───────────────────────────────────────
     if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
     const totalLoan       = rows.reduce((s, r) => s + r.loanAmount, 0);
+    const totalInterest   = rows.reduce((s, r) => s + r.interestAccrued, 0);
     const totalReceivable = rows.reduce((s, r) => s + (r.receivableAmount ?? 0), 0);
     doc.rect(40, y, pageWidth, rowH).fill("#d1fae5");
     doc.fillColor("#065f46").fontSize(8).font("Helvetica-Bold");
-    doc.text("Total",
-      col.customer.x, y + 9, { width: col.customer.w, align: "left" });
-    doc.text(`Rs.${totalLoan.toLocaleString("en-IN")}`,
-      col.loan.x,     y + 9, { width: col.loan.w,     align: "right" });
-    doc.text(`Rs.${totalReceivable.toLocaleString("en-IN")}`,
-      col.receivable.x, y + 9, { width: col.receivable.w, align: "right" });
+
+    if (isReleased) {
+      const rc = col as typeof col & { netwt: { x: number; w: number } };
+      const totalNetWt = rows.reduce((s, r) => s + r.netWeight, 0);
+      doc.text("Total",                        rc.customer.x,   y + 9, { width: rc.customer.w,   align: "left"  });
+      doc.text(`${totalNetWt.toFixed(2)}g`,    rc.netwt.x,      y + 9, { width: rc.netwt.w,      align: "right" });
+      doc.text(rupees(totalLoan),              rc.loan.x,       y + 9, { width: rc.loan.w,       align: "right" });
+      doc.text(rupees(totalInterest),          rc.interest.x,   y + 9, { width: rc.interest.w,   align: "right" });
+      doc.text(rupees(totalReceivable),        rc.receivable.x, y + 9, { width: rc.receivable.w, align: "right" });
+    } else {
+      const ac = col as typeof col & {
+        goldwt:   { x: number; w: number };
+        silverwt: { x: number; w: number };
+      };
+      const totalGold   = rows.reduce((s, r) => s + r.netWeightOfGold, 0);
+      const totalSilver = rows.reduce((s, r) => s + r.netWeightOfSilver, 0);
+      doc.text("Total",                        ac.customer.x,   y + 9, { width: ac.customer.w,   align: "left"  });
+      doc.text(`${totalGold.toFixed(2)}g`,     ac.goldwt.x,     y + 9, { width: ac.goldwt.w,     align: "right" });
+      doc.text(`${totalSilver.toFixed(2)}g`,   ac.silverwt.x,   y + 9, { width: ac.silverwt.w,   align: "right" });
+      doc.text(rupees(totalLoan),              ac.loan.x,       y + 9, { width: ac.loan.w,       align: "right" });
+      doc.text(rupees(totalInterest),          ac.interest.x,   y + 9, { width: ac.interest.w,   align: "right" });
+      doc.text(rupees(totalReceivable),        ac.receivable.x, y + 9, { width: ac.receivable.w, align: "right" });
+    }
 
     doc.end();
   });

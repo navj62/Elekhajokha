@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, ArrowRight, FileText, Loader2 } from "lucide-react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { ArrowLeft, ArrowRight, FileText, Loader2, X } from "lucide-react";
+
+type ReportKind = "customers" | "active" | "released";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface CustomerRow {
@@ -17,12 +19,37 @@ interface PledgeRow {
   index: number;
   customerName: string;
   pledgeDate: string;
+  releaseDate: string | null;
   itemType: string;
   itemName: string;
+  netWeight: number;
+  netWeightOfGold: number;
+  netWeightOfSilver: number;
   loanAmount: number;
+  interestAccrued: number;
   receivableAmount: number | null;
+  marketValue: number | null;
+  ltv: number | null;
   status: string;
-  itemPhoto: string | null;
+}
+
+interface TableTotals {
+  count: number;
+  goldWeight: number;
+  silverWeight: number;
+  netWeight: number;
+  interestAccrued: number;
+  receivableAmount: number;
+  loanAmount: number;
+}
+
+// LTV thresholds mirror the financial-summary page colors.
+function ltvColor(ltv: number | null): string {
+  if (ltv === null) return "#9E9E9E";
+  if (ltv < 65) return "#4D6B2A";
+  if (ltv <= 75) return "#8A6B17";
+  if (ltv <= 90) return "#9A4B14";
+  return "#B91C1C";
 }
 
 interface Stats {
@@ -51,18 +78,29 @@ function formatDate(d: Date) {
 }
 
 export default function ReportsPage() {
-  const [activeTab, setActiveTab] = useState<"customer" | "pledge">("customer");
+  const [selectedReport, setSelectedReport] = useState<ReportKind>("customers");
 
   // Data
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
-  const [pledges, setPledges] = useState<PledgeRow[]>([]);
+  const [pledges, setPledges] = useState<PledgeRow[]>([]); // unfiltered — stats strip only
   const [stats, setStats] = useState<Stats | null>(null);
   const [adminName, setAdminName] = useState<string>("Admin");
   const [generatedOn] = useState(() => formatDate(new Date()));
 
+  // Filtered pledge table (active/released variants)
+  const [tableRows, setTableRows] = useState<PledgeRow[]>([]);
+  const [tableTotals, setTableTotals] = useState<TableTotals | null>(null);
+  const [tableError, setTableError] = useState<{ count: number } | null>(null);
+  const [loadingTable, setLoadingTable] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
   // Loading states
   const [loadingData, setLoadingData] = useState(true);
   const [generatingPDF, setGeneratingPDF] = useState(false);
+
+  const isPledge = selectedReport !== "customers";
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // ── Fetch everything on mount ────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
@@ -101,25 +139,115 @@ export default function ReportsPage() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // ── Build the query string for the filtered pledge variants ──────────────
+  const buildPledgeQuery = useCallback(
+    (extra?: Record<string, string>) => {
+      const status = selectedReport === "released" ? "released" : "active";
+      const params = new URLSearchParams({ status });
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+      if (extra) for (const [k, v] of Object.entries(extra)) params.set(k, v);
+      return params.toString();
+    },
+    [selectedReport, startDate, endDate]
+  );
+
+  // ── Fetch the filtered table (debounced on date typing) ──────────────────
+  const fetchTable = useCallback(async () => {
+    setLoadingTable(true);
+    setTableError(null);
+    try {
+      const res = await fetch(`/api/reports/pledges?${buildPledgeQuery()}`);
+      const data = await res.json();
+      if (!res.ok) {
+        if (data?.error === "TOO_MANY_RECORDS") {
+          setTableRows([]);
+          setTableTotals(null);
+          setTableError({ count: data.count ?? 0 });
+        } else {
+          setTableRows([]);
+          setTableTotals(null);
+        }
+        return;
+      }
+      setTableRows(data.rows ?? []);
+      setTableTotals(data.totals ?? null);
+    } catch (err) {
+      console.error("Pledge table fetch error:", err);
+      setTableRows([]);
+    } finally {
+      setLoadingTable(false);
+    }
+  }, [buildPledgeQuery]);
+
+  // Re-fetch when the variant or date range changes (debounced for typing).
+  useEffect(() => {
+    if (!isPledge) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(fetchTable, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [isPledge, fetchTable]);
+
+  // ── Quick-select date ranges (YYYY-MM-DD, local) ─────────────────────────
+  const ymd = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  };
+  function applyQuickRange(kind: "last30" | "thisMonth" | "lastMonth") {
+    const now = new Date();
+    if (kind === "last30") {
+      const from = new Date(now);
+      from.setDate(from.getDate() - 30);
+      setStartDate(ymd(from));
+      setEndDate(ymd(now));
+    } else if (kind === "thisMonth") {
+      setStartDate(ymd(new Date(now.getFullYear(), now.getMonth(), 1)));
+      setEndDate(ymd(now));
+    } else {
+      const firstLast = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastLast = new Date(now.getFullYear(), now.getMonth(), 0); // day 0 = last day of prev month
+      setStartDate(ymd(firstLast));
+      setEndDate(ymd(lastLast));
+    }
+  }
+  function clearDates() {
+    setStartDate("");
+    setEndDate("");
+  }
+
   // ── PDF generation ───────────────────────────────────────────────────────
   const handleGeneratePDF = async () => {
     setGeneratingPDF(true);
     try {
-      const endpoint =
-        activeTab === "customer"
-          ? "/api/reports/customers?format=pdf"
-          : "/api/reports/pledges?format=pdf";
+      if (selectedReport === "customers") {
+        const res = await fetch("/api/reports/customers?format=pdf");
+        if (!res.ok) throw new Error("PDF generation failed");
+        const blob = await res.blob();
+        triggerDownload(blob, "customers.pdf");
+        return;
+      }
 
-      const res = await fetch(endpoint);
-      if (!res.ok) throw new Error("PDF generation failed");
+      // Active / Released variant — carry status + date range to the API.
+      const res = await fetch(`/api/reports/pledges?${buildPledgeQuery({ format: "pdf" })}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data?.error === "TOO_MANY_RECORDS") {
+          alert("Too many records to export. Narrow your date range.");
+        } else {
+          alert("Failed to generate PDF. Please try again.");
+        }
+        return;
+      }
 
       const blob = await res.blob();
-      const url  = window.URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href     = url;
-      a.download = activeTab === "customer" ? "customers.pdf" : "pledges.pdf";
-      a.click();
-      window.URL.revokeObjectURL(url);
+      const variant = selectedReport; // "active" | "released"
+      const range =
+        startDate || endDate
+          ? `${startDate || "start"}_to_${endDate || "end"}`
+          : `all-time_${ymd(new Date())}`;
+      triggerDownload(blob, `pledges-${variant}_${range}.pdf`);
     } catch (err) {
       console.error(err);
       alert("Failed to generate PDF. Please try again.");
@@ -128,13 +256,22 @@ export default function ReportsPage() {
     }
   };
 
+  function triggerDownload(blob: Blob, filename: string) {
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  }
+
   // ── Derived stats ────────────────────────────────────────────────────────
   const totalCustomers   = stats?.totalCustomers       ?? customers.length;
   const totalPledges     = pledges.length;
   const portfolioValue   = stats?.totalActiveLoanAmount ?? customers.reduce((s, c) => s + c.totalLoan, 0);
   const activePledges    = stats?.totalActivePledges   ?? pledges.filter(p => p.status === "ACTIVE").length;
 
-  const recordCount = activeTab === "customer" ? customers.length : pledges.length;
+  const recordCount = selectedReport === "customers" ? customers.length : tableRows.length;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -159,26 +296,84 @@ export default function ReportsPage() {
           ) : (
             <FileText size={16} />
           )}
-          {activeTab === "customer" ? "Generate Customer Report" : "Generate Pledge Report"}
+          {selectedReport === "customers"
+            ? "Generate Customer Report"
+            : selectedReport === "released"
+            ? "Generate Released Report"
+            : "Generate Pledge Report"}
         </button>
       </div>
 
       {/* REPORT SWITCHER */}
-      <div className="flex items-center gap-2 bg-[#F0EFDF] p-1.5 rounded-full mb-12 w-max border border-[#EAE8DD]">
-        {(["customer", "pledge"] as const).map((tab) => (
+      <div className="flex items-center gap-2 bg-[#F0EFDF] p-1.5 rounded-full mb-6 w-max border border-[#EAE8DD]">
+        {([
+          { key: "customers", label: "Customer Report" },
+          { key: "active",    label: "Active Pledges" },
+          { key: "released",  label: "Released Pledges" },
+        ] as const).map(({ key, label }) => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
+            key={key}
+            onClick={() => setSelectedReport(key)}
             className={`px-7 py-2 rounded-full text-[12px] font-semibold transition-all ${
-              activeTab === tab
+              selectedReport === key
                 ? "bg-[#555B3F] text-white shadow-sm"
                 : "text-[#6F6F6F] hover:text-[#2C2C2C]"
             }`}
           >
-            {tab === "customer" ? "Customer Report" : "Pledge Report"}
+            {label}
           </button>
         ))}
       </div>
+
+      {/* DATE RANGE (pledge variants only) */}
+      {isPledge && (
+        <div className="flex flex-wrap items-end gap-4 mb-12">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold text-[#6F6F6F] uppercase tracking-wider">From</label>
+            <input
+              type="date"
+              value={startDate}
+              max={endDate || undefined}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="h-9 px-3 rounded-[10px] text-[13px] text-[#2C2C2C] bg-white border border-[#ECEAE4] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold text-[#6F6F6F] uppercase tracking-wider">To</label>
+            <input
+              type="date"
+              value={endDate}
+              min={startDate || undefined}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="h-9 px-3 rounded-[10px] text-[13px] text-[#2C2C2C] bg-white border border-[#ECEAE4] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            {([
+              { key: "last30",    label: "Last 30 Days" },
+              { key: "thisMonth", label: "This Month" },
+              { key: "lastMonth", label: "Last Month" },
+            ] as const).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => applyQuickRange(key)}
+                className="h-9 px-3 rounded-full text-[12px] font-semibold text-[#6F6F6F] border border-[#ECEAE4] hover:text-[#2C2C2C] hover:border-[#D8D6C8] transition-colors"
+              >
+                {label}
+              </button>
+            ))}
+            {(startDate || endDate) && (
+              <button
+                onClick={clearDates}
+                className="h-9 px-3 rounded-full text-[12px] font-semibold text-[#9E9E9E] hover:text-[#2C2C2C] flex items-center gap-1 transition-colors"
+              >
+                <X size={13} /> Clear
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* SUMMARY STRIP */}
       <div className="flex items-center w-full border-t border-b border-[#ECEAE4] py-10 mb-16">
@@ -198,23 +393,74 @@ export default function ReportsPage() {
         ))}
       </div>
 
+      {/* FILTERED TOTALS STRIP — pledge variants only */}
+      {isPledge && tableTotals && !loadingTable && !tableError && (
+        <div
+          className="rounded-[12px] p-4 mb-8 border"
+          style={{ background: "var(--card-bg, #FAFAF7)", borderColor: "var(--border-light, #ECEAE4)" }}
+        >
+          <div className="flex flex-col sm:flex-row">
+            {(selectedReport === "active"
+              ? [
+                  { label: "Pledges",    value: String(tableTotals.count) },
+                  { label: "Gold Wt",    value: `${tableTotals.goldWeight.toFixed(2)}g` },
+                  { label: "Silver Wt",  value: `${tableTotals.silverWeight.toFixed(2)}g` },
+                  { label: "Interest",   value: formatINR(tableTotals.interestAccrued) },
+                  { label: "Receivable", value: formatINR(tableTotals.receivableAmount) },
+                ]
+              : [
+                  { label: "Pledges",     value: String(tableTotals.count) },
+                  { label: "Net Weight",  value: `${tableTotals.netWeight.toFixed(2)}g` },
+                  { label: "Interest",    value: formatINR(tableTotals.interestAccrued) },
+                  { label: "Receivable",  value: formatINR(tableTotals.receivableAmount) },
+                ]
+            ).map((stat, i, arr) => (
+              <div
+                key={stat.label}
+                className={`flex-1 flex flex-col items-center justify-center py-2 sm:py-0 ${
+                  i < arr.length - 1
+                    ? "border-b sm:border-b-0 sm:border-r border-[#ECEAE4]"
+                    : ""
+                }`}
+              >
+                <span className="text-[20px] font-semibold text-[#2C2C2C] leading-none mb-1">{stat.value}</span>
+                <span className="text-[10px] font-semibold text-[#6F6F6F] uppercase tracking-wider">{stat.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* TABLE SECTION */}
       <div className="mb-6">
         <div className="flex items-baseline gap-3 mb-6">
           <h2 className="text-[18px] font-semibold text-[#2C2C2C]">
-            {activeTab === "customer" ? "Customer Reports" : "Pledge Reports"}
+            {selectedReport === "customers"
+              ? "Customers"
+              : selectedReport === "released"
+              ? "Released Pledges"
+              : "Active Pledges"}
           </h2>
           <span className="text-[12px] text-[#6F6F6F]">
-            {loadingData ? "Loading…" : `${recordCount} total record${recordCount !== 1 ? "s" : ""}`}
+            {selectedReport === "customers"
+              ? loadingData
+                ? "Loading…"
+                : `${recordCount} total`
+              : loadingTable
+              ? "Loading…"
+              : selectedReport === "released"
+              ? `${recordCount} released record${recordCount !== 1 ? "s" : ""}`
+              : `${recordCount} active record${recordCount !== 1 ? "s" : ""}`}
           </span>
         </div>
 
-        {loadingData ? (
-          <div className="flex items-center gap-2 text-[#6F6F6F] text-[14px] py-12">
-            <Loader2 size={18} className="animate-spin text-[#555B3F]" />
-            Loading records…
-          </div>
-        ) : activeTab === "customer" ? (
+        {selectedReport === "customers" ? (
+          loadingData ? (
+            <div className="flex items-center gap-2 text-[#6F6F6F] text-[14px] py-12">
+              <Loader2 size={18} className="animate-spin text-[#555B3F]" />
+              Loading records…
+            </div>
+          ) : (
           /* ── CUSTOMER TABLE ── */
           <div className="w-full">
             <div className="grid grid-cols-[1.5fr_1.5fr_2.5fr_1fr_1fr] gap-4 py-3 px-3 bg-[#3D4230] rounded-t-[8px] text-[11px] font-semibold text-white tracking-wider uppercase">
@@ -242,54 +488,105 @@ export default function ReportsPage() {
               </div>
             ))}
           </div>
+          )
+        ) : loadingTable ? (
+          <div className="flex items-center gap-2 text-[#6F6F6F] text-[14px] py-12">
+            <Loader2 size={18} className="animate-spin text-[#555B3F]" />
+            Loading records…
+          </div>
+        ) : tableError ? (
+          /* ── TOO MANY RECORDS ── */
+          <div className="py-12 text-center">
+            <p className="text-[14px] text-[#9E9E9E] mb-4">
+              Your filter returns {tableError.count} records — too many to display. Please narrow your date range.
+            </p>
+            <button
+              onClick={() => applyQuickRange("last30")}
+              className="text-[13px] font-semibold text-[#555B3F] underline underline-offset-2 hover:text-[#4B5036] transition-colors"
+            >
+              Use Last 30 Days
+            </button>
+          </div>
         ) : (
           /* ── PLEDGE TABLE ── */
-          <div className="w-full">
-            <div className="grid grid-cols-[80px_1.2fr_1.2fr_1.5fr_1fr_1fr_100px] gap-4 py-3 px-3 bg-[#3D4230] rounded-t-[8px] text-[11px] font-semibold text-white tracking-wider uppercase">
-              <div>Photo</div>
-              <div>Customer</div>
-              <div>Date</div>
-              <div>Item</div>
-              <div className="text-right">Loan Amount</div>
-              <div className="text-right">Receivable</div>
-              <div className="text-right">Status</div>
-            </div>
-            {pledges.length === 0 ? (
-              <div className="py-12 text-center text-[14px] text-[#9E9E9E]">No pledges found.</div>
-            ) : pledges.map((p, i) => (
-              <div key={i} className="grid grid-cols-[80px_1.2fr_1.2fr_1.5fr_1fr_1fr_100px] gap-4 px-3 py-4 border-b border-[#F4F3EE] text-[13px] items-center">
-                <div>
-                  {p.itemPhoto ? (
-                    <img
-                      src={p.itemPhoto}
-                      alt={p.itemName}
-                      className="w-9 h-9 rounded-[6px] object-cover border border-[#ECEAE4]"
-                    />
-                  ) : (
-                    <div className="w-9 h-9 bg-[#EAE8DD] rounded-[6px] border border-[#ECEAE4]" />
-                  )}
-                </div>
-                <div className="font-semibold text-[#2C2C2C]">{p.customerName}</div>
-                <div className="text-[#6F6F6F]">{p.pledgeDate}</div>
-                <div className="text-[#6F6F6F]">{p.itemName}</div>
-                <div className="text-right font-semibold text-[#2C2C2C]">{formatINR(p.loanAmount)}</div>
-                <div className="text-right font-semibold text-[#2C2C2C]">
-                  {p.receivableAmount != null ? formatINR(p.receivableAmount) : formatINR(p.loanAmount)}
-                </div>
-                <div className="text-right flex justify-end">
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
-                      p.status === "ACTIVE"
-                        ? "bg-[#E8EBD8] text-[#555B3F]"
-                        : "bg-[#F4F3EE] text-[#9E9E9E]"
-                    }`}
-                  >
-                    {p.status}
-                  </span>
-                </div>
+          (() => {
+            const isReleasedVariant = selectedReport === "released";
+            // Active:   Customer | Date | Pledge | Gold Wt | Silver Wt | Loan | Interest | Receivable | LTV | Status
+            // Released: Customer | Date | Released | Pledge | Net Wt | Loan | Interest | Receivable | LTV | Status
+            const gridCols = isReleasedVariant
+              ? "1.2fr 0.9fr 0.9fr 1fr 0.7fr 1fr 1fr 1fr 0.6fr 0.7fr"
+              : "1.2fr 0.9fr 1fr 0.7fr 0.7fr 1fr 1fr 1fr 0.6fr 0.7fr";
+            return (
+            <div className="w-full">
+              <div
+                className="grid gap-3 py-3 px-3 bg-[#3D4230] rounded-t-[8px] text-[11px] font-semibold text-white tracking-wider uppercase"
+                style={{ gridTemplateColumns: gridCols }}
+              >
+                <div>Customer</div>
+                <div>Date</div>
+                {isReleasedVariant && <div>Released</div>}
+                <div>Pledge</div>
+                {isReleasedVariant
+                  ? <div className="text-right">Net Wt</div>
+                  : <><div className="text-right">Gold Wt</div><div className="text-right">Silver Wt</div></>}
+                <div className="text-right">Loan</div>
+                <div className="text-right">Interest</div>
+                <div className="text-right">Receivable</div>
+                <div className="text-right">LTV</div>
+                <div className="text-right">Status</div>
               </div>
-            ))}
-          </div>
+              {tableRows.length === 0 ? (
+                <div className="py-12 text-center text-[14px] text-[#9E9E9E]">No pledges found.</div>
+              ) : tableRows.map((p, i) => (
+                <div
+                  key={i}
+                  className="grid gap-3 px-3 py-4 border-b border-[#F4F3EE] text-[13px] items-center"
+                  style={{ gridTemplateColumns: gridCols }}
+                >
+                  <div className="font-semibold text-[#2C2C2C] truncate">{p.customerName}</div>
+                  <div className="text-[#6F6F6F]">{p.pledgeDate}</div>
+                  {isReleasedVariant && (
+                    <div className="text-[#6F6F6F]">{p.releaseDate ?? "—"}</div>
+                  )}
+                  <div className="text-[#6F6F6F] truncate">{p.itemName}</div>
+                  {isReleasedVariant ? (
+                    <div className="text-right text-[#6F6F6F]">
+                      {p.netWeight > 0 ? `${p.netWeight.toFixed(2)}g` : <span className="text-[#9E9E9E]">—</span>}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="text-right text-[#6F6F6F]">
+                        {p.netWeightOfGold > 0 ? `${p.netWeightOfGold.toFixed(2)}g` : <span className="text-[#9E9E9E]">—</span>}
+                      </div>
+                      <div className="text-right text-[#6F6F6F]">
+                        {p.netWeightOfSilver > 0 ? `${p.netWeightOfSilver.toFixed(2)}g` : <span className="text-[#9E9E9E]">—</span>}
+                      </div>
+                    </>
+                  )}
+                  <div className="text-right font-semibold text-[#2C2C2C]">{formatINR(p.loanAmount)}</div>
+                  <div className="text-right font-semibold text-[#2C2C2C]">
+                    {p.interestAccrued > 0 ? formatINR(p.interestAccrued) : <span className="text-[#9E9E9E]">—</span>}
+                  </div>
+                  <div className="text-right font-semibold text-[#2C2C2C]">
+                    {p.receivableAmount != null ? formatINR(p.receivableAmount) : formatINR(p.loanAmount)}
+                  </div>
+                  <div className="text-right font-semibold" style={{ color: ltvColor(p.ltv) }}>
+                    {p.ltv != null ? `${p.ltv.toFixed(1)}%` : "—"}
+                  </div>
+                  <div className="text-right">
+                    <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                      p.status === "ACTIVE"
+                        ? "bg-[#F0EFDF] text-[#555B3F]"
+                        : "bg-[#F4F3EE] text-[#6F6F6F]"
+                    }`}>
+                      {p.status === "ACTIVE" ? "Active" : "Released"}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            );
+          })()
         )}
       </div>
 
@@ -298,7 +595,7 @@ export default function ReportsPage() {
         <div>
           {loadingData
             ? "Loading…"
-            : `Showing ${recordCount} of ${recordCount} ${activeTab === "customer" ? "customers" : "pledges"}`}
+            : `Showing ${recordCount} of ${recordCount} ${selectedReport === "customers" ? "customers" : "pledges"}`}
         </div>
         <div className="flex items-center gap-4">
           <button className="p-1 hover:text-[#2C2C2C] disabled:opacity-30" disabled>
@@ -326,11 +623,15 @@ export default function ReportsPage() {
         <div className="text-[#6F6F6F] md:text-right">
           <div className="mb-1">
             <span className="font-bold text-[#2C2C2C]">Report Type:</span>{" "}
-            {activeTab === "customer" ? "Customer Report" : "Pledge Report"}
+            {selectedReport === "customers"
+              ? "Customer Report"
+              : selectedReport === "released"
+              ? "Released Pledges Report"
+              : "Active Pledges Report"}
           </div>
           <div>
             <span className="font-bold text-[#2C2C2C]">Records Included:</span>{" "}
-            {recordCount} {activeTab === "customer" ? "Customer" : "Pledge"}{recordCount !== 1 ? "s" : ""}
+            {recordCount} {selectedReport === "customers" ? "Customer" : "Pledge"}{recordCount !== 1 ? "s" : ""}
           </div>
         </div>
       </div>
