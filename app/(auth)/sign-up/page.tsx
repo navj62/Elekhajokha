@@ -11,14 +11,13 @@ import {
 import Image from "next/image";
 
 export default function SignUpPage() {
-  // ── v7: only destructure signUp (isLoaded / setActive removed)
   const { signUp } = useSignUp();
   const router = useRouter();
 
   const [form, setForm] = useState({
     firstName: "", lastName: "", username: "",
     email: "", password: "", confirmPassword: "",
-  }); 
+  });
 
   const [pendingVerification, setPendingVerification] = useState(false);
   const [otp, setOtp] = useState<string[]>(Array(6).fill(""));
@@ -29,6 +28,13 @@ export default function SignUpPage() {
   const [resendCooldown, setResendCooldown] = useState(0);
 
   const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  /* ── Resend cooldown via useEffect (cleaner than inline setInterval) ── */
+  useEffect(() => {
+    if (resendCooldown === 0) return;
+    const timer = setInterval(() => setResendCooldown((c) => c - 1), 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   // Guard: wait for SDK to initialise
   if (!signUp) return <div className="p-10">Loading...</div>;
@@ -64,13 +70,6 @@ export default function SignUpPage() {
       e.preventDefault();
     }
   }
-
-  /* ── Resend cooldown via useEffect (cleaner than inline setInterval) ── */
-  useEffect(() => {
-    if (resendCooldown === 0) return;
-    const timer = setInterval(() => setResendCooldown((c) => c - 1), 1000);
-    return () => clearInterval(timer);
-  }, [resendCooldown]);
 
   /* ── Step 1: Create account & send OTP (v7 API) ── */
   async function submit(e: React.FormEvent) {
