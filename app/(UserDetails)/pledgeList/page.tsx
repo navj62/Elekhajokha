@@ -11,11 +11,6 @@ import SubscriptionGuard from "@/components/SubscriptionGuard";
 /* ------------------------------------------------------------------ */
 /*  Constants                                                           */
 /* ------------------------------------------------------------------ */
-const ITEM_TYPES = [
-  "Ring", "Necklace", "Bangles", "Chain", "Earrings",
-  "Bracelet", "Anklet", "Pendant", "Bangle Set", "Other",
-] as const;
-
 const METAL_TYPES  = ["GOLD", "SILVER"] as const;
 const STATUS_TYPES = ["ACTIVE", "RELEASED", "OVERDUE"] as const;
 
@@ -195,6 +190,7 @@ export default function PledgesPage() {
   const [error,       setError]       = useState<string | null>(null);
   const [hasMore,     setHasMore]     = useState(false);
   const [nextCursor,  setNextCursor]  = useState<string | null>(null);
+  const [itemTypeOptions, setItemTypeOptions] = useState<string[]>([]);
 
   const [filters, setFilters] = useState<Filters>({
     search:    "",
@@ -261,6 +257,18 @@ export default function PledgesPage() {
       setLoadingMore(false);
     }
   }
+
+  /* ── Fetch item type options once on mount ─────────────────────── */
+  useEffect(() => {
+    fetch("/api/item-types")
+      .then((r) => r.json())
+      .then((data) => {
+        const defaults: { label: string }[] = data.defaults ?? [];
+        const custom: { label: string }[]   = data.custom   ?? [];
+        setItemTypeOptions([...defaults.map(t => t.label), ...custom.map(t => t.label)]);
+      })
+      .catch(() => {});
+  }, []);
 
   /* ── Effect: fetch on filter change ───────────────────────────── */
   useEffect(() => {
@@ -368,7 +376,7 @@ export default function PledgesPage() {
               value={staged.itemType}
               onChange={v => setStaged(s => ({ ...s, itemType: v }))}
               placeholder="All Items"
-              options={ITEM_TYPES.map(t => ({ label: t, value: t }))}
+              options={itemTypeOptions.map(t => ({ label: t, value: t }))}
             />
 
             {/* Status */}
