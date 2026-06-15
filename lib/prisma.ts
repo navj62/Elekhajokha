@@ -1,6 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaNeon } from "@prisma/adapter-neon";
-import { neonConfig } from "@neondatabase/serverless";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import ws from "ws";
+
+// Polyfill WebSocket for Neon Serverless driver in Node environment
+neonConfig.webSocketConstructor = ws;
 
 /* ------------------------------------------------------------------ */
 /* Global type                                                         */
@@ -19,9 +23,8 @@ const createPrismaClient = () => {
     throw new Error("DATABASE_URL is not defined");
   }
 
-  const adapter = new PrismaNeon({
-    connectionString: process.env.DATABASE_URL,
-  });
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaNeon(pool);
 
   return new PrismaClient({
     adapter,

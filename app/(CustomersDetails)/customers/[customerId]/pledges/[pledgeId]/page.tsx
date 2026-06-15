@@ -6,7 +6,7 @@ import Link from "next/link";
 import {
   Loader2, ArrowLeft, User, Phone, MapPin, Percent,
   Calendar, Clock, ChevronUp, Plus, FileText, X,
-  TrendingUp, Package, RefreshCw, Receipt as ReceiptIcon,
+  TrendingUp, Package, RefreshCw, Receipt as ReceiptIcon, Navigation,
 } from "lucide-react";
 
 import { calculateLTV } from "@/lib/calculateLTV";
@@ -390,30 +390,61 @@ export default function PledgeDetailPage() {
             <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1.5">Principal Amount</p>
             <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums">{fmtINR(pledge.loanAmount)}</p>
           </div>
-          {/* Accrued Interest */}
-          <div className="px-6 py-5">
-            <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1.5">Accrued Interest</p>
-            <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums">{fmtINR(interest.totalInterest)}</p>
-          </div>
-          {/* Total Due */}
-          <div className="px-6 py-5">
-            <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1.5">Total Due</p>
-            <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums">{fmtINR(interest.receivableAmount)}</p>
-          </div>
-          {/* LTV */}
-          <div className="px-6 py-5">
-            <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1.5">Loan-to-Value (LTV)</p>
-            <div className="flex items-baseline gap-2">
-              <p className={`text-[22px] font-semibold tabular-nums ${ltvPct !== null && ltvPct > 75 ? "text-[#DC2626]" : "text-[#555B3F]"}`}>
-                {ltvPct !== null ? `${ltvPct.toFixed(1)}%` : "N/A"}
-              </p>
-              {ltvPct !== null && (
-                <span className={`text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded-full ${ltvSafe ? "bg-[#E8EBD8] text-[#555B3F]" : "bg-[#FEE2E2] text-[#991B1B]"}`}>
-                  {ltvSafe ? "Safe" : ltvPct <= 75 ? "Watch" : "At Risk"}
-                </span>
-              )}
-            </div>
-          </div>
+          
+          {pledge.status === "RELEASED" ? (
+            <>
+              {/* Interest Collected */}
+              <div className="px-6 py-5">
+                <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1.5">Interest Collected</p>
+                <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums">
+                  {fmtINR(transactions.filter(t => t.type === "REPAYMENT_INTEREST").reduce((sum, t) => sum + t.amount, 0))}
+                </p>
+              </div>
+              {/* Total Amount Paid */}
+              <div className="px-6 py-5">
+                <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1.5">Total Amount Paid</p>
+                <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums">
+                  {fmtINR(transactions.reduce((sum, t) => sum + t.amount, 0))}
+                </p>
+              </div>
+              {/* Release Date */}
+              <div className="px-6 py-5">
+                <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1.5">Release Date</p>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums">
+                    {pledge.releaseDate ? fmtDate(pledge.releaseDate) : "N/A"}
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Accrued Interest */}
+              <div className="px-6 py-5">
+                <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1.5">Accrued Interest</p>
+                <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums">{fmtINR(interest.totalInterest)}</p>
+              </div>
+              {/* Total Due */}
+              <div className="px-6 py-5">
+                <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1.5">Total Due</p>
+                <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums">{fmtINR(interest.receivableAmount)}</p>
+              </div>
+              {/* LTV */}
+              <div className="px-6 py-5">
+                <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1.5">Loan-to-Value (LTV)</p>
+                <div className="flex items-baseline gap-2">
+                  <p className={`text-[22px] font-semibold tabular-nums ${ltvPct !== null && ltvPct > 75 ? "text-[#DC2626]" : "text-[#555B3F]"}`}>
+                    {ltvPct !== null ? `${ltvPct.toFixed(1)}%` : "N/A"}
+                  </p>
+                  {ltvPct !== null && (
+                    <span className={`text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded-full ${ltvSafe ? "bg-[#E8EBD8] text-[#555B3F]" : "bg-[#FEE2E2] text-[#991B1B]"}`}>
+                      {ltvSafe ? "Safe" : ltvPct <= 75 ? "Watch" : "At Risk"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -458,22 +489,35 @@ export default function PledgeDetailPage() {
                   <MapPin size={11} className="text-[#C5C7B8] mt-0.5 shrink-0" />
                   <span>{pledge.customer.address ?? "—"}</span>
                 </div>
-                {pledge.customer.region && (
+                <div className="flex items-start gap-2">
+                  <Navigation size={11} className="text-[#C5C7B8] mt-0.5 shrink-0" />
+                  <span>{pledge.customer.region}</span>
+                </div>
+                {/* {pledge.customer.region && (
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 shrink-0" />
                     <span className="text-[10px] font-bold tracking-widest uppercase text-[#8C8F7A]">Region</span>
                     <span className="text-[#2C2C2C] font-medium ml-auto">{pledge.customer.region}</span>
                   </div>
-                )}
+                )} */}
               </div>
             </div>
           </div>
 
           {/* Financial Structure Card */}
           <div className="bg-white rounded-[16px] overflow-hidden border border-[#ECEAE4] border-t-4 border-t-[#555B3F] hover:border-[#D5D3CC] hover:shadow-sm transition-all cursor-pointer">
-            <div className="flex items-center gap-2 px-5 py-4 border-b border-[#F4F3EE] text-[13px] font-semibold text-[#2C2C2C]">
-              <FileText size={13} className="text-[#8C8F7A]" /> Financial Structure
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#F4F3EE]">
+              <div className="flex items-center gap-2 text-[13px] font-semibold text-[#2C2C2C]">
+                <FileText size={13} className="text-[#8C8F7A]" /> Financial Structure
+              </div>
+              <Link
+                href={`/customers/${params.customerId}/financial-summary`}
+                className="text-[11px] font-semibold text-[#555B3F] hover:underline"
+              >
+                View Summary →
+              </Link>
             </div>
+
             <div className="px-5 py-5 space-y-4">
               {/* Loan Amount */}
               <div>

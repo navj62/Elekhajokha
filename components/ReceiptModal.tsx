@@ -1,6 +1,7 @@
 // components/ReceiptModal.tsx
 "use client";
 import { useState } from "react";
+import { useAlert } from "@/components/providers/AlertProvider";
 
 type Props = {
   customerId: string;
@@ -11,6 +12,7 @@ export default function ReceiptModal({ customerId, pledgeId }: Props) {
   const [open, setOpen] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { showAlert } = useAlert();
 
   const openReceipt = async () => {
     setOpen(true);
@@ -23,7 +25,7 @@ export default function ReceiptModal({ customerId, pledgeId }: Props) {
       setPdfUrl(window.URL.createObjectURL(blob));
     } catch (err) {
       console.error(err);
-      alert("Failed to load receipt.");
+      showAlert("Failed to load receipt.");
       setOpen(false);
     } finally {
       setLoading(false);

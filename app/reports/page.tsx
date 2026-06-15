@@ -2,6 +2,9 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { ArrowLeft, ArrowRight, FileText, Loader2 } from "lucide-react";
+import { useLanguage } from "@/components/providers/LanguageProvider";
+import { useAlert } from "@/components/providers/AlertProvider";
+
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface CustomerRow {
@@ -51,6 +54,8 @@ function formatDate(d: Date) {
 }
 
 export default function ReportsPage() {
+  const { t } = useLanguage();
+  const { showAlert } = useAlert();
   const [activeTab, setActiveTab] = useState<"customer" | "pledge">("customer");
 
   // Data
@@ -122,7 +127,7 @@ export default function ReportsPage() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert("Failed to generate PDF. Please try again.");
+      showAlert("Failed to generate PDF. Please try again.");
     } finally {
       setGeneratingPDF(false);
     }
@@ -143,9 +148,9 @@ export default function ReportsPage() {
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
         <h1 className="text-[28px] font-medium tracking-tight text-[#2C2C2C] flex items-baseline gap-4">
-          Reports
+          {t("nav_reports")}
           <span className="text-[14px] font-normal text-[#6F6F6F] tracking-normal">
-            Customer &amp; pledge reporting center
+            {t("customers")} &amp; {t("pledges")}
           </span>
         </h1>
 
@@ -159,7 +164,7 @@ export default function ReportsPage() {
           ) : (
             <FileText size={16} />
           )}
-          {activeTab === "customer" ? "Generate Customer Report" : "Generate Pledge Report"}
+          {activeTab === "customer" ? t("col_customer_details") : t("pledges")}
         </button>
       </div>
 
@@ -175,7 +180,7 @@ export default function ReportsPage() {
                 : "text-[#6F6F6F] hover:text-[#2C2C2C]"
             }`}
           >
-            {tab === "customer" ? "Customer Report" : "Pledge Report"}
+            {tab === "customer" ? t("col_customer_details") : t("pledges")}
           </button>
         ))}
       </div>
@@ -183,10 +188,10 @@ export default function ReportsPage() {
       {/* SUMMARY STRIP */}
       <div className="flex items-center w-full border-t border-b border-[#ECEAE4] py-10 mb-16">
         {[
-          { label: "Customers",      value: loadingData ? "—" : String(totalCustomers) },
-          { label: "Pledges",        value: loadingData ? "—" : String(totalPledges) },
-          { label: "Portfolio Value",value: loadingData ? "—" : formatINR(portfolioValue), wide: true },
-          { label: "Active Pledges", value: loadingData ? "—" : String(activePledges) },
+          { label: t("customers"),       value: loadingData ? "—" : String(totalCustomers) },
+          { label: t("pledges"),         value: loadingData ? "—" : String(totalPledges) },
+          { label: t("total_loan"),      value: loadingData ? "—" : formatINR(portfolioValue), wide: true },
+          { label: t("active_pledges"),  value: loadingData ? "—" : String(activePledges) },
         ].map((m, i, arr) => (
           <div
             key={m.label}
@@ -202,7 +207,7 @@ export default function ReportsPage() {
       <div className="mb-6">
         <div className="flex items-baseline gap-3 mb-6">
           <h2 className="text-[18px] font-semibold text-[#2C2C2C]">
-            {activeTab === "customer" ? "Customer Reports" : "Pledge Reports"}
+          {activeTab === "customer" ? t("col_customer_details") : t("all_pledges")}
           </h2>
           <span className="text-[12px] text-[#6F6F6F]">
             {loadingData ? "Loading…" : `${recordCount} total record${recordCount !== 1 ? "s" : ""}`}
@@ -218,11 +223,11 @@ export default function ReportsPage() {
           /* ── CUSTOMER TABLE ── */
           <div className="w-full">
             <div className="grid grid-cols-[1.5fr_1.5fr_2.5fr_1fr_1fr] gap-4 py-3 px-3 bg-[#3D4230] rounded-t-[8px] text-[11px] font-semibold text-white tracking-wider uppercase">
-              <div>Name</div>
-              <div>Mobile</div>
-              <div>Address</div>
-              <div className="text-center">Pledges</div>
-              <div className="text-right">Loan Amount</div>
+              <div>{t("full_name")}</div>
+              <div>{t("mobile_number")}</div>
+              <div>{t("address")}</div>
+              <div className="text-center">{t("pledges")}</div>
+              <div className="text-right">{t("loan_amount")}</div>
             </div>
             {customers.length === 0 ? (
               <div className="py-12 text-center text-[14px] text-[#9E9E9E]">No customers found.</div>
@@ -246,13 +251,13 @@ export default function ReportsPage() {
           /* ── PLEDGE TABLE ── */
           <div className="w-full">
             <div className="grid grid-cols-[80px_1.2fr_1.2fr_1.5fr_1fr_1fr_100px] gap-4 py-3 px-3 bg-[#3D4230] rounded-t-[8px] text-[11px] font-semibold text-white tracking-wider uppercase">
-              <div>Photo</div>
-              <div>Customer</div>
-              <div>Date</div>
-              <div>Item</div>
-              <div className="text-right">Loan Amount</div>
-              <div className="text-right">Receivable</div>
-              <div className="text-right">Status</div>
+              <div>{t("photo")}</div>
+              <div>{t("customers")}</div>
+              <div>{t("pledge_date")}</div>
+              <div>{t("item_name")}</div>
+              <div className="text-right">{t("loan_amount")}</div>
+              <div className="text-right">{t("receivable_amount")}</div>
+              <div className="text-right">{t("col_status")}</div>
             </div>
             {pledges.length === 0 ? (
               <div className="py-12 text-center text-[14px] text-[#9E9E9E]">No pledges found.</div>

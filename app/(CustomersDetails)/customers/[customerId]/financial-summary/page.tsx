@@ -8,8 +8,10 @@ import {
   BarChart, Bar,
 } from "recharts";
 import {
-  ArrowLeft, Send, Download, AlertTriangle, AlertCircle, RefreshCw, Loader2, Info
+  ArrowLeft, Send, Download, AlertTriangle, AlertCircle, RefreshCw, Loader2, Info, MapPin
 } from "lucide-react";
+import { useLanguage } from "@/components/providers/LanguageProvider";
+
 
 /* ------------------------------------------------------------------ */
 /*  Types — mirrors what the API returns                               */
@@ -17,60 +19,60 @@ import {
 type RiskTier = "SAFE" | "WATCH" | "AT RISK" | "UNDERWATER";
 
 interface ProcessedPledge {
-  id:               string;
-  name:             string;
-  pledgeDate:       string;
-  loanAmount:       number;
-  amountOwed:       number;
-  marketValue:      number | null;
-  ltv:              number | null;
-  risk:             RiskTier;
+  id: string;
+  name: string;
+  pledgeDate: string;
+  loanAmount: number;
+  amountOwed: number;
+  marketValue: number | null;
+  ltv: number | null;
+  risk: RiskTier;
   daysToUnderwater: number | null;
-  status:           "ACTIVE" | "RELEASED" | "OVERDUE";
-  metalType:        "GOLD" | "SILVER";
-  weight:           number;
+  status: "ACTIVE" | "RELEASED" | "OVERDUE";
+  metalType: "GOLD" | "SILVER";
+  weight: number;
 }
 
 interface Alert {
-  pledgeId:         string;
-  pledgeName:       string;
-  risk:             RiskTier;
-  ltv:              number | null;
+  pledgeId: string;
+  pledgeName: string;
+  risk: RiskTier;
+  ltv: number | null;
   daysToUnderwater: number | null;
-  message:          string;
+  message: string;
 }
 
 interface SummaryData {
   customer: {
-    id:                 string;
-    name:               string;
-    region:             string | null;
-    riskScore:          number;
+    id: string;
+    name: string;
+    region: string | null;
+    riskScore: number;
     totalActivePledges: number;
-    lastPledgeDate:     string | null;
+    lastPledgeDate: string | null;
   };
   metrics: {
-    totalLoanAmount:   number;
-    totalAmountOwed:   number;
-    totalGoldWeight:   number;
+    totalLoanAmount: number;
+    totalAmountOwed: number;
+    totalGoldWeight: number;
     totalSilverWeight: number;
-    activePledges:     number;
-    releasedPledges:   number;
+    activePledges: number;
+    releasedPledges: number;
     underwaterPledges: number;
-    overallLTV:        number | null;
-    totalMarketValue:  number;
+    overallLTV: number | null;
+    totalMarketValue: number;
     estimatedCoverage: number | null;
   };
   prices: {
-    goldPerGram:   number | null;
+    goldPerGram: number | null;
     silverPerGram: number | null;
-    updatedAt:     string | null;
+    updatedAt: string | null;
   };
-  pledges:         ProcessedPledge[];
+  pledges: ProcessedPledge[];
   riskDistribution: { name: string; value: number; color: string }[];
-  exposureData:    { name: string; gold: number; silver: number }[];
-  ltvTrend:        { month: string; ltv: number; marketValue: number; amountOwed: number }[];
-  alerts:          Alert[];
+  exposureData: { name: string; gold: number; silver: number }[];
+  ltvTrend: { month: string; ltv: number; marketValue: number; amountOwed: number }[];
+  alerts: Alert[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -92,9 +94,9 @@ const getInitials = (name: string) =>
   name.split(" ").map(n => n[0]).join("").substring(0, 2).toUpperCase();
 
 const RISK_CONFIG: Record<RiskTier, { label: string; bg: string; text: string; border: string }> = {
-  SAFE:       { label: "Safe",       bg: "bg-[#E8EBD8]", text: "text-[#555B3F]", border: "border-[#D3D9BB]" },
-  WATCH:      { label: "Watch",      bg: "bg-[#FDF4DC]", text: "text-[#8B6914]", border: "border-[#FDE6A8]" },
-  "AT RISK":  { label: "At Risk",    bg: "bg-[#FFF4E5]", text: "text-[#B25E09]", border: "border-[#FFDAB3]" },
+  SAFE: { label: "Safe", bg: "bg-[#E8EBD8]", text: "text-[#555B3F]", border: "border-[#D3D9BB]" },
+  WATCH: { label: "Watch", bg: "bg-[#FDF4DC]", text: "text-[#8B6914]", border: "border-[#FDE6A8]" },
+  "AT RISK": { label: "At Risk", bg: "bg-[#FFF4E5]", text: "text-[#B25E09]", border: "border-[#FFDAB3]" },
   UNDERWATER: { label: "Underwater", bg: "bg-[#FEE2E2]", text: "text-[#991B1B]", border: "border-[#FECACA]" },
 };
 
@@ -112,13 +114,13 @@ function LTVArc({ pct }: { pct: number }) {
   const r = 60, cx = 90, cy = 90;
   const start = -210, end = start + Math.min(pct / 100, 1) * 240;
   const toRad = (d: number) => (d * Math.PI) / 180;
-  const arc   = (angle: number) => `${cx + r * Math.cos(toRad(angle))},${cy + r * Math.sin(toRad(angle))}`;
+  const arc = (angle: number) => `${cx + r * Math.cos(toRad(angle))},${cy + r * Math.sin(toRad(angle))}`;
   const large = end - start > 180 ? 1 : 0;
   return (
     <div className="relative w-[180px] h-[110px] mx-auto">
       <svg width={180} height={110} viewBox="0 0 180 110">
         <path d={`M ${arc(start)} A ${r} ${r} 0 1 1 ${arc(start + 240)}`} fill="none" stroke="#ECEAE4" strokeWidth={12} strokeLinecap="round" />
-        <path d={`M ${arc(start)} A ${r} ${r} 0 ${large} 1 ${arc(end)}`}  fill="none" stroke="#6B7150" strokeWidth={12} strokeLinecap="round" />
+        <path d={`M ${arc(start)} A ${r} ${r} 0 ${large} 1 ${arc(end)}`} fill="none" stroke="#6B7150" strokeWidth={12} strokeLinecap="round" />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-end pb-3">
         <div className="text-[36px] font-semibold text-[#2C2C2C] leading-none tracking-tight">
@@ -147,13 +149,14 @@ function ChartTooltip({ active, payload, label }: any) {
 /*  Page                                                                */
 /* ================================================================== */
 export default function FinancialSummaryPage() {
-  const params     = useParams<{ customerId: string }>();
-  const router     = useRouter();
+  const params = useParams<{ customerId: string }>();
+  const router = useRouter();
+  const { t } = useLanguage();
   const customerId = params?.customerId;
 
-  const [data,    setData]    = useState<SummaryData | null>(null);
+  const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -197,7 +200,7 @@ export default function FinancialSummaryPage() {
   }
 
   const { customer, metrics, prices, pledges, exposureData, ltvTrend, alerts } = data;
-  
+
   // Refine risk distribution colors for the chart
   const riskColorMap: Record<string, string> = {
     "SAFE": "#6B7150",       // Olive
@@ -226,26 +229,26 @@ export default function FinancialSummaryPage() {
           </button>
           <div>
             <h1 className="text-[32px] font-semibold tracking-tight text-[#2C2C2C] leading-none mb-2">
-              Financial Summary
+              {t("financial_summary")}
             </h1>
             <p className="text-[14px] text-[#6F6F6F]">
-              Risk & exposure overview
+              {t("risk_overview")}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <button className="flex items-center gap-2 text-[13px] font-semibold text-[#2C2C2C] bg-white border border-[#ECEAE4] hover:bg-[#F9F8F3] px-4 py-2 rounded-[10px] shadow-sm transition-colors">
-            <Download size={14} /> Export
+            <Download size={14} /> {t("export")}
           </button>
           <button className="flex items-center gap-2 text-[13px] font-semibold text-white bg-[#6B7150] hover:bg-[#585E42] px-4 py-2 rounded-[10px] shadow-sm transition-colors">
-            <Send size={14} /> Send Summary
+            <Send size={14} /> {t("send_summary")}
           </button>
         </div>
       </div>
 
       {/* ── HERO SECTION (3 Columns) ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        
+
         {/* Left: Customer Profile Card */}
         <div className="bg-[#6B7150] rounded-[20px] p-6 text-white shadow-sm flex flex-col justify-between relative overflow-hidden">
           {/* Subtle bg pattern or shine can go here */}
@@ -261,7 +264,7 @@ export default function FinancialSummaryPage() {
             </div>
             <h2 className="text-[24px] font-semibold tracking-tight mb-1">{customer.name}</h2>
             <div className="flex items-center gap-1.5 text-[13px] text-white/70">
-              <span className="w-3.5 h-3.5 rounded-full border border-white/30 flex items-center justify-center text-[8px]">📍</span>
+              <MapPin size={12} />
               {customer.region || "Location unknown"}
             </div>
           </div>
@@ -292,7 +295,7 @@ export default function FinancialSummaryPage() {
 
         {/* Center: LTV Gauge */}
         <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm flex flex-col items-center justify-center text-center">
-          <p className="text-[12px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-6">Overall Portfolio LTV</p>
+          <p className="text-[12px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-6">{t("overall_portfolio_ltv")}</p>
           <LTVArc pct={metrics.overallLTV ?? 0} />
           <p className="text-[13px] text-[#6F6F6F] mt-6 max-w-[200px] leading-relaxed">
             Current Loan-to-Value ratio sits slightly above target threshold.
@@ -306,24 +309,24 @@ export default function FinancialSummaryPage() {
         <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm flex flex-col justify-between">
           <div className="grid grid-cols-2 gap-x-6 gap-y-8 flex-1">
             <div>
-              <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">Total Owed</p>
+              <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">{t("total_balance")}</p>
               <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums leading-tight">{inr(metrics.totalAmountOwed)}</p>
               <p className="text-[11px] text-[#6F6F6F] mt-1">incl. accrued interest</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">Market Value</p>
+              <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">{t("market_value")}</p>
               <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums leading-tight">{inr(metrics.totalMarketValue)}</p>
               <p className="text-[11px] text-[#6F6F6F] mt-1">at current gold price</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">Coverage</p>
+              <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">{t("coverage")}</p>
               <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums leading-tight">
                 {metrics.totalAmountOwed > 0 ? ((metrics.totalMarketValue / metrics.totalAmountOwed) * 100).toFixed(1) : 0}%
               </p>
               <p className="text-[11px] text-[#6F6F6F] mt-1">of owed amount</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">Total Loan Amount</p>
+              <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">{t("total_loan")}</p>
               <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums leading-tight">{inr(metrics.totalLoanAmount)}</p>
               <p className="text-[11px] text-[#6F6F6F] mt-1">principal disbursed</p>
             </div>
@@ -334,24 +337,22 @@ export default function FinancialSummaryPage() {
       {/* ── PORTFOLIO METRICS STRIP ── */}
       <div className="bg-white border border-[#ECEAE4] rounded-[16px] shadow-sm mb-6 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 divide-y lg:divide-y-0 lg:divide-x divide-[#ECEAE4] overflow-hidden">
         {[
-          { label: "Loan Amount",       value: inrCompact(metrics.totalLoanAmount) },
-          { label: "Total Amount Owed", value: inrCompact(metrics.totalAmountOwed) },
-          { label: "Active Pledges",    value: metrics.activePledges },
-          { label: "Gold Weight",       value: `${metrics.totalGoldWeight.toFixed(0)}g` },
-          { label: "Silver Weight",     value: `${metrics.totalSilverWeight.toFixed(0)}g` },
-          { label: "At Risk",           value: atRiskCount, warn: true },
-          { label: "Underwater",        value: metrics.underwaterPledges, err: true },
+          { label: t("loan_amount"), value: inrCompact(metrics.totalLoanAmount) },
+          { label: t("total_balance"), value: inrCompact(metrics.totalAmountOwed) },
+          { label: t("active_pledges"), value: metrics.activePledges },
+          { label: t("gold_weight"), value: `${metrics.totalGoldWeight.toFixed(0)}g` },
+          { label: t("silver_weight"), value: `${metrics.totalSilverWeight.toFixed(0)}g` },
+          { label: t("at_risk"), value: atRiskCount, warn: true },
+          { label: t("underwater"), value: metrics.underwaterPledges, err: true },
         ].map((m, i) => (
-          <div key={i} className={`p-4 flex flex-col justify-center items-center text-center ${
-            m.warn ? 'bg-[#FFF9F2] text-[#B25E09]' : 
-            m.err ? 'bg-[#FEF2F2] text-[#991B1B]' : 
-            'text-[#2C2C2C]'
-          }`}>
-            <span className={`text-[10px] font-bold tracking-widest uppercase mb-1 ${
-              m.warn ? 'text-[#B25E09]/70' : 
-              m.err ? 'text-[#991B1B]/70' : 
-              'text-[#8C8F7A]'
+          <div key={i} className={`p-4 flex flex-col justify-center items-center text-center ${m.warn ? 'bg-[#FFF9F2] text-[#B25E09]' :
+            m.err ? 'bg-[#FEF2F2] text-[#991B1B]' :
+              'text-[#2C2C2C]'
             }`}>
+            <span className={`text-[10px] font-bold tracking-widest uppercase mb-1 ${m.warn ? 'text-[#B25E09]/70' :
+              m.err ? 'text-[#991B1B]/70' :
+                'text-[#8C8F7A]'
+              }`}>
               {m.label}
             </span>
             <span className="text-[18px] font-semibold tabular-nums">{m.value}</span>
@@ -361,12 +362,12 @@ export default function FinancialSummaryPage() {
 
       {/* ── ANALYTICS SECTION ── */}
       <div className="grid grid-cols-1 lg:grid-cols-[70fr_30fr] gap-6 mb-6">
-        
+
         {/* Left: LTV Trend Over Time */}
         <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm">
           <div className="flex justify-between items-start mb-8">
             <div>
-              <p className="text-[12px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">LTV Trend Over Time</p>
+              <p className="text-[12px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">{t("ltv_trend")}</p>
               <p className="text-[13px] text-[#6F6F6F]">6-month exposure history</p>
             </div>
             <div className="flex gap-5">
@@ -401,7 +402,7 @@ export default function FinancialSummaryPage() {
         <div className="space-y-6">
           {/* Risk Distribution */}
           <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm">
-            <p className="text-[12px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-4">Risk Distribution</p>
+            <p className="text-[12px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-4">{t("risk_distribution")}</p>
             <div className="h-32 w-full min-w-0 relative">
               <ResponsiveContainer width="99%" height="100%">
                 <PieChart>
@@ -428,9 +429,9 @@ export default function FinancialSummaryPage() {
 
           {/* Exposure Profile */}
           <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm">
-            <p className="text-[12px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">Exposure Profile</p>
+            <p className="text-[12px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">{t("exposure_profile")}</p>
             <p className="text-[11px] text-[#6F6F6F] mb-4">Loan vs Owed vs Market Value</p>
-            
+
             <div className="flex gap-3 mb-4">
               {[{ color: "#C5A86D", label: "Gold" }, { color: "#94A3B8", label: "Silver" }].map(l => (
                 <span key={l.label} className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-[#6F6F6F]">
@@ -445,7 +446,7 @@ export default function FinancialSummaryPage() {
                   <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#8C8F7A" }} axisLine={false} tickLine={false} dy={5} />
                   <YAxis tick={{ fontSize: 10, fill: "#8C8F7A" }} axisLine={false} tickLine={false} width={30} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="gold"   name="Gold"   fill="#C5A86D" radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="gold" name="Gold" fill="#C5A86D" radius={[2, 2, 0, 0]} />
                   <Bar dataKey="silver" name="Silver" fill="#94A3B8" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -457,20 +458,20 @@ export default function FinancialSummaryPage() {
       {/* ── ACTIVE PLEDGES TABLE ── */}
       <div className="bg-white border border-[#ECEAE4] rounded-[20px] overflow-hidden shadow-sm mb-6">
         <div className="px-6 py-5 border-b border-[#ECEAE4]">
-          <p className="text-[14px] font-bold tracking-widest text-[#8C8F7A] uppercase">Active Pledges</p>
+          <p className="text-[14px] font-bold tracking-widest text-[#8C8F7A] uppercase">{t("active_pledges")}</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-[13px] text-left">
             <thead className="bg-[#F9F8F3] border-b border-[#ECEAE4] text-[#8C8F7A] text-[10px] font-bold tracking-widest uppercase">
               <tr>
-                <th className="px-6 py-3">Asset</th>
-                <th className="px-6 py-3 text-right">Principal</th>
-                <th className="px-6 py-3 text-right">Owed</th>
-                <th className="px-6 py-3 text-right">Market Val</th>
-                <th className="px-6 py-3 text-right">LTV</th>
-                <th className="px-6 py-3">Risk</th>
-                <th className="px-6 py-3 text-center">Days Left</th>
-                <th className="px-6 py-3 text-center">Status</th>
+                <th className="px-6 py-3">{t("item_name")}</th>
+                <th className="px-6 py-3 text-right">{t("principal")}</th>
+                <th className="px-6 py-3 text-right">{t("amount_owed")}</th>
+                <th className="px-6 py-3 text-right">{t("market_value")}</th>
+                <th className="px-6 py-3 text-right">{t("ltv")}</th>
+                <th className="px-6 py-3">{t("risk")}</th>
+                <th className="px-6 py-3 text-center">{t("days_left")}</th>
+                <th className="px-6 py-3 text-center">{t("col_status")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F4F3EE]">
@@ -511,25 +512,24 @@ export default function FinancialSummaryPage() {
 
       {/* ── BOTTOM INSIGHTS SECTION ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
+
         {/* Risk Alerts */}
         <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-2 mb-6">
               <AlertCircle size={18} className="text-[#8C8F7A]" />
-              <p className="text-[14px] font-bold tracking-widest text-[#2C2C2C] uppercase">Risk Alerts</p>
+              <p className="text-[14px] font-bold tracking-widest text-[#2C2C2C] uppercase">{t("risk_alerts")}</p>
             </div>
             <div className="space-y-4 mb-6">
               {alerts.length > 0 ? alerts.map((a, i) => (
                 <div key={i} className="bg-[#F9F8F3] border border-[#ECEAE4] p-4 rounded-[12px] flex gap-3">
                   {a.risk === "UNDERWATER" ? <AlertTriangle size={16} className="text-[#991B1B] mt-0.5 shrink-0" /> :
-                   a.risk === "AT RISK"    ? <AlertTriangle size={16} className="text-[#B25E09] mt-0.5 shrink-0" /> :
-                   <Info size={16} className="text-[#8B6914] mt-0.5 shrink-0" />}
+                    a.risk === "AT RISK" ? <AlertTriangle size={16} className="text-[#B25E09] mt-0.5 shrink-0" /> :
+                      <Info size={16} className="text-[#8B6914] mt-0.5 shrink-0" />}
                   <div>
-                    <p className={`text-[12px] font-semibold mb-0.5 ${
-                      a.risk === "UNDERWATER" ? "text-[#991B1B]" : 
+                    <p className={`text-[12px] font-semibold mb-0.5 ${a.risk === "UNDERWATER" ? "text-[#991B1B]" :
                       a.risk === "AT RISK" ? "text-[#B25E09]" : "text-[#8B6914]"
-                    }`}>
+                      }`}>
                       {a.pledgeName} {a.risk === "UNDERWATER" ? "liquidation risk" : "watchlist horizon"}
                     </p>
                     <p className="text-[12px] text-[#6F6F6F] leading-relaxed">{a.message}</p>
@@ -545,14 +545,14 @@ export default function FinancialSummaryPage() {
           <div className="flex items-center justify-between border-t border-[#ECEAE4] pt-5 mt-auto">
             <p className="text-[11px] text-[#8C8F7A]">Last notification sent 2 days ago</p>
             <button className="bg-[#4D5335] hover:bg-[#3D4230] text-white text-[13px] font-semibold px-5 py-2.5 rounded-[12px] shadow-sm flex items-center gap-2 transition-colors">
-              <Send size={14} /> Send Risk Summary
+              <Send size={14} /> {t("send_summary")}
             </button>
           </div>
         </div>
 
         {/* Market Parameters */}
         <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm">
-          <p className="text-[14px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-6">Market Parameters</p>
+          <p className="text-[14px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-6">{t("market_parameters")}</p>
           <div className="bg-[#F9F8F3] border border-[#ECEAE4] rounded-[16px] overflow-hidden">
             <div className="divide-y divide-[#ECEAE4]">
               <div className="flex justify-between p-4 text-[13px]">

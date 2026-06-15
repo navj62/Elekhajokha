@@ -7,6 +7,7 @@ import {
   Calendar, X,
 } from "lucide-react";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
+import { useLanguage } from "@/components/providers/LanguageProvider";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                           */
@@ -81,11 +82,19 @@ const STATUS_CFG: Record<string, { badge: string; border: string; dot: string }>
 /* ------------------------------------------------------------------ */
 /*  Pledge Card                                                         */
 /* ------------------------------------------------------------------ */
-function PledgeCard({ pledge, onClick }: { pledge: PledgeRow; onClick: () => void }) {
+function PledgeCard({ pledge, onClick, t }: { pledge: PledgeRow; onClick: () => void; t: (k: string) => string }) {
   const cfg = STATUS_CFG[pledge.status] ?? STATUS_CFG.RELEASED;
   const goldWt   = pledge.netWeightOfGold   > 0 ? pledge.netWeightOfGold.toFixed(3)   : null;
   const silverWt = pledge.netWeightOfSilver > 0 ? pledge.netWeightOfSilver.toFixed(3) : null;
   const metalLabel = pledge.metalTypes.join(", ");
+
+  // Translate status
+  const statusMap: Record<string, string> = {
+    ACTIVE:   t("status_active"),
+    RELEASED: t("status_released"),
+    OVERDUE:  t("status_overdue"),
+  };
+  const statusLabel = statusMap[pledge.status] ?? titleCase(pledge.status);
 
   return (
     <div
@@ -100,7 +109,7 @@ function PledgeCard({ pledge, onClick }: { pledge: PledgeRow; onClick: () => voi
             <span className="text-[16px] font-semibold text-[#2C2C2C] leading-tight">{pledge.customerName}</span>
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide ${cfg.badge}`}>
               <div className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-              {titleCase(pledge.status)}
+              {statusLabel}
             </span>
           </div>
           <div className="flex items-center gap-2 text-[12px] text-[#8C8F7A]">
@@ -113,14 +122,14 @@ function PledgeCard({ pledge, onClick }: { pledge: PledgeRow; onClick: () => voi
 
         {/* Right — Loan Amount */}
         <div className="text-right shrink-0">
-          <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">Loan Amount</p>
+          <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1">{t("loan_amount")}</p>
           <p className="text-[22px] font-semibold text-[#2C2C2C] tabular-nums leading-none">{fmtINR(pledge.loanAmount)}</p>
         </div>
       </div>
 
       {/* ── Items Section ── */}
       <div className="mx-6 mb-5 bg-[#F5F4EF] rounded-[10px] px-4 py-3">
-        <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1.5">Items Pledged</p>
+        <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-1.5">{t("items_pledged")}</p>
         <p className="text-[13px] text-[#2C2C2C] font-medium">
           {pledge.itemTypes.length > 0 ? pledge.itemTypes.join(", ") : "—"}
         </p>
@@ -135,12 +144,12 @@ function PledgeCard({ pledge, onClick }: { pledge: PledgeRow; onClick: () => voi
         <div className="flex items-center gap-3 text-[12px] text-[#6F6F6F]">
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 rounded-full bg-[#C9A14B]" />
-            <span>Gold: <span className="font-semibold text-[#2C2C2C]">{goldWt ?? "0.000"} gm</span></span>
+            <span>{t("gold")}: <span className="font-semibold text-[#2C2C2C]">{goldWt ?? "0.000"} gm</span></span>
           </div>
           <span className="text-[#D8D6CD]">•</span>
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 rounded-full bg-[#9E9E9E]" />
-            <span>Silver: <span className="font-semibold text-[#2C2C2C]">{silverWt ?? "0.000"} gm</span></span>
+            <span>{t("silver")}: <span className="font-semibold text-[#2C2C2C]">{silverWt ?? "0.000"} gm</span></span>
           </div>
         </div>
 
@@ -190,6 +199,7 @@ function ThemedSelect({
 /* ================================================================== */
 export default function PledgesPage() {
   const router = useRouter();
+  const { t, language } = useLanguage();
 
   const [pledges,     setPledges]     = useState<PledgeRow[]>([]);
   const [loading,     setLoading]     = useState(true);
@@ -297,11 +307,21 @@ export default function PledgesPage() {
     ? pledges.filter(p =>
         p.customerName.toLowerCase().includes(filters.search.toLowerCase()) ||
         p.id.toLowerCase().includes(filters.search.toLowerCase()) ||
-        p.itemTypes.some(t => t.toLowerCase().includes(filters.search.toLowerCase()))
+        p.itemTypes.some(tp => tp.toLowerCase().includes(filters.search.toLowerCase()))
       )
     : pledges;
 
   const hasActiveFilters = !!(staged.metalType || staged.itemType || staged.status);
+
+  /* ── Localized option labels ───────────────────────────────────── */
+  const metalOptions = METAL_TYPES.map(m => ({
+    label: m === "GOLD" ? t("gold") : t("silver"),
+    value: m,
+  }));
+  const statusOptions = STATUS_TYPES.map(s => ({
+    label: s === "ACTIVE" ? t("status_active") : s === "RELEASED" ? t("status_released") : t("status_overdue"),
+    value: s,
+  }));
 
   /* ================================================================ */
   return (
@@ -312,21 +332,21 @@ export default function PledgesPage() {
         <div className="flex items-start justify-between mb-8">
           <div>
             <h1 className="text-[28px] font-medium tracking-tight text-[#2C2C2C] leading-none mb-1.5">
-              All Pledges
+              {t("all_pledges")}
             </h1>
-            <p className="text-[13px] text-[#8C8F7A]">View and manage all customer pledges.</p>
+            <p className="text-[13px] text-[#8C8F7A]">{t("all_pledges_desc")}</p>
           </div>
 
           {/* Results Card */}
           <div className="bg-white rounded-2xl border border-[#E8E6DF] w-[100px] flex flex-col justify-center items-center shadow-sm py-4 shrink-0">
             <div className="text-[9px] font-bold tracking-widest text-[#646657] uppercase mb-1.5">
-              Results
+              {t("results")}
             </div>
             <div className="text-[32px] font-semibold text-[#51553A] leading-none mb-0.5">
               {loading ? "—" : displayed.length}
             </div>
             <div className="text-[9px] font-bold text-[#51553A] uppercase tracking-widest mt-1">
-              Pledges
+              {t("pledges")}
             </div>
           </div>
         </div>
@@ -344,7 +364,7 @@ export default function PledgesPage() {
                   setStaged(s => ({ ...s, search: e.target.value }));
                   setFilters(f => ({ ...f, search: e.target.value }));
                 }}
-                placeholder="Search by customer name, ID, or item..."
+                placeholder={t("search_customers")}
                 className="w-full pl-9 pr-8 py-2.5 text-[13px] bg-white border border-[#E8E6DF] rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#C5C7B8] text-[#2C2C2C] placeholder-[#8C8F7A]"
               />
               {staged.search && (
@@ -361,24 +381,24 @@ export default function PledgesPage() {
             <ThemedSelect
               value={staged.metalType}
               onChange={v => setStaged(s => ({ ...s, metalType: v as MetalTypeValue | "" }))}
-              placeholder="All Metal Types"
-              options={METAL_TYPES.map(m => ({ label: titleCase(m), value: m }))}
+              placeholder={t("all_metal_types")}
+              options={metalOptions}
             />
 
             {/* Item Type */}
             <ThemedSelect
               value={staged.itemType}
               onChange={v => setStaged(s => ({ ...s, itemType: v as ItemTypeValue | "" }))}
-              placeholder="All Items"
-              options={ITEM_TYPES.map(t => ({ label: titleCase(t), value: t }))}
+              placeholder={t("all_items")}
+              options={ITEM_TYPES.map(tp => ({ label: titleCase(tp), value: tp }))}
             />
 
             {/* Status */}
             <ThemedSelect
               value={staged.status}
               onChange={v => setStaged(s => ({ ...s, status: v as StatusValue | "" }))}
-              placeholder="All Statuses"
-              options={STATUS_TYPES.map(s => ({ label: titleCase(s), value: s }))}
+              placeholder={t("all_statuses")}
+              options={statusOptions}
             />
 
             {/* Reset */}
@@ -387,7 +407,7 @@ export default function PledgesPage() {
                 onClick={resetFilters}
                 className="text-[13px] font-medium text-[#6F6F6F] hover:text-[#2C2C2C] transition-colors px-1"
               >
-                Reset
+                {t("reset")}
               </button>
             )}
 
@@ -396,7 +416,7 @@ export default function PledgesPage() {
               onClick={applyFilters}
               className="ml-auto bg-[#555B3F] hover:bg-[#3D4230] text-white text-[13px] font-semibold px-5 py-2.5 rounded-[10px] transition-colors"
             >
-              Apply Filters
+              {t("apply_filters")}
             </button>
           </div>
         </div>
@@ -412,10 +432,10 @@ export default function PledgesPage() {
           </div>
         ) : displayed.length === 0 ? (
           <div className="text-center py-20 space-y-2">
-            <p className="text-[14px] text-[#8C8F7A]">No pledges found.</p>
+            <p className="text-[14px] text-[#8C8F7A]">{t("no_pledges_found")}</p>
             {hasActiveFilters && (
               <button onClick={resetFilters} className="text-[13px] text-[#555B3F] underline hover:opacity-70">
-                Clear filters
+                {t("clear_filters")}
               </button>
             )}
           </div>
@@ -426,6 +446,7 @@ export default function PledgesPage() {
                 <PledgeCard
                   key={p.id}
                   pledge={p}
+                  t={t}
                   onClick={() => router.push(`/customers/${p.customerId}/pledges/${p.id}`)}
                 />
               ))}
@@ -440,9 +461,9 @@ export default function PledgesPage() {
                   className="flex items-center gap-2 px-6 py-3 text-[13px] font-semibold text-[#555B3F] bg-white border border-[#ECEAE4] rounded-full hover:border-[#C5C7B8] hover:bg-[#F5F4EF] transition-all disabled:opacity-50"
                 >
                   {loadingMore ? (
-                    <><Loader2 className="animate-spin" size={14} /> Loading…</>
+                    <><Loader2 className="animate-spin" size={14} /> {t("loading")}</>
                   ) : (
-                    <>Load more pledges <ChevronDownSmall size={14} /></>
+                    <>{t("load_more_pledges")} <ChevronDownSmall size={14} /></>
                   )}
                 </button>
               </div>

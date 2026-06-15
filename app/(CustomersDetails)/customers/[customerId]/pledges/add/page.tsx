@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -13,9 +13,11 @@ import {
   ChevronRight,
   Loader2,
   Check,
+  X,
 } from "lucide-react";
 
 import SubscriptionGuard from "@/components/SubscriptionGuard";
+import { useAlert } from "@/components/providers/AlertProvider";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                              */
@@ -259,6 +261,7 @@ export default function AddPledgePage() {
   const router = useRouter();
   const params = useParams<{ customerId: string }>();
   const customerId = params?.customerId;
+  const { showAlert } = useAlert();
 
   const [customer, setCustomer] = useState<CustomerSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -286,6 +289,31 @@ export default function AddPledgePage() {
   const [saving, setSaving] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [newPledgeId, setNewPledgeId] = useState<string | null>(null);
+
+  const totalGoldWeight = items
+    .filter((item) => item.metalType === "Gold" && item.netWeight && item.purity)
+    .reduce((sum, item) => sum + (Number(item.netWeight) * Number(item.purity)) / 100, 0);
+
+  const totalSilverWeight = items
+    .filter((item) => item.metalType === "Silver" && item.netWeight && item.purity)
+    .reduce((sum, item) => sum + (Number(item.netWeight) * Number(item.purity)) / 100, 0);
+
+  const [pledgePhotoPreview, setPledgePhotoPreview] = useState<string | null>(null);
+  const pledgePhotoInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePledgePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPledgePhotoPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const clearPledgePhoto = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setPledgePhotoPreview(null);
+    if (pledgePhotoInputRef.current) pledgePhotoInputRef.current.value = "";
+  };
 
   /* ---- Fetch Customer Summary ----------------------------------- */
   useEffect(() => {
@@ -379,7 +407,7 @@ export default function AddPledgePage() {
   const handleSave = async () => {
     if (!customerId) return;
     if (!loanAmount || !interestRate || !pledgeDate) {
-      alert("Please fill in Pledge Date, Loan Amount, and Interest Rate.");
+      showAlert("Please fill in Pledge Date, Loan Amount, and Interest Rate.");
       return;
     }
 
@@ -439,7 +467,7 @@ export default function AddPledgePage() {
       const data = await res.json();
       if (!res.ok) {
         const msg = data?.details?.join(", ") || data?.error || "Failed to save pledge.";
-        alert(msg);
+        showAlert(msg);
         return;
       }
 
@@ -447,7 +475,7 @@ export default function AddPledgePage() {
       setShowSuccessModal(true);
     } catch (err) {
       console.error("PLEDGE SAVE ERROR:", err);
-      alert("Unexpected error saving pledge.");
+      showAlert("Unexpected error saving pledge.");
     } finally {
       setSaving(false);
     }
@@ -504,14 +532,14 @@ export default function AddPledgePage() {
             </div>
           )}
 
-          {/* Warning Banner */}
+          {/* Warning Banner
           <div className="bg-[#FCEAE9] border border-[#F5C2C7] rounded-[16px] p-4 flex items-start gap-3 mb-8">
             <AlertTriangle size={20} className="text-[#C94A4A] mt-0.5 shrink-0" />
             <div>
               <h4 className="text-[14px] font-bold text-[#C94A4A] mb-0.5">Live prices unavailable</h4>
               <p className="text-[13px] text-[#A65B5B]">LTV preview hidden. Proceed with manual estimations if necessary.</p>
             </div>
-          </div>
+          </div> */}
 
           {/* Main Layout Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8">
@@ -719,6 +747,34 @@ export default function AddPledgePage() {
                 </button>
               </div>
 
+              {/* Metal Summary Section */}
+              <div className="bg-white rounded-[24px] p-6 lg:p-8 border border-[#ECEAE4]">
+                <h3 className="text-[18px] font-bold text-[#2C2C2C] mb-6">Metal Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Gold Summary */}
+                  <div className="bg-[#FFF9EA] rounded-[12px] px-6 py-4 flex items-center justify-between border border-[#FDEBCE]">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[16px]">🥇</span>
+                      <span className="text-[13px] font-bold text-[#A16C21]">Net Gold Weight</span>
+                    </div>
+                    <span className="text-[16px] font-bold text-[#A16C21]">
+                      {totalGoldWeight > 0 ? `${totalGoldWeight.toFixed(3)} g` : "—"}
+                    </span>
+                  </div>
+
+                  {/* Silver Summary */}
+                  <div className="bg-[#FAFAF8] rounded-[12px] px-6 py-4 flex items-center justify-between border border-[#ECEAE4]">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[16px]">🥈</span>
+                      <span className="text-[13px] font-bold text-[#6F6F6F]">Net Silver Weight</span>
+                    </div>
+                    <span className="text-[16px] font-bold text-[#2C2C2C]">
+                      {totalSilverWeight > 0 ? `${totalSilverWeight.toFixed(3)} g` : "—"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
             </div>
 
             {/* ── RIGHT COLUMN (30%) ─────────────────────────────── */}
@@ -728,12 +784,36 @@ export default function AddPledgePage() {
               <div className="bg-white rounded-[24px] p-6 lg:p-8 border border-[#ECEAE4]">
                 <h3 className="text-[18px] font-bold text-[#2C2C2C] mb-6">Pledge Photo</h3>
 
-                <div className="w-full h-[200px] bg-[#EBE9E0] rounded-[16px] flex flex-col items-center justify-center border border-[#D8D6CD] cursor-pointer hover:bg-[#E4E2D8] transition-colors group">
-                  <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-3 shadow-sm group-hover:scale-105 transition-transform">
-                    <Camera size={20} className="text-[#555B3F]" />
-                  </div>
-                  <p className="text-[13px] font-bold text-[#2C2C2C] mb-1">Upload or drag photo</p>
-                  <p className="text-[11px] text-[#6F6F6F]">JPG, PNG up to 5MB</p>
+                <div className="relative w-full h-[200px] bg-[#EBE9E0] rounded-[16px] flex flex-col items-center justify-center border border-[#D8D6CD] transition-colors hover:bg-[#E4E2D8] overflow-hidden group">
+                  {pledgePhotoPreview ? (
+                    <>
+                      <img src={pledgePhotoPreview} alt="Pledge" className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none" />
+                      <button
+                        type="button"
+                        onClick={clearPledgePhoto}
+                        className="absolute top-2 right-2 z-20 p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-3 shadow-sm group-hover:scale-105 transition-transform z-0 pointer-events-none">
+                        <Camera size={20} className="text-[#555B3F]" />
+                      </div>
+                      <p className="text-[13px] font-bold text-[#2C2C2C] mb-1 z-0 pointer-events-none">Upload or drag photo</p>
+                      <p className="text-[11px] text-[#6F6F6F] z-0 pointer-events-none">JPG, PNG up to 5MB</p>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    name="pledgePhoto"
+                    accept="image/*"
+                    ref={pledgePhotoInputRef}
+                    onChange={handlePledgePhotoChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    title={pledgePhotoPreview ? "Change photo" : "Upload photo"}
+                  />
                 </div>
               </div>
 

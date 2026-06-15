@@ -1,6 +1,7 @@
 // app/reports/customers/page.tsx
 "use client";
 import { useEffect, useState } from "react";
+import { useAlert } from "@/components/providers/AlertProvider";
 
 type Customer = {
   id: string;
@@ -15,6 +16,7 @@ export default function CustomerReportPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const { showAlert } = useAlert();
 
   useEffect(() => {
     fetch("/api/reports/customers")
@@ -45,7 +47,7 @@ export default function CustomerReportPage() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert("Failed to download PDF.");
+      showAlert("Failed to download PDF.");
     } finally {
       setDownloading(false);
     }

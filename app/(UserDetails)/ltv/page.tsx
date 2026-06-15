@@ -7,6 +7,7 @@ import {
   ShieldCheck, Eye, Flame, Waves,
   ArrowUpDown, Search, X, Filter,
 } from "lucide-react";
+import { useLanguage } from "@/components/providers/LanguageProvider";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -61,10 +62,10 @@ interface LtvData {
 /*  Tier config — Linen Ledger palette                                  */
 /* ------------------------------------------------------------------ */
 const TIER_CFG = {
-  SAFE: { label: "Safe", range: "(0–65%)", hex: "#555B3F", dot: "bg-[#555B3F]", badge: "bg-[#E8EBD8] text-[#555B3F]", icon: ShieldCheck },
-  WATCH: { label: "Watch", range: "(66–75%)", hex: "#C9A14B", dot: "bg-[#C9A14B]", badge: "bg-[#FDF4DC] text-[#8B6914]", icon: Eye },
-  AT_RISK: { label: "At Risk", range: "(76–90%)", hex: "#D97706", dot: "bg-[#D97706]", badge: "bg-[#FEF3C7] text-[#92400E]", icon: Flame },
-  UNDERWATER: { label: "Underwater", range: "(> 90%)", hex: "#DC2626", dot: "bg-[#DC2626]", badge: "bg-[#FEE2E2] text-[#991B1B]", icon: Waves },
+  SAFE:       { labelKey: "safe",      range: "(0–65%)",  hex: "#555B3F", dot: "bg-[#555B3F]", badge: "bg-[#E8EBD8] text-[#555B3F]", icon: ShieldCheck },
+  WATCH:      { labelKey: "watch",     range: "(66–75%)", hex: "#C9A14B", dot: "bg-[#C9A14B]", badge: "bg-[#FDF4DC] text-[#8B6914]", icon: Eye },
+  AT_RISK:    { labelKey: "at_risk",   range: "(76–90%)", hex: "#D97706", dot: "bg-[#D97706]", badge: "bg-[#FEF3C7] text-[#92400E]", icon: Flame },
+  UNDERWATER: { labelKey: "underwater",range: "(> 90%)",  hex: "#DC2626", dot: "bg-[#DC2626]", badge: "bg-[#FEE2E2] text-[#991B1B]", icon: Waves },
 } as const;
 
 const TIERS = ["SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as const;
@@ -108,7 +109,7 @@ function DonutChart({ tierCounts, total }: { tierCounts: TierCounts; total: numb
     );
   }
 
-  let offset = 25; // start at top
+  let offset = 25;
   const segments = data.map(d => {
     const pct = (d.count / total) * 100;
     const seg = { ...d, pct, offset };
@@ -146,6 +147,7 @@ function DonutChart({ tierCounts, total }: { tierCounts: TierCounts; total: numb
 /* ================================================================== */
 export default function LtvPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [data, setData] = useState<LtvData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -203,17 +205,17 @@ export default function LtvPage() {
   // ── Safety bar widths ──
   const safetyBar = useMemo(() => {
     if (!s || s.totalPledges === 0) return TIERS.map(() => 0);
-    return TIERS.map(t => (s.tierCounts[t] / s.totalPledges) * 100);
+    return TIERS.map(tr => (s.tierCounts[tr] / s.totalPledges) * 100);
   }, [s]);
 
   // ── Risk label for avg LTV ──
   const avgRiskLabel = useMemo(() => {
     if (!s || s.avgLtv === null) return null;
-    if (s.avgLtv <= 65) return "Highly Secure";
-    if (s.avgLtv <= 75) return "Watch";
-    if (s.avgLtv <= 90) return "At Risk";
-    return "Underwater";
-  }, [s]);
+    if (s.avgLtv <= 65) return t("highly_secure");
+    if (s.avgLtv <= 75) return t("watch");
+    if (s.avgLtv <= 90) return t("at_risk");
+    return t("underwater");
+  }, [s, t]);
 
   // ── Loading state ──
   if (loading) {
@@ -241,7 +243,7 @@ export default function LtvPage() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-[28px] font-medium tracking-tight text-[#2C2C2C] mb-2">
-            Loan to Value
+            {t("loan_to_value")}
           </h1>
           <div className="inline-flex items-center gap-2 bg-[#F0EFDF] px-3 py-1.5 rounded-full text-[11px] font-semibold text-[#555B3F] border border-[#EAE8DD]">
             Σ LTV = Amount Owed ÷ Market Value × 100
@@ -253,7 +255,7 @@ export default function LtvPage() {
           className="flex items-center gap-1.5 text-[11px] font-semibold text-[#555B3F] bg-[#F0EFDF] border border-[#EAE8DD] rounded-full px-3 py-1.5 transition-colors hover:bg-[#EAE8DD] disabled:opacity-50"
         >
           <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
-          {refreshing ? "Refreshing…" : "● Refresh"}
+          {refreshing ? t("refreshing") : "● " + t("refresh")}
         </button>
       </div>
 
@@ -262,8 +264,8 @@ export default function LtvPage() {
         <div className="flex items-start gap-3 rounded-[16px] border border-[#E8D4B0] bg-[#FFF8ED] px-5 py-4 text-[13px] text-[#8B6914] mb-6">
           <AlertTriangle size={16} className="shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold">No market prices available</p>
-            <p className="text-[12px] mt-0.5 opacity-80">LTV cannot be calculated until market data is fetched.</p>
+            <p className="font-semibold">{t("no_market_prices")}</p>
+            <p className="text-[12px] mt-0.5 opacity-80">{t("no_market_prices_desc")}</p>
           </div>
         </div>
       )}
@@ -276,7 +278,7 @@ export default function LtvPage() {
         {/* Card 1 — Live Commodity Prices */}
         <div className="bg-white border border-[#ECEAE4] rounded-[16px] p-6">
           <div className="flex items-center justify-between mb-5">
-            <h3 className="text-[13px] font-semibold text-[#2C2C2C]">Live Commodity Prices</h3>
+            <h3 className="text-[13px] font-semibold text-[#2C2C2C]">{t("live_commodity_prices")}</h3>
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#C5C7B8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="22,7 13.5,15.5 8.5,10.5 2,17" /><polyline points="16,7 22,7 22,13" /></svg>
           </div>
           <div className="flex gap-8">
@@ -286,7 +288,7 @@ export default function LtvPage() {
               </p>
               <div className="flex items-center gap-1.5 mt-1">
                 <div className="w-2 h-2 rounded-full bg-[#C9A14B]" />
-                <span className="text-[11px] font-semibold text-[#6F6F6F]">Gold</span>
+                <span className="text-[11px] font-semibold text-[#6F6F6F]">{t("gold")}</span>
               </div>
             </div>
             <div>
@@ -295,24 +297,24 @@ export default function LtvPage() {
               </p>
               <div className="flex items-center gap-1.5 mt-1">
                 <div className="w-2 h-2 rounded-full bg-[#9E9E9E]" />
-                <span className="text-[11px] font-semibold text-[#6F6F6F]">Silver</span>
+                <span className="text-[11px] font-semibold text-[#6F6F6F]">{t("silver")}</span>
               </div>
             </div>
           </div>
           {data?.priceUpdatedAt && (
             <p className="text-[11px] text-[#9E9E9E] mt-4 flex items-center gap-1">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-              Updated {timeAgo(data.priceUpdatedAt)}
+              {t("updated_label")} {timeAgo(data.priceUpdatedAt)}
             </p>
           )}
         </div>
 
         {/* Card 2 — Total Lent */}
         <div className="bg-white border border-[#ECEAE4] rounded-[16px] p-6 flex flex-col">
-          <h3 className="text-[13px] font-semibold text-[#6F6F6F] mb-3">Total Lent</h3>
+          <h3 className="text-[13px] font-semibold text-[#6F6F6F] mb-3">{t("total_lent")}</h3>
           <p className="text-[28px] font-semibold text-[#2C2C2C] tabular-nums">{s ? fmt(s.totalLent) : "—"}</p>
           <div className="mt-auto pt-4 flex items-center justify-between border-t border-[#F4F3EE]">
-            <span className="text-[12px] text-[#6F6F6F]">Active Pledges</span>
+            <span className="text-[12px] text-[#6F6F6F]">{t("active_pledges_count")}</span>
             <span className="inline-flex items-center justify-center w-7 h-7 bg-[#F0EFDF] rounded-[8px] text-[13px] font-semibold text-[#555B3F]">
               {s?.totalPledges ?? 0}
             </span>
@@ -321,7 +323,7 @@ export default function LtvPage() {
 
         {/* Card 3 — Average LTV */}
         <div className="bg-[#F0EFDF] border border-[#E5E3D0] rounded-[16px] p-6 flex flex-col">
-          <h3 className="text-[13px] font-semibold text-[#555B3F] mb-3">Average LTV</h3>
+          <h3 className="text-[13px] font-semibold text-[#555B3F] mb-3">{t("average_ltv")}</h3>
           <p className="text-[28px] font-semibold text-[#2C2C2C] tabular-nums">
             {s?.avgLtv !== null && s?.avgLtv !== undefined ? `${s.avgLtv}%` : "—"}
           </p>
@@ -331,7 +333,7 @@ export default function LtvPage() {
               <span className="text-[11px] font-semibold text-[#555B3F]">{avgRiskLabel}</span>
             </div>
           )}
-          <p className="text-[11px] text-[#6F6F6F] mt-auto pt-2">Across all pledges</p>
+          <p className="text-[11px] text-[#6F6F6F] mt-auto pt-2">{t("across_all_pledges")}</p>
         </div>
       </div>
 
@@ -342,25 +344,25 @@ export default function LtvPage() {
 
         {/* Valuation Overview */}
         <div className="bg-white border border-[#ECEAE4] rounded-[16px] p-6">
-          <h3 className="text-[15px] font-semibold text-[#2C2C2C] mb-5">Valuation Overview</h3>
+          <h3 className="text-[15px] font-semibold text-[#2C2C2C] mb-5">{t("valuation_overview")}</h3>
 
           <div className="grid grid-cols-2 gap-6 mb-6">
             <div>
-              <p className="text-[12px] text-[#6F6F6F] mb-1">Amount Owed Today</p>
+              <p className="text-[12px] text-[#6F6F6F] mb-1">{t("amount_owed_today")}</p>
               <p className="text-[24px] font-semibold text-[#2C2C2C] tabular-nums">{s ? fmt(s.totalOwed) : "—"}</p>
               {s && interestAccrued > 0 && (
                 <span className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#FEE2E2] text-[#991B1B]">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /></svg>
-                  +{fmt(interestAccrued)} interest accrued
+                  +{fmt(interestAccrued)} {t("interest_accrued_label")}
                 </span>
               )}
             </div>
             <div className="border-l border-[#ECEAE4] pl-6">
-              <p className="text-[12px] text-[#6F6F6F] mb-1">Total Market Value</p>
+              <p className="text-[12px] text-[#6F6F6F] mb-1">{t("total_market_value")}</p>
               <p className="text-[24px] font-semibold text-[#2C2C2C] tabular-nums">{s ? fmt(s.totalMarketValue) : "—"}</p>
               {s && (
                 <span className="inline-flex items-center gap-1 mt-2 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#E8EBD8] text-[#555B3F]">
-                  ○ Buffer: {fmt(Math.abs(buffer))}
+                  ○ {t("buffer_label")} {fmt(Math.abs(buffer))}
                 </span>
               )}
             </div>
@@ -368,13 +370,13 @@ export default function LtvPage() {
 
           {/* LTV Safety Bar */}
           <div className="flex rounded-full overflow-hidden h-3 mb-3">
-            {TIERS.map((t, i) => {
+            {TIERS.map((tr, i) => {
               const w = safetyBar[i];
               if (w === 0) return null;
               return (
                 <div
-                  key={t}
-                  className={`${TIER_CFG[t].dot} transition-all`}
+                  key={tr}
+                  className={`${TIER_CFG[tr].dot} transition-all`}
                   style={{ width: `${w}%` }}
                 />
               );
@@ -382,11 +384,11 @@ export default function LtvPage() {
             {(!s || s.totalPledges === 0) && <div className="bg-[#ECEAE4] w-full" />}
           </div>
           <div className="flex flex-wrap gap-5">
-            {TIERS.map(t => (
-              <div key={t} className="flex items-center gap-1.5 text-[11px] text-[#6F6F6F]">
-                <div className={`w-2 h-2 rounded-full ${TIER_CFG[t].dot}`} />
-                <span>{TIER_CFG[t].label}</span>
-                <span className="font-semibold text-[#2C2C2C]">{s?.tierCounts[t] ?? 0}</span>
+            {TIERS.map(tr => (
+              <div key={tr} className="flex items-center gap-1.5 text-[11px] text-[#6F6F6F]">
+                <div className={`w-2 h-2 rounded-full ${TIER_CFG[tr].dot}`} />
+                <span>{t(TIER_CFG[tr].labelKey)}</span>
+                <span className="font-semibold text-[#2C2C2C]">{s?.tierCounts[tr] ?? 0}</span>
               </div>
             ))}
           </div>
@@ -395,22 +397,22 @@ export default function LtvPage() {
         {/* Risk Distribution */}
         <div className="bg-white border border-[#ECEAE4] rounded-[16px] p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[15px] font-semibold text-[#2C2C2C]">Risk Distribution</h3>
+            <h3 className="text-[15px] font-semibold text-[#2C2C2C]">{t("risk_distribution")}</h3>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9E9E9E" strokeWidth="1.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
           </div>
 
           <DonutChart tierCounts={s?.tierCounts ?? { SAFE: 0, WATCH: 0, AT_RISK: 0, UNDERWATER: 0, NO_PRICE: 0 }} total={s?.totalPledges ?? 0} />
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-5">
-            {TIERS.map(t => (
-              <div key={t} className="flex items-center justify-between text-[12px]">
+            {TIERS.map(tr => (
+              <div key={tr} className="flex items-center justify-between text-[12px]">
                 <div className="flex items-center gap-1.5">
-                  <div className={`w-2 h-2 rounded-full ${TIER_CFG[t].dot}`} />
-                  <span className={t === "WATCH" || t === "AT_RISK" || t === "UNDERWATER" ? `text-[${TIER_CFG[t].hex}] font-semibold` : "text-[#2C2C2C]"}>
-                    {TIER_CFG[t].label}
+                  <div className={`w-2 h-2 rounded-full ${TIER_CFG[tr].dot}`} />
+                  <span className={tr === "WATCH" || tr === "AT_RISK" || tr === "UNDERWATER" ? `text-[${TIER_CFG[tr].hex}] font-semibold` : "text-[#2C2C2C]"}>
+                    {t(TIER_CFG[tr].labelKey)}
                   </span>
                 </div>
-                <span className="font-semibold tabular-nums">{s?.tierCounts[t] ?? 0}</span>
+                <span className="font-semibold tabular-nums">{s?.tierCounts[tr] ?? 0}</span>
               </div>
             ))}
           </div>
@@ -424,13 +426,13 @@ export default function LtvPage() {
 
         {/* Table Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-[#F4F3EE]">
-          <h3 className="text-[15px] font-semibold text-[#2C2C2C]">Portfolio Details</h3>
+          <h3 className="text-[15px] font-semibold text-[#2C2C2C]">{t("portfolio_details")}</h3>
           <div className="flex items-center gap-3">
             <div className="relative">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9E9E] pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search by name"
+                placeholder={t("search_by_name")}
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="pl-9 pr-8 py-2 text-[12px] bg-[#F5F4EF] border border-[#ECEAE4] rounded-[10px] w-[200px] focus:outline-none focus:ring-2 focus:ring-[#C5C7B8] text-[#2C2C2C] placeholder-[#9E9E9E]"
@@ -446,7 +448,7 @@ export default function LtvPage() {
                 onClick={() => setDropdownOpen(v => !v)}
                 className={`flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold transition-colors rounded-[8px] ${filterTier !== "ALL" || dropdownOpen ? "bg-[#F0EFDF] text-[#555B3F]" : "text-[#6F6F6F] hover:text-[#2C2C2C]"}`}
               >
-                <Filter size={13} /> {filterTier === "ALL" ? "Filter" : filterTier === null ? "No Price" : TIER_CFG[filterTier]?.label}
+                <Filter size={13} /> {filterTier === "ALL" ? t("filter") : filterTier === null ? t("no_price") : t(TIER_CFG[filterTier as keyof typeof TIER_CFG]?.labelKey ?? "filter")}
               </button>
               
               {dropdownOpen && (
@@ -457,17 +459,17 @@ export default function LtvPage() {
                       onClick={() => { setFilterTier("ALL"); setDropdownOpen(false); }}
                       className={`w-full text-left px-3 py-2 rounded-[8px] text-[12px] font-medium transition-colors ${filterTier === "ALL" ? "bg-[#F0EFDF] text-[#555B3F]" : "text-[#6F6F6F] hover:bg-[#F5F4EF]"}`}
                     >
-                      All Records
+                      {t("all_records")}
                     </button>
                     <div className="h-px bg-[#F4F3EE] my-1 mx-2" />
-                    {TIERS.map(t => (
+                    {TIERS.map(tr => (
                       <button 
-                        key={t}
-                        onClick={() => { setFilterTier(t); setDropdownOpen(false); }}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-[8px] text-[12px] font-medium transition-colors ${filterTier === t ? "bg-[#F0EFDF] text-[#555B3F]" : "text-[#6F6F6F] hover:bg-[#F5F4EF]"}`}
+                        key={tr}
+                        onClick={() => { setFilterTier(tr); setDropdownOpen(false); }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-[8px] text-[12px] font-medium transition-colors ${filterTier === tr ? "bg-[#F0EFDF] text-[#555B3F]" : "text-[#6F6F6F] hover:bg-[#F5F4EF]"}`}
                       >
-                        <div className={`w-2 h-2 rounded-full ${TIER_CFG[t].dot}`} />
-                        {TIER_CFG[t].label}
+                        <div className={`w-2 h-2 rounded-full ${TIER_CFG[tr].dot}`} />
+                        {t(TIER_CFG[tr].labelKey)}
                       </button>
                     ))}
                   </div>
@@ -482,28 +484,28 @@ export default function LtvPage() {
           <table className="w-full text-[13px]">
             <thead>
               <tr className="bg-[#3D4230] text-white text-[11px] font-semibold tracking-wider uppercase">
-                <th className="text-left px-5 py-3">Customer</th>
-                <th className="text-right px-5 py-3">Gold wt.</th>
-                <th className="text-right px-5 py-3">Silver wt.</th>
-                <th className="text-right px-5 py-3">Principal</th>
+                <th className="text-left px-5 py-3">{t("col_customer")}</th>
+                <th className="text-right px-5 py-3">{t("gold_wt")}</th>
+                <th className="text-right px-5 py-3">{t("silver_wt")}</th>
+                <th className="text-right px-5 py-3">{t("principal")}</th>
                 <th className="text-right px-5 py-3">
                   <button
                     onClick={() => setSortDesc(v => !v)}
                     className="inline-flex items-center gap-1 hover:text-[#E8EBD8] transition-colors"
                   >
-                    Owed Today <ArrowUpDown size={10} />
+                    {t("owed_today")} <ArrowUpDown size={10} />
                   </button>
                 </th>
-                <th className="text-right px-5 py-3">Market Value</th>
-                <th className="text-right px-5 py-3">LTV</th>
-                <th className="text-center px-5 py-3">Risk Status</th>
+                <th className="text-right px-5 py-3">{t("market_value")}</th>
+                <th className="text-right px-5 py-3">{t("ltv_col")}</th>
+                <th className="text-center px-5 py-3">{t("risk_status")}</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="text-center py-16 text-[13px] text-[#9E9E9E]">
-                    {data && data.pledges.length === 0 ? "No active pledges yet." : "No pledges match your search."}
+                    {data && data.pledges.length === 0 ? t("no_active_pledges") : t("no_pledges_match")}
                   </td>
                 </tr>
               ) : (
@@ -556,7 +558,7 @@ export default function LtvPage() {
                     <td className="px-5 py-4 text-right">
                       {row.marketValue !== null ? (
                         <p className="font-semibold text-[#2C2C2C] tabular-nums">{fmt(row.marketValue)}</p>
-                      ) : <span className="text-[#9E9E9E] text-[11px]">No price</span>}
+                      ) : <span className="text-[#9E9E9E] text-[11px]">{t("no_price")}</span>}
                     </td>
 
                     {/* LTV */}
@@ -569,7 +571,7 @@ export default function LtvPage() {
                       {row.riskTier ? (
                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold ${TIER_CFG[row.riskTier].badge}`}>
                           <div className={`w-1.5 h-1.5 rounded-full ${TIER_CFG[row.riskTier].dot}`} />
-                          {TIER_CFG[row.riskTier].label}
+                          {t(TIER_CFG[row.riskTier].labelKey)}
                         </span>
                       ) : <span className="text-[#9E9E9E] text-[11px]">—</span>}
                     </td>
@@ -583,7 +585,7 @@ export default function LtvPage() {
         {/* End of records */}
         {filtered.length > 0 && (
           <div className="text-center py-6 text-[12px] text-[#9E9E9E] italic">
-            End of active records.
+            {t("end_of_records")}
           </div>
         )}
       </div>
@@ -591,12 +593,12 @@ export default function LtvPage() {
       {/* ── LTV LEGEND ── */}
       <div className="flex items-center justify-center">
         <div className="inline-flex items-center gap-5 bg-white border border-[#ECEAE4] rounded-full px-6 py-3">
-          <span className="text-[10px] font-bold text-[#6F6F6F] uppercase tracking-wider mr-1">LTV Legend:</span>
-          {TIERS.map(t => (
-            <div key={t} className="flex items-center gap-1.5 text-[11px]">
-              <div className={`w-2 h-2 rounded-full ${TIER_CFG[t].dot}`} />
-              <span className="font-semibold text-[#2C2C2C]">{TIER_CFG[t].label}</span>
-              <span className="text-[#9E9E9E]">{TIER_CFG[t].range}</span>
+          <span className="text-[10px] font-bold text-[#6F6F6F] uppercase tracking-wider mr-1">{t("ltv_legend")}</span>
+          {TIERS.map(tr => (
+            <div key={tr} className="flex items-center gap-1.5 text-[11px]">
+              <div className={`w-2 h-2 rounded-full ${TIER_CFG[tr].dot}`} />
+              <span className="font-semibold text-[#2C2C2C]">{t(TIER_CFG[tr].labelKey)}</span>
+              <span className="text-[#9E9E9E]">{TIER_CFG[tr].range}</span>
             </div>
           ))}
         </div>

@@ -4,10 +4,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
+import { useLanguage } from "@/components/providers/LanguageProvider";
 import {
   Edit3, Plus, Upload, MapPin, Phone,
-  CheckCircle2, Eye, Trash2, Loader2,
+  CheckCircle2, Eye, Trash2, Loader2, Camera, X, Image as ImageIcon,
 } from "lucide-react";
+
 
 import { QRCodeCanvas } from "qrcode.react";
 import { Switch } from "@/components/ui/switch";
@@ -84,6 +86,7 @@ export default function CustomerDetailPage() {
   const params = useParams<{ customerId: string }>();
   const router = useRouter();
   const customerId = params?.customerId;
+  const { t } = useLanguage();
 
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -97,6 +100,14 @@ export default function CustomerDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({ name: "", mobile: "", address: "", region: "", aadharNo: "" });
   const [savingProfile, setSavingProfile] = useState(false);
+  const [editImgPreview, setEditImgPreview] = useState<string | null>(null);
+  const [editImgFile, setEditImgFile] = useState<File | null>(null);
+  const [editImgDeleted, setEditImgDeleted] = useState(false);
+  const editImgInputRef = useRef<HTMLInputElement>(null);
+  const [editIdProofImgPreview, setEditIdProofImgPreview] = useState<string | null>(null);
+  const [editIdProofImgFile, setEditIdProofImgFile] = useState<File | null>(null);
+  const [editIdProofImgDeleted, setEditIdProofImgDeleted] = useState(false);
+  const editIdProofImgInputRef = useRef<HTMLInputElement>(null);
   const toastRef = useRef<NodeJS.Timeout | null>(null);
 
   function showToast(msg: string) {
@@ -195,14 +206,36 @@ export default function CustomerDetailPage() {
     if (!customer) return;
     setSavingProfile(true);
     try {
+      const fd = new FormData();
+      Object.entries(editForm).forEach(([k, v]) => fd.append(k, v));
+      if (editImgDeleted) {
+        fd.append("deleteImg", "true");
+      }
+      if (editImgFile) {
+        fd.append("customerImg", editImgFile);
+      }
+      if (editIdProofImgDeleted) {
+        fd.append("deleteIdProofImg", "true");
+      }
+      if (editIdProofImgFile) {
+        fd.append("idProofImg", editIdProofImgFile);
+      }
+
       const res = await fetch(`/api/customers/${customerId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editForm),
+        body: fd,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Unable to save profile.");
-      setCustomer({ ...customer, ...editForm });
+      
+      const fetchRes = await fetch(`/api/customers/${customerId}`, { cache: "no-store" });
+      const newData = await fetchRes.json();
+      if (fetchRes.ok && newData.customer) {
+        setCustomer(newData.customer);
+      } else {
+        setCustomer({ ...customer, ...editForm });
+      }
+
       setShowEditModal(false);
       showToast("Profile updated.");
     } catch (err) {
@@ -216,7 +249,7 @@ export default function CustomerDetailPage() {
     return (
       <SubscriptionGuard featureName="Customer Details">
         <div className="max-w-[1100px] mx-auto pt-6 pb-24 px-6">
-          <p className="text-[14px] text-[#9E9E9E]">Customer ID not provided.</p>
+          <p className="text-[14px] text-[#9E9E9E]">{t("customer_id_missing")}</p>
         </div>
       </SubscriptionGuard>
     );
@@ -283,14 +316,14 @@ export default function CustomerDetailPage() {
           /* ── Error ─────────────────────────────────────────────── */
         ) : error ? (
           <div className="p-6 rounded-[16px] border" style={{ backgroundColor: "#F8D7DA", borderColor: "#F5C2C7" }}>
-            <h3 className="text-[14px] font-bold text-[#C94A4A] mb-1">Unable to load customer</h3>
+            <h3 className="text-[14px] font-bold text-[#C94A4A] mb-1">{t("unable_to_load")}</h3>
             <p className="text-[13px] text-[#C94A4A]">{error}</p>
           </div>
 
           /* ── Not found ─────────────────────────────────────────── */
         ) : !customer ? (
           <div className="p-6 rounded-[16px] border text-center" style={{ backgroundColor: "#FFFFFF", borderColor: "#ECEAE4" }}>
-            <p className="text-[14px] text-[#9E9E9E]">Customer not found.</p>
+            <p className="text-[14px] text-[#9E9E9E]">{t("customer_not_found")}</p>
           </div>
 
           /* ── Loaded ────────────────────────────────────────────── */
@@ -413,6 +446,12 @@ export default function CustomerDetailPage() {
                       region: customer.region || "",
                       aadharNo: customer.aadharNo || "",
                     });
+                    setEditImgPreview(customer.customerImg || null);
+                    setEditImgFile(null);
+                    setEditImgDeleted(false);
+                    setEditIdProofImgPreview(customer.idProofImg || null);
+                    setEditIdProofImgFile(null);
+                    setEditIdProofImgDeleted(false);
                     setShowEditModal(true);
                   }}
                   className="flex items-center gap-2 px-5 py-2.5 cursor-pointer rounded-[20px] text-[13px] font-bold transition-colors bg-[#E6E4DC] text-[#6F6F6F] hover:bg-[#D8D6C8] hover:text-[#2C2C2C]"
@@ -456,8 +495,9 @@ export default function CustomerDetailPage() {
                 >
                   <div className="flex items-center justify-between mb-8">
                     <div className="flex items-center gap-3">
-                      <h3 className="text-[17px] font-bold text-[#2C2C2C]">Financial Summary</h3>
-                      <span className="text-[12px] font-semibold text-[#555B3F] opacity-0 group-hover:opacity-100 transition-opacity duration-150">View Details →</span>
+                      <h3 className="text-[17px] font-bold text-[#2C2C2C]">{t("financial_summary") ?? "Financial Summary"}
+                        <span className="text-[12px] font-semibold text-[#555B3F] opacity-0 group-hover:opacity-100 transition-opacity duration-150 ml-3">{t("view_details")} →</span>
+                      </h3>
                     </div>
                     <span className="bg-[#EAE9DF] text-[#555B3F] text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-widest">
                       {customer.pledges.length} Pledge{customer.pledges.length !== 1 ? "s" : ""}
@@ -465,15 +505,15 @@ export default function CustomerDetailPage() {
                   </div>
                   <div className="grid grid-cols-3 gap-4 mb-8">
                     <div>
-                      <p className="text-[10px] font-bold tracking-wider text-[#9E9E9E] mb-2 uppercase">Total Loan</p>
+                      <p className="text-[10px] font-bold tracking-wider text-[#9E9E9E] mb-2 uppercase">{t("total_loan")}</p>
                       <p className="text-[24px] font-bold text-[#2C2C2C]">{fmt(totalLoan)}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold tracking-wider text-[#9E9E9E] mb-2 uppercase">Repaid</p>
+                      <p className="text-[10px] font-bold tracking-wider text-[#9E9E9E] mb-2 uppercase">{t("total_released")}</p>
                       <p className="text-[24px] font-bold text-[#555B3F]">{fmt(repaid)}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold tracking-wider text-[#9E9E9E] mb-2 uppercase">Outstanding</p>
+                      <p className="text-[10px] font-bold tracking-wider text-[#9E9E9E] mb-2 uppercase">{t("total_balance")}</p>
                       <p className="text-[24px] font-bold text-[#C94A4A]">{fmt(outstanding)}</p>
                     </div>
                   </div>
@@ -493,11 +533,11 @@ export default function CustomerDetailPage() {
 
                 {/* Identity & Verification */}
                 <div className="bg-white rounded-[24px] p-6 lg:p-8" style={{ border: "1px solid #ECEAE4" }}>
-                  <h3 className="text-[17px] font-bold text-[#2C2C2C] mb-6">Identity & Verification</h3>
+                  <h3 className="text-[17px] font-bold text-[#2C2C2C] mb-6">{t("personal_info")}</h3>
                   <div className="flex flex-col gap-4 mb-6 max-w-[340px]">
                     <div className="bg-[#FAFAF7] border border-[#ECEAE4] p-4 rounded-[12px] flex justify-between items-center h-[72px]">
                       <div>
-                        <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1.5 uppercase">Aadhaar Number</p>
+                        <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1.5 uppercase">{t("aadhaar_number")}</p>
                         <p className="text-[14px] font-bold text-[#2C2C2C] tracking-[0.15em]">
                           {customer.aadharNo ? customer.aadharNo : "-"}
                         </p>
@@ -537,13 +577,13 @@ export default function CustomerDetailPage() {
 
                 {/* Contact Details */}
                 <div className="rounded-[24px] p-6 lg:p-8" style={{ backgroundColor: "#E2E0C8" }}>
-                  <h3 className="text-[17px] font-bold text-[#2C2C2C] mb-8">Contact Details</h3>
+                  <h3 className="text-[17px] font-bold text-[#2C2C2C] mb-8">{t("personal_info")}</h3>
                   <div className="flex gap-4 items-start mb-6">
                     <div className="w-10 h-10 rounded-full bg-white border border-[#ECEAE4] flex items-center justify-center shrink-0">
                       <Phone size={16} className="text-[#2C2C2C]" />
                     </div>
                     <div>
-                      <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1 uppercase">Phone Number</p>
+                      <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1 uppercase">{t("mobile_number")}</p>
                       <p className="text-[14px] font-medium text-[#2C2C2C]">{customer.mobile || "—"}</p>
                     </div>
                   </div>
@@ -552,7 +592,7 @@ export default function CustomerDetailPage() {
                       <MapPin size={16} className="text-[#2C2C2C]" />
                     </div>
                     <div>
-                      <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1 uppercase">Residential Address</p>
+                      <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1 uppercase">{t("address")}</p>
                       <p className="text-[14px] font-medium text-[#2C2C2C] leading-snug">{customer.address || "—"}</p>
                       {customer.region && (
                         <p className="text-[12px] font-medium text-[#9E9E9E] mt-1">{customer.region}</p>
@@ -567,21 +607,21 @@ export default function CustomerDetailPage() {
                   style={{ backgroundColor: "#E2E0C8", minHeight: "280px" }}
                 >
                   <div className="flex items-center justify-between mb-5">
-                    <h3 className="text-[17px] font-bold text-[#2C2C2C]">Internal Remarks</h3>
+                    <h3 className="text-[17px] font-bold text-[#2C2C2C]">{t("remarks")}</h3>
                     {isEditingNotes ? (
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setIsEditingNotes(false)}
                           className="text-[12px] font-semibold text-[#9E9E9E] hover:text-[#2C2C2C] transition-colors"
                         >
-                          Cancel
+                          {t("cancel")}
                         </button>
                         <button
                           onClick={handleSaveNotes}
                           disabled={savingNotes}
                           className="text-[12px] font-semibold bg-[#555B3F] text-white px-3 py-1.5 rounded-[12px] hover:bg-[#4B5036] transition-colors disabled:opacity-50"
                         >
-                          {savingNotes ? "Saving..." : "Save Notes"}
+                          {savingNotes ? t("saving") : t("save_terms")}
                         </button>
                       </div>
                     ) : (
@@ -622,7 +662,7 @@ export default function CustomerDetailPage() {
                 className="p-6 flex items-center justify-between"
                 style={{ borderBottom: "1px solid #ECEAE4" }}
               >
-                <h3 className="text-[17px] font-bold text-[#2C2C2C]">Transaction History</h3>
+                <h3 className="text-[17px] font-bold text-[#2C2C2C]">{t("ledger_items")}</h3>
                 <span className="text-[12px] font-medium text-[#9E9E9E]">
                   {customer.pledges.length} total
                 </span>
@@ -642,12 +682,12 @@ export default function CustomerDetailPage() {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr style={{ borderBottom: "1px solid #ECEAE4" }}>
-                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Pledge Date</th>
-                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Item</th>
-                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Loan Amount</th>
-                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Release Date</th>
-                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Status</th>
-                        <th className="px-6 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase text-right w-[110px]">Actions</th>
+                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">{t("col_pledge_date")}</th>
+                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">{t("item_name")}</th>
+                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">{t("col_loan_amount")}</th>
+                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">{t("col_release_date")}</th>
+                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">{t("col_status")}</th>
+                        <th className="px-6 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase text-right w-[110px]">{t("edit")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -726,7 +766,7 @@ export default function CustomerDetailPage() {
             className="bg-white rounded-[24px] p-8 w-full max-w-[500px] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-[20px] font-bold text-[#2C2C2C] mb-6">Edit Profile</h3>
+            <h3 className="text-[20px] font-bold text-[#2C2C2C] mb-6">{t("edit")}</h3>
             <div className="flex flex-col gap-4">
               {([
                 { label: "Full Name", key: "name", placeholder: "Customer name" },
@@ -746,19 +786,126 @@ export default function CustomerDetailPage() {
                 </div>
               ))}
             </div>
+            <div className="mt-6 flex flex-col md:flex-row items-start justify-between gap-6">
+              <div className="flex-1">
+                <label className="block text-[11px] font-bold tracking-wider text-[#9E9E9E] uppercase mb-2">Profile Picture</label>
+                <div className="flex items-center gap-4">
+                  <div className="relative w-[60px] h-[60px] shrink-0 rounded-full bg-[#EAE9DF] flex items-center justify-center overflow-hidden border border-[#D8D6CD] group">
+                    {editImgPreview ? (
+                      <>
+                        <img src={editImgPreview} alt="Customer" className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none" />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setEditImgPreview(null);
+                            setEditImgFile(null);
+                            setEditImgDeleted(true);
+                            if (editImgInputRef.current) editImgInputRef.current.value = "";
+                          }}
+                          className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-pointer"
+                        >
+                          <X size={20} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-[18px] font-bold text-[#555B3F] z-0 pointer-events-none">
+                          {getInitials(editForm.name || customer?.name || "NA")}
+                        </span>
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity z-0 pointer-events-none">
+                          <Camera size={20} />
+                        </div>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={editImgInputRef}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setEditImgFile(file);
+                          setEditImgPreview(URL.createObjectURL(file));
+                          setEditImgDeleted(false);
+                        }
+                      }}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      title="Upload new picture"
+                    />
+                  </div>
+                  <div className="text-[12px] text-[#9E9E9E]">
+                    <p>Click image to upload</p>
+                    <p>Max 5MB (JPG, PNG)</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1">
+                <label className="block text-[11px] font-bold tracking-wider text-[#9E9E9E] uppercase mb-2">ID Proof</label>
+                <div className="flex items-center gap-4">
+                  <div className="relative w-[100px] h-[60px] shrink-0 rounded-[12px] bg-[#EAE9DF] flex items-center justify-center overflow-hidden border border-[#D8D6CD] group">
+                    {editIdProofImgPreview ? (
+                      <>
+                        <img src={editIdProofImgPreview} alt="ID Proof" className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none" />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setEditIdProofImgPreview(null);
+                            setEditIdProofImgFile(null);
+                            setEditIdProofImgDeleted(true);
+                            if (editIdProofImgInputRef.current) editIdProofImgInputRef.current.value = "";
+                          }}
+                          className="absolute inset-0 flex items-center justify-center bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity z-20 cursor-pointer"
+                        >
+                          <X size={20} />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="absolute inset-0 flex items-center justify-center text-[#555B3F] group-hover:bg-black/50 group-hover:text-white transition-all z-0 pointer-events-none">
+                          <ImageIcon size={20} />
+                        </div>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={editIdProofImgInputRef}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setEditIdProofImgFile(file);
+                          setEditIdProofImgPreview(URL.createObjectURL(file));
+                          setEditIdProofImgDeleted(false);
+                        }
+                      }}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                      title="Upload new ID proof"
+                    />
+                  </div>
+                  <div className="text-[12px] text-[#9E9E9E]">
+                    <p>Click to upload</p>
+                    <p>Max 5MB (JPG, PNG)</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="flex justify-end gap-3 mt-8">
               <button
                 onClick={() => setShowEditModal(false)}
                 className="px-5 py-2.5 rounded-[20px] text-[13px] font-bold bg-[#F0EEE8] text-[#6F6F6F] hover:bg-[#E6E4DC] transition-colors"
               >
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 onClick={handleSaveProfile}
                 disabled={savingProfile}
                 className="px-5 py-2.5 rounded-[20px] text-[13px] font-bold bg-[#555B3F] text-white hover:bg-[#4B5036] transition-colors disabled:opacity-50"
               >
-                {savingProfile ? "Saving..." : "Save Changes"}
+                {savingProfile ? t("saving") : t("save")}
               </button>
             </div>
           </div>

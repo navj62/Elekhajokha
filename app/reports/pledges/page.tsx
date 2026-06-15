@@ -1,6 +1,7 @@
 // app/reports/pledges/page.tsx
 "use client";
 import { useEffect, useState } from "react";
+import { useAlert } from "@/components/providers/AlertProvider";
 
 type Pledge = {
   index: number;
@@ -30,6 +31,7 @@ export default function PledgeReportPage() {
   const [pledges, setPledges]     = useState<Pledge[]>([]);
   const [loading, setLoading]     = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const { showAlert } = useAlert();
 
   useEffect(() => {
     fetch("/api/reports/pledges")
@@ -60,7 +62,7 @@ export default function PledgeReportPage() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error(err);
-      alert("Failed to download PDF.");
+      showAlert("Failed to download PDF.");
     } finally {
       setDownloading(false);
     }

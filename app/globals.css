@@ -1,6 +1,34 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+
+/* ── Hindi font stack applied when language is set to Hindi ── */
+.lang-hi,
+.lang-hi * {
+  font-family: "Noto Sans Devanagari", "Mukta", "Hind", sans-serif !important;
+  letter-spacing: 0 !important;
+}
+
+/* ── Hindi readability: bump body text by 1px, improve line-height ── */
+.lang-hi p,
+.lang-hi span,
+.lang-hi label,
+.lang-hi button,
+.lang-hi input,
+.lang-hi textarea,
+.lang-hi th,
+.lang-hi td,
+.lang-hi li,
+.lang-hi div {
+  line-height: 1.65 !important;
+}
+
+/* Slightly larger for small text (11px → 12px, 12px → 13px, 13px → 14px) */
+.lang-hi .text-\[11px\] { font-size: 12px !important; }
+.lang-hi .text-\[12px\] { font-size: 13px !important; }
+.lang-hi .text-\[13px\] { font-size: 14px !important; }
+.lang-hi .text-\[14px\] { font-size: 15px !important; }
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { uploadImage } from "@/lib/upload";
 
 type RouteContext = {
   params: Promise<{ customerId: string }>;
@@ -133,8 +134,33 @@ export async function PATCH(req: Request, context: RouteContext) {
       return NextResponse.json({ error: "Customer ID required" }, { status: 400 });
     }
 
-    const body = await req.json();
-    const { name, address, region, mobile, aadharNo, remark } = body;
+    const contentType = req.headers.get("content-type") || "";
+    let name, address, region, mobile, aadharNo, remark, customerImg, deleteImg, idProofImg, deleteIdProofImg;
+
+    if (contentType.includes("multipart/form-data")) {
+      const fd = await req.formData();
+      name = fd.get("name")?.toString();
+      address = fd.get("address")?.toString();
+      region = fd.get("region")?.toString();
+      mobile = fd.get("mobile")?.toString();
+      aadharNo = fd.get("aadharNo")?.toString();
+      remark = fd.get("remark")?.toString();
+      deleteImg = fd.get("deleteImg")?.toString() === "true";
+      deleteIdProofImg = fd.get("deleteIdProofImg")?.toString() === "true";
+
+      const customerImgFile = fd.get("customerImg");
+      if (customerImgFile instanceof File && customerImgFile.size > 0) {
+        customerImg = await uploadImage(customerImgFile, `ELEKHAJOKHA/customers/${user.id}`);
+      }
+
+      const idProofImgFile = fd.get("idProofImg");
+      if (idProofImgFile instanceof File && idProofImgFile.size > 0) {
+        idProofImg = await uploadImage(idProofImgFile, `ELEKHAJOKHA/idProofs/${user.id}`);
+      }
+    } else {
+      const body = await req.json();
+      ({ name, address, region, mobile, aadharNo, remark } = body);
+    }
 
     const updated = await prisma.customer.updateMany({
       where: { id: customerId, userId: user.id, deletedAt: null },
@@ -145,6 +171,10 @@ export async function PATCH(req: Request, context: RouteContext) {
         ...(mobile   !== undefined && { mobile }),
         ...(aadharNo !== undefined && { aadharNo }),
         ...(remark   !== undefined && { remark }),
+        ...(customerImg !== undefined && { customerImg }),
+        ...(deleteImg && { customerImg: null }),
+        ...(idProofImg !== undefined && { idProofImg }),
+        ...(deleteIdProofImg && { idProofImg: null }),
       },
     });
 

@@ -7,8 +7,9 @@ import {
   Loader2, CheckCircle, ArrowLeft, Calendar,
   AlertTriangle, RefreshCw, Check, Phone, MapPin, Info
 } from "lucide-react";
-
+import { useLanguage } from "@/components/providers/LanguageProvider";
 import { calculateHybridInterest } from "@/lib/interest";
+
 
 /* ------------------------------------------------------------------ */
 /* Types                                                                */
@@ -73,6 +74,7 @@ const getInitials = (name: string) =>
 export default function ReleasePledgePage() {
   const params = useParams<{ customerId: string; pledgeId: string }>();
   const router = useRouter();
+  const { t } = useLanguage();
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -191,25 +193,25 @@ export default function ReleasePledgePage() {
           <CheckCircle size={40} className="text-[#6B7150]" />
         </div>
         <div>
-          <h2 className="text-[24px] font-semibold text-[#2C2C2C]">Pledge Released</h2>
+          <h2 className="text-[24px] font-semibold text-[#2C2C2C]">{t("pledge_released")}</h2>
           <p className="text-[13px] text-[#6F6F6F] mt-2 leading-relaxed">
-            The pledge for{" "}
+            {t("pledge_released_for")}{" "}
             <span className="font-semibold text-[#2C2C2C]">{pledge.customer.name}</span>{" "}
-            has been successfully released on {fmtDate(releaseDate)}.
+            {t("pledge_released_on")} {fmtDate(releaseDate)}.
           </p>
         </div>
         {calc && (
           <div className="w-full max-w-sm bg-[#F9F8F3] border border-[#ECEAE4] rounded-[16px] p-5 text-[13px] space-y-2.5">
             <div className="flex justify-between">
-              <span className="text-[#6F6F6F]">Principal</span>
+              <span className="text-[#6F6F6F]">{t("principal")}</span>
               <span className="font-semibold text-[#2C2C2C]">{fmt(Number(pledge.loanAmount))}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-[#6F6F6F]">Interest collected</span>
+              <span className="text-[#6F6F6F]">{t("interest_collected")}</span>
               <span className="font-semibold text-[#B91C1C]">{fmt(calc.totalInterest)}</span>
             </div>
             <div className="flex justify-between border-t border-[#ECEAE4] pt-2.5 mt-2">
-              <span className="font-semibold text-[#2C2C2C]">Total received</span>
+              <span className="font-semibold text-[#2C2C2C]">{t("total_receivable")}</span>
               <span className="font-bold text-[#6B7150] text-[16px]">{fmt(calc.receivableAmount)}</span>
             </div>
           </div>
@@ -218,7 +220,7 @@ export default function ReleasePledgePage() {
           onClick={() => router.push(`/customers/${params.customerId}`)}
           className="bg-[#6B7150] hover:bg-[#585E42] text-white text-[13px] font-semibold px-6 py-2.5 rounded-[10px] transition-colors mt-2"
         >
-          Back to Customer
+          {t("back_to_customer")}
         </button>
       </div>
     );
@@ -241,10 +243,10 @@ export default function ReleasePledgePage() {
           </Link>
           <div>
             <h1 className="text-[32px] font-semibold tracking-tight text-[#2C2C2C] leading-none mb-2">
-              Release Pledge
+              {t("release_pledge")}
             </h1>
             <p className="text-[14px] text-[#6F6F6F]">
-              Calculate interest and release this pledge
+              {t("release_pledge_desc")}
             </p>
           </div>
         </div>
@@ -266,12 +268,12 @@ export default function ReleasePledgePage() {
         <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm">
 
           <div className="flex items-center gap-2 text-[16px] font-semibold text-[#2C2C2C] mb-6">
-            <Info size={18} className="text-[#8C8F7A]" /> Pledge Details
+            <Info size={18} className="text-[#8C8F7A]" /> {t("pledge_details")}
           </div>
 
           {/* Customer Section */}
           <div className="mb-6">
-            <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-2">Customer</p>
+            <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-2">{t("customer")}</p>
             <div className="bg-[#F9F8F3] rounded-[12px] p-4 flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 rounded-full bg-[#E8EBD8] flex items-center justify-center text-[15px] font-bold text-[#555B3F] shrink-0">
@@ -292,22 +294,22 @@ export default function ReleasePledgePage() {
 
           {/* Loan Information */}
           <div className="mb-8">
-            <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-2">Loan Information</p>
+            <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-2">{t("loan_information")}</p>
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-[#F9F8F3] rounded-[12px] p-4">
-                <p className="text-[11px] font-medium text-[#8C8F7A] mb-1">Loan Amount</p>
+                <p className="text-[11px] font-medium text-[#8C8F7A] mb-1">{t("loan_amount")}</p>
                 <p className="text-[20px] font-semibold text-[#2C2C2C] tabular-nums">{fmt(Number(pledge.loanAmount))}</p>
               </div>
               <div className="bg-[#F9F8F3] rounded-[12px] p-4">
-                <p className="text-[11px] font-medium text-[#8C8F7A] mb-1">Pledge Date</p>
+                <p className="text-[11px] font-medium text-[#8C8F7A] mb-1">{t("pledge_date")}</p>
                 <p className="text-[15px] font-semibold text-[#2C2C2C] mt-1">{fmtDate(pledge.pledgeDate)}</p>
               </div>
               <div className="bg-[#F9F8F3] rounded-[12px] p-4">
-                <p className="text-[11px] font-medium text-[#8C8F7A] mb-1">Annual Interest Rate</p>
+                <p className="text-[11px] font-medium text-[#8C8F7A] mb-1">{t("interest_rate")}</p>
                 <p className="text-[15px] font-semibold text-[#2C2C2C] mt-1">{Number(pledge.interestRate)}%</p>
               </div>
               <div className="bg-[#F9F8F3] rounded-[12px] p-4">
-                <p className="text-[11px] font-medium text-[#8C8F7A] mb-1">Compounding</p>
+                <p className="text-[11px] font-medium text-[#8C8F7A] mb-1">{t("compounding")}</p>
                 <p className="text-[15px] font-semibold text-[#2C2C2C] mt-1">
                   {pledge.allowCompounding ? titleCase(pledge.compoundingDuration) : "None"}
                 </p>
@@ -317,19 +319,19 @@ export default function ReleasePledgePage() {
 
           {/* Pledged Items */}
           <div>
-            <p className="text-[16px] font-semibold text-[#2C2C2C] mb-4">Pledged Items ({pledge.items.length})</p>
+            <p className="text-[16px] font-semibold text-[#2C2C2C] mb-4">{t("pledged_items")} ({pledge.items.length})</p>
 
             <div className="overflow-x-auto rounded-[12px] border border-[#ECEAE4] mb-4">
               <table className="w-full text-[13px] bg-[#F9F8F3]">
                 <thead>
                   <tr className="border-b border-[#ECEAE4] text-[#8C8F7A] text-[10px] font-bold tracking-widest uppercase">
-                    <th className="text-left px-4 py-3">Item</th>
-                    <th className="text-left px-4 py-3">Type</th>
-                    <th className="text-center px-4 py-3">Qty</th>
-                    <th className="text-right px-4 py-3">Gross Wt</th>
-                    <th className="text-right px-4 py-3">Net Wt</th>
-                    <th className="text-right px-4 py-3">Purity</th>
-                    <th className="text-right px-4 py-3">Net Metal</th>
+                    <th className="text-left px-4 py-3">{t("item_name")}</th>
+                    <th className="text-left px-4 py-3">{t("metal_type")}</th>
+                    <th className="text-center px-4 py-3">{t("quantity")}</th>
+                    <th className="text-right px-4 py-3">{t("gross_weight")}</th>
+                    <th className="text-right px-4 py-3">{t("net_weight")}</th>
+                    <th className="text-right px-4 py-3">{t("purity")}</th>
+                    <th className="text-right px-4 py-3">{t("net_metal")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#ECEAE4]">
@@ -394,14 +396,14 @@ export default function ReleasePledgePage() {
         <div className="bg-white border border-[#ECEAE4] rounded-[20px] p-6 shadow-sm sticky top-6">
 
           <div className="flex items-center gap-2 text-[16px] font-semibold text-[#2C2C2C] mb-6">
-            <Calendar size={18} className="text-[#8C8F7A]" /> Interest Calculation
+            <Calendar size={18} className="text-[#8C8F7A]" /> {t("interest_calculation")}
           </div>
 
           <div className="space-y-5">
             {/* Release Date */}
             <div>
               <label className="block text-[11px] font-bold tracking-widest text-[#2C2C2C] mb-2 uppercase">
-                Release Date
+                {t("release_date")}
               </label>
               <div className="relative">
                 <input
@@ -422,7 +424,7 @@ export default function ReleasePledgePage() {
             {/* Interest Method */}
             <div>
               <label className="block text-[11px] font-bold tracking-widest text-[#2C2C2C] mb-2 uppercase">
-                Interest Method
+                {t("interest_method")}
               </label>
               <div className="w-full bg-[#F9F8F3] border border-[#ECEAE4] rounded-[12px] px-4 py-3 text-[14px] text-[#6F6F6F] cursor-not-allowed">
                 {pledge.allowCompounding ? `${titleCase(pledge.compoundingDuration)} compounding` : "Simple interest"}
@@ -433,20 +435,20 @@ export default function ReleasePledgePage() {
             {/* Calculation Summary */}
             <div className="bg-[#F9F8F3] rounded-[16px] overflow-hidden mt-6">
               <div className="px-5 py-4">
-                <h3 className="text-[10px] font-bold tracking-widest uppercase text-[#2C2C2C] mb-4">Calculation Summary</h3>
+                <h3 className="text-[10px] font-bold tracking-widest uppercase text-[#2C2C2C] mb-4">{t("calculation_summary")}</h3>
 
                 {calc && !isBeforePledge ? (
                   <div className="space-y-3">
                     <div className="flex justify-between items-center text-[13px]">
-                      <span className="text-[#6F6F6F]">Duration</span>
-                      <span className="font-semibold text-[#2C2C2C]">{calc.T.toFixed(2)} months</span>
+                      <span className="text-[#6F6F6F]">{t("duration")}</span>
+                      <span className="font-semibold text-[#2C2C2C]">{calc.T.toFixed(2)} {t("months")}</span>
                     </div>
                     <div className="flex justify-between items-center text-[13px]">
-                      <span className="text-[#6F6F6F]">Principal</span>
+                      <span className="text-[#6F6F6F]">{t("principal")}</span>
                       <span className="font-semibold text-[#2C2C2C]">{fmt(Number(pledge.loanAmount))}</span>
                     </div>
                     <div className="flex justify-between items-center text-[13px]">
-                      <span className="text-[#6F6F6F]">Total Interest</span>
+                      <span className="text-[#6F6F6F]">{t("total_interest")}</span>
                       <span className="font-semibold text-[#B91C1C]">{fmt(calc.totalInterest)}</span>
                     </div>
                   </div>
@@ -459,7 +461,7 @@ export default function ReleasePledgePage() {
 
               <div className="bg-[#F4F3EE] px-5 py-4 border-t border-[#ECEAE4]">
                 <div className="flex items-center justify-between">
-                  <span className="text-[14px] font-semibold text-[#6F6F6F]">Receivable Amount</span>
+                  <span className="text-[14px] font-semibold text-[#6F6F6F]">{t("receivable_amount")}</span>
                   <span className="text-[24px] font-bold text-[#555B3F] tabular-nums">
                     {calc && !isBeforePledge ? fmt(calc.receivableAmount) : "—"}
                   </span>
@@ -490,7 +492,7 @@ export default function ReleasePledgePage() {
                 className="flex-1 bg-[#EAE8E1] hover:bg-[#DEDCD4] text-[#2C2C2C] text-[14px] font-semibold py-3.5 rounded-[12px] transition-colors"
                 disabled={loading}
               >
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 type="button"
@@ -501,7 +503,7 @@ export default function ReleasePledgePage() {
                 {loading ? (
                   <Loader2 className="animate-spin w-4 h-4" />
                 ) : (
-                  <>Release Pledge </>
+                  <>{t("release_pledge")} </>
                 )}
               </button>
             </div>

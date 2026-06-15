@@ -16,8 +16,11 @@ import {
   Circle,
   Plus,
   BarChart3,
+  Percent,
+  Coins,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useLanguage } from "@/components/providers/LanguageProvider";
 import { getStatusKey } from "@/lib/translations";
 import {
@@ -34,6 +37,7 @@ import {
   MonthlyPerformanceSection,
   MonthlyPerformanceSkeleton,
 } from "@/components/dashboard/MonthlyPerformanceSection";
+import { TopCustomersPodium, TopCustomer } from "@/components/dashboard/TopCustomersPodium";
 
 /* ================================================================== */
 /*  Types                                                               */
@@ -88,6 +92,9 @@ interface DashboardData {
     totalActiveLoanAmount: number;
     totalReleasedLoanAmount: number;
     totalBalanceAmount: number;
+    totalInterestSecured: number;
+    totalMarketValue: number;
+    totalAmountRecovered: number;
   };
   recentPledges?: {
     id: string;
@@ -99,9 +106,15 @@ interface DashboardData {
     releaseDate: string | null;
     status: string;
   }[];
+  topCustomers?: {
+    byLoanTaken: TopCustomer[];
+    byActivePledges: TopCustomer[];
+  };
   portfolio?: {
     goldItems: number;
     silverItems: number;
+    goldWeight: number;
+    silverWeight: number;
   };
   regions?: {
     name: string;
@@ -116,6 +129,7 @@ interface DashboardData {
     pledges: { month: string; added: number; released: number }[];
     loans: { month: string; disbursed: number; recovered: number }[];
     customers: { month: string; added: number }[];
+    interest: { month: string; collected: number }[];
     loanSummary: {
       totalDisbursed: number;
       totalRecovered: number;
@@ -138,8 +152,13 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function getGreeting(): string {
+function getGreeting(language: string): string {
   const h = new Date().getHours();
+  if (language === "hi") {
+    if (h < 12) return "सुप्रभात";
+    if (h < 17) return "शुभ दोपहर";
+    return "शुभ संध्या";
+  }
   if (h < 12) return "Good Morning";
   if (h < 17) return "Good Afternoon";
   return "Good Evening";
@@ -213,9 +232,10 @@ function ChartTooltipContent({ active, payload, label }: any) {
 /*  Loan Overview (Tabbed Chart)                                        */
 /* ================================================================== */
 
-type ChartTab = "pledges" | "loanAmount" | "customers";
+type ChartTab = "pledges" | "loanAmount" | "customers" | "interestCollected";
 
 function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<ChartTab>("pledges");
   const [isTransitioning, setIsTransitioning] = useState(false);
 
@@ -229,14 +249,16 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
   };
 
   const tabs: { key: ChartTab; label: string }[] = [
-    { key: "pledges", label: "Pledges" },
-    { key: "loanAmount", label: "Loan Amount" },
-    { key: "customers", label: "Customers" },
+    { key: "pledges", label: t("pledges_tab") },
+    { key: "loanAmount", label: t("loan_amount_tab") },
+    { key: "customers", label: t("customers_tab") },
+    { key: "interestCollected", label: "Interest Collected" },
   ];
 
   const pledgesData = charts?.pledges || [];
   const loansData = charts?.loans || [];
   const customersData = charts?.customers || [];
+  const interestData = charts?.interest || [];
 
   const { totalDisbursed, totalRecovered, recoveryRate } = charts?.loanSummary || {
     totalDisbursed: 0,
@@ -247,6 +269,7 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
   const hasPledges = pledgesData.some(d => d.added > 0 || d.released > 0);
   const hasLoans = loansData.some(d => d.disbursed > 0 || d.recovered > 0);
   const hasCustomers = customersData.some(d => d.added > 0);
+  const hasInterest = interestData.some(d => d.collected > 0);
 
   return (
     <div
@@ -257,10 +280,10 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
       <div className="flex justify-between items-start mb-1">
         <div>
           <h2 className="text-[17px] font-bold" style={{ color: "var(--text-primary)" }}>
-            Loan Overview
+            {t("loan_overview")}
           </h2>
           <p className="text-[12px] font-medium mt-0.5" style={{ color: "var(--text-muted)" }}>
-            Monthly disbursement vs collection performance
+            {t("loan_overview_desc")}
           </p>
         </div>
         {/* Tab switcher */}
@@ -292,7 +315,7 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
         >
           <div className="text-center">
             <p className="text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              Total Disbursed
+              {t("total_disbursed")}
             </p>
             <p className="text-[16px] md:text-[20px] font-bold mt-0.5" style={{ color: "var(--text-primary)" }}>
               ₹{totalDisbursed >= 100000 ? (totalDisbursed / 100000).toFixed(1) + "L" : totalDisbursed.toLocaleString("en-IN")}
@@ -300,7 +323,7 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
           </div>
           <div className="text-center border-x" style={{ borderColor: "var(--border-light)" }}>
             <p className="text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              Recovered
+              {t("recovered")}
             </p>
             <p className="text-[16px] md:text-[20px] font-bold mt-0.5" style={{ color: "var(--text-primary)" }}>
               ₹{totalRecovered >= 100000 ? (totalRecovered / 100000).toFixed(1) + "L" : totalRecovered.toLocaleString("en-IN")}
@@ -308,7 +331,7 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
           </div>
           <div className="text-center">
             <p className="text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              Recovery Rate
+              {t("recovery_rate")}
             </p>
             <p className="text-[16px] md:text-[20px] font-bold mt-0.5" style={{ color: "var(--text-primary)" }}>
               {recoveryRate.toFixed(1)}%
@@ -349,25 +372,13 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
                   iconSize={8}
                   wrapperStyle={{ fontSize: 11, fontWeight: 600, paddingTop: 12 }}
                 />
-                <Bar
-                  dataKey="added"
-                  name="Pledges Added"
-                  fill="#565C3F"
-                  radius={[4, 4, 0, 0]}
-                  animationDuration={600}
-                />
-                <Bar
-                  dataKey="released"
-                  name="Pledges Released"
-                  fill="#DADBCF"
-                  radius={[4, 4, 0, 0]}
-                  animationDuration={600}
-                />
+                <Bar dataKey="added" name={t("pledges_added")} fill="#565C3F" radius={[4, 4, 0, 0]} animationDuration={600} />
+                <Bar dataKey="released" name={t("pledges_released")} fill="#DADBCF" radius={[4, 4, 0, 0]} animationDuration={600} />
               </BarChart>
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-muted)]">
                 <Archive size={32} className="mb-2 opacity-20" />
-                <span className="text-[13px] font-medium">No pledge activity available.</span>
+                <span className="text-[13px] font-medium">{t("no_pledge_activity")}</span>
               </div>
             )
           ) : activeTab === "loanAmount" ? (
@@ -397,28 +408,16 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
                   iconSize={8}
                   wrapperStyle={{ fontSize: 11, fontWeight: 600, paddingTop: 12 }}
                 />
-                <Bar
-                  dataKey="disbursed"
-                  name="Loan Disbursed"
-                  fill="#565C3F"
-                  radius={[4, 4, 0, 0]}
-                  animationDuration={600}
-                />
-                <Bar
-                  dataKey="recovered"
-                  name="Amount Recovered"
-                  fill="#DADBCF"
-                  radius={[4, 4, 0, 0]}
-                  animationDuration={600}
-                />
+                <Bar dataKey="disbursed" name={t("loan_disbursed")} fill="#565C3F" radius={[4, 4, 0, 0]} animationDuration={600} />
+                <Bar dataKey="recovered" name={t("amount_recovered")} fill="#DADBCF" radius={[4, 4, 0, 0]} animationDuration={600} />
               </BarChart>
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-muted)]">
                 <DollarSign size={32} className="mb-2 opacity-20" />
-                <span className="text-[13px] font-medium">No loan data available.</span>
+                <span className="text-[13px] font-medium">{t("no_loan_data")}</span>
               </div>
             )
-          ) : (
+          ) : activeTab === "customers" ? (
             hasCustomers ? (
               <BarChart data={customersData} barSize={24}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#ECEAE4" vertical={false} />
@@ -441,18 +440,47 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
                   iconSize={8}
                   wrapperStyle={{ fontSize: 11, fontWeight: 600, paddingTop: 12 }}
                 />
-                <Bar
-                  dataKey="added"
-                  name="Customers Added"
-                  fill="#565C3F"
-                  radius={[4, 4, 0, 0]}
-                  animationDuration={600}
-                />
+                <Bar dataKey="added" name={t("customers_added")} fill="#565C3F" radius={[4, 4, 0, 0]} animationDuration={600} />
               </BarChart>
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-muted)]">
                 <Users size={32} className="mb-2 opacity-20" />
-                <span className="text-[13px] font-medium">No customer growth data available.</span>
+                <span className="text-[13px] font-medium">{t("no_customer_data")}</span>
+              </div>
+            )
+          ) : (
+            hasInterest ? (
+              <BarChart data={interestData} barSize={24}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#ECEAE4" vertical={false} />
+                <XAxis
+                  dataKey="month"
+                  tick={{ fontSize: 11, fontWeight: 700, fill: "#9E9E9E" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: "#9E9E9E" }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={40}
+                  tickFormatter={(v) => {
+                    if (v >= 100000) return `${(v / 100000).toFixed(0)}L`;
+                    if (v >= 1000) return `${(v / 1000).toFixed(0)}K`;
+                    return `₹${v}`;
+                  }}
+                />
+                <Tooltip content={<ChartTooltipContent />} cursor={{ fill: "rgba(0,0,0,0.02)" }} />
+                <Legend
+                  iconType="circle"
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: 11, fontWeight: 600, paddingTop: 12 }}
+                />
+                <Bar dataKey="collected" name="Interest Collected" fill="#8BA860" radius={[4, 4, 0, 0]} animationDuration={600} />
+              </BarChart>
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-muted)]">
+                <Coins size={32} className="mb-2 opacity-20" />
+                <span className="text-[13px] font-medium">No interest collected yet</span>
               </div>
             )
           )}
@@ -584,6 +612,7 @@ function CalendarWidget({ tasksData = [] }: { tasksData?: { id: string; text: st
 type Task = { id: string; text: string; done: boolean; dueDate?: string | null; createdAt?: string };
 
 function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
+  const { t } = useLanguage();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -657,12 +686,12 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
       style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
     >
       <h3 className="text-[14px] font-bold mb-4" style={{ color: "var(--text-primary)" }}>
-        Today&apos;s Tasks
+        {t("todays_tasks")}
       </h3>
 
       {todayTasks.length === 0 && !showAdd ? (
         <div className="py-6 text-center text-[12.5px] font-medium text-[var(--text-muted)]">
-          No tasks scheduled today.
+          {t("no_tasks_today")}
         </div>
       ) : (
         <div className="space-y-3">
@@ -707,7 +736,7 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") addTask(); if (e.key === "Escape") setShowAdd(false); }}
-            placeholder="Task title…"
+            placeholder={t("task_title_placeholder")}
             className="w-full bg-transparent text-[12.5px] font-medium outline-none"
             style={{ color: "var(--text-primary)" }}
           />
@@ -724,7 +753,7 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
               className="text-[10px] font-bold px-2 py-1 rounded-lg transition-opacity hover:opacity-70"
               style={{ color: "var(--text-muted)" }}
             >
-              Cancel
+              {t("task_cancel")}
             </button>
             <button
               onClick={addTask}
@@ -732,7 +761,7 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
               className="text-[10px] font-bold px-3 py-1 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-40"
               style={{ backgroundColor: "#565C3F", color: "#fff" }}
             >
-              {adding ? "Saving…" : "Save"}
+              {adding ? t("task_saving") : t("task_save")}
             </button>
           </div>
         </div>
@@ -745,14 +774,14 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
           style={{ color: "#565C3F" }}
         >
           <Plus size={12} strokeWidth={3} />
-          Add Task
+          {t("add_task")}
         </button>
         <Link
           href="/tasks"
           className="flex items-center gap-1 text-[11px] font-bold transition-opacity hover:opacity-70"
           style={{ color: "var(--text-secondary)" }}
         >
-          View All Tasks
+          {t("view_all_tasks")}
           <ArrowRight size={11} strokeWidth={2.5} />
         </Link>
       </div>
@@ -765,6 +794,7 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
 /* ================================================================== */
 
 function RegionDistribution({ regions = [] }: { regions?: { name: string; count: number }[] }) {
+  const { t } = useLanguage();
   const maxCount = Math.max(...regions.map((r) => r.count), 1);
 
   return (
@@ -773,12 +803,12 @@ function RegionDistribution({ regions = [] }: { regions?: { name: string; count:
       style={{ backgroundColor: "#EFEFDF", border: "1px solid var(--border-light)" }}
     >
       <h3 className="text-[14px] font-bold mb-5" style={{ color: "var(--text-primary)" }}>
-        Customer Distribution by Region
+        {t("region_distribution")}
       </h3>
 
       {regions.length === 0 ? (
         <div className="py-6 text-center text-[12.5px] font-medium text-[var(--text-muted)]">
-          No customer regions available.
+          {t("no_regions")}
         </div>
       ) : (
         <div className="space-y-4">
@@ -810,7 +840,7 @@ function RegionDistribution({ regions = [] }: { regions?: { name: string; count:
         className="flex items-center justify-between w-full mt-5 pt-3 text-[11px] font-bold transition-opacity hover:opacity-70"
         style={{ color: "#37392C", borderTop: "1px solid var(--border-light)" }}
       >
-        <span>View All Regions</span>
+        <span>{t("view_all_regions")}</span>
         <ArrowRight size={12} />
       </button>
     </div>
@@ -821,11 +851,35 @@ function RegionDistribution({ regions = [] }: { regions?: { name: string; count:
 /*  Metal Portfolio (Semi-circle Gauge)                                 */
 /* ================================================================== */
 
-function MetalPortfolio({ portfolio }: { portfolio?: { goldItems: number; silverItems: number } }) {
+function MetalPortfolio({ portfolio, snapshot, rates }: {
+  portfolio?: { goldItems: number; silverItems: number; goldWeight?: number; silverWeight?: number },
+  snapshot?: FinancialSnapshot | null,
+  rates?: MarketRates | null
+}) {
+  const { t } = useLanguage();
+  const [view, setView] = useState<"items" | "weight" | "value">("items");
+
   const goldItems = portfolio?.goldItems || 0;
   const silverItems = portfolio?.silverItems || 0;
-  const total = goldItems + silverItems;
-  const goldPct = total > 0 ? goldItems / total : 0;
+  const totalItems = goldItems + silverItems;
+
+  const goldWeight = portfolio?.goldWeight ?? parseFloat(snapshot?.totalGoldWeight || "0");
+  const silverWeight = portfolio?.silverWeight ?? parseFloat(snapshot?.totalSilverWeight || "0");
+  const totalWeight = goldWeight + silverWeight;
+
+  const goldValue = goldWeight * (rates?.gold?.inrPerGram || 0);
+  const silverValue = silverWeight * (rates?.silver?.inrPerGram || 0);
+  const totalValue = goldValue + silverValue;
+
+  const isItems = view === "items";
+  const isWeight = view === "weight";
+  const isValue = view === "value";
+  
+  const total = isItems ? totalItems : isWeight ? totalWeight : totalValue;
+  const goldVal = isItems ? goldItems : isWeight ? goldWeight : goldValue;
+  const silverVal = isItems ? silverItems : isWeight ? silverWeight : silverValue;
+
+  const goldPct = total > 0 ? goldVal / total : 0;
 
   // Arc parameters
   const cx = 90, cy = 85, r = 65;
@@ -848,22 +902,44 @@ function MetalPortfolio({ portfolio }: { portfolio?: { goldItems: number; silver
       className="rounded-[18px] p-5"
       style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
     >
-      <h3 className="text-[14px] font-bold mb-2" style={{ color: "var(--text-primary)" }}>
-        Metal Portfolio
-      </h3>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-[14px] font-bold" style={{ color: "var(--text-primary)" }}>
+          {t("metal_portfolio")}
+        </h3>
+        {totalItems > 0 && (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setView(view === "items" ? "value" : view === "weight" ? "items" : "weight")}
+              className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              style={{ color: "var(--text-muted)" }}
+              title="Previous View"
+            >
+              <ChevronLeft className="bg-[#F2F2F2] rounded-full w-5 h-5" size={16} />
+            </button>
+            <button
+              onClick={() => setView(view === "items" ? "weight" : view === "weight" ? "value" : "items")}
+              className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+              style={{ color: "var(--text-muted)" }}
+              title="Next View"
+            >
+              <ChevronRight className="bg-[#F2F2F2] rounded-full w-5 h-5 " size={16} />
+            </button>
+          </div>
+        )}
+      </div>
 
-      {total === 0 ? (
+      {totalItems === 0 ? (
         <div className="py-6 text-center text-[12.5px] font-medium text-[var(--text-muted)]">
-          No pledged items available.
+          {t("no_pledged_items")}
         </div>
       ) : (
         <>
           <div className="flex justify-center">
             <svg width="180" height="110" viewBox="0 0 180 110">
               {/* Silver arc */}
-              {silverItems > 0 && (
+              {silverVal > 0 && (
                 <path
-                  d={arc(goldEnd + (goldItems > 0 ? 0.05 : 0), silverEnd)}
+                  d={arc(goldEnd + (goldVal > 0 ? 0.05 : 0), silverEnd)}
                   fill="none"
                   stroke="#E5E7EB"
                   strokeWidth="14"
@@ -871,9 +947,9 @@ function MetalPortfolio({ portfolio }: { portfolio?: { goldItems: number; silver
                 />
               )}
               {/* Gold arc */}
-              {goldItems > 0 && (
+              {goldVal > 0 && (
                 <path
-                  d={arc(startAngle, goldEnd - (silverItems > 0 ? 0.05 : 0))}
+                  d={arc(startAngle, goldEnd - (silverVal > 0 ? 0.05 : 0))}
                   fill="none"
                   stroke="#FBBF24"
                   strokeWidth="14"
@@ -881,11 +957,11 @@ function MetalPortfolio({ portfolio }: { portfolio?: { goldItems: number; silver
                 />
               )}
               {/* Center text */}
-              <text x={cx} y={cy - 6} textAnchor="middle" fontSize="24" fontWeight="800" fill="#2C2C2C">
-                {total}
+              <text x={cx} y={cy - 6} textAnchor="middle" fontSize={isValue ? "18" : "24"} fontWeight="800" fill="#2C2C2C">
+                {isItems ? total : isWeight ? total.toFixed(2) : `₹${Math.round(total).toLocaleString("en-IN")}`}
               </text>
               <text x={cx} y={cy + 10} textAnchor="middle" fontSize="8" fontWeight="700" fill="#9E9E9E" letterSpacing="1.2">
-                TOTAL ITEMS
+                {isItems ? t("total_items_label").toUpperCase() : isWeight ? "TOTAL WEIGHT (g)" : "TOTAL VALUE"}
               </text>
             </svg>
           </div>
@@ -894,13 +970,13 @@ function MetalPortfolio({ portfolio }: { portfolio?: { goldItems: number; silver
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#FBBF24" }} />
               <span className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
-                Gold ({goldItems})
+                {t("gold")} ({isItems ? goldItems : isWeight ? goldWeight.toFixed(2) + "g" : `₹${Math.round(goldValue).toLocaleString("en-IN")}`})
               </span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#E5E7EB" }} />
               <span className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
-                Silver ({silverItems})
+                {t("silver")} ({isItems ? silverItems : isWeight ? silverWeight.toFixed(2) + "g" : `₹${Math.round(silverValue).toLocaleString("en-IN")}`})
               </span>
             </div>
           </div>
@@ -917,12 +993,14 @@ function MetalPortfolio({ portfolio }: { portfolio?: { goldItems: number; silver
 export default function DashboardPage() {
   const { language, t } = useLanguage();
   const locale = language === "hi" ? "hi-IN" : "en-IN";
+  const router = useRouter();
 
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(true);
   const [rates, setRates] = useState<MarketRates | null>(null);
   const [ratesLoading, setRatesLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [kpiSlide, setKpiSlide] = useState(0);
 
   /* ---- Fetch dashboard snapshot ---- */
   const loadSnapshot = useCallback(async () => {
@@ -997,9 +1075,9 @@ export default function DashboardPage() {
   }
 
   function formatCurrencyAbbr(n: number): string {
-    if (n >= 10000000) return "₹" + (n / 10000000).toFixed(1) + "Cr";
-    if (n >= 100000) return "₹" + (n / 100000).toFixed(0) + "L";
-    if (n >= 1000) return "₹" + (n / 1000).toFixed(0) + "K";
+    if (n >= 10000000) return "₹" + (n / 10000000).toFixed(2) + "Cr";
+    if (n >= 100000) return "₹" + (n / 100000).toFixed(2) + "L";
+    if (n >= 1000) return "₹" + (n / 1000).toFixed(2) + "K";
     return "₹" + n;
   }
 
@@ -1016,10 +1094,10 @@ export default function DashboardPage() {
           className="text-[30px] sm:text-[36px] font-bold tracking-tight mb-1"
           style={{ color: "var(--text-primary)" }}
         >
-          {getGreeting()}, Admin.
+          {getGreeting(language)}, {t("admin")}.
         </h1>
         <p className="text-[13px] font-medium" style={{ color: "var(--text-secondary)" }}>
-          Here is your financial workspace overview for today.
+          {t("greeting_subtitle")}
         </p>
       </section>
 
@@ -1037,20 +1115,20 @@ export default function DashboardPage() {
           <div className="flex items-center gap-1.5">
             <BarChart3 size={14} style={{ color: "#565C3F" }} />
             <span className="text-[11px] font-bold tracking-wide" style={{ color: "#565C3F" }}>
-              Market Rates:
+              {t("market_rates")}
             </span>
           </div>
           <div className="flex items-center gap-5">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#FBBF24" }} />
               <span className="text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
-                Gold: {goldPriceDisplay}
+                {t("gold")}: {goldPriceDisplay}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#9CA3AF" }} />
               <span className="text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
-                Silver: {silverPriceDisplay}
+                {t("silver")}: {silverPriceDisplay}
               </span>
             </div>
           </div>
@@ -1062,7 +1140,7 @@ export default function DashboardPage() {
           style={{ color: "var(--text-secondary)" }}
         >
           <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
-          REFRESH
+          {refreshing ? t("refreshing") : t("refresh")}
         </button>
       </div>
 
@@ -1073,54 +1151,127 @@ export default function DashboardPage() {
         {/* Left Column */}
         <section>
           <div
-            className="rounded-[18px] p-0 flex items-center justify-between h-full"
+            className="rounded-[18px] overflow-hidden relative h-full"
             style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
           >
-            {/* Total Customers */}
-            <div className="flex-1 p-6 flex flex-col items-center justify-center relative">
-              <div className="flex items-center gap-2 mb-2">
-                <Users size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
-                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
-                  TOTAL CUSTOMERS
-                </span>
+            {/* Sliding Track */}
+            <div
+              className="flex w-full h-full transition-transform duration-300 ease-in-out"
+              style={{ transform: `translateX(-${kpiSlide * 100}%)` }}
+            >
+              {/* Slide 1 */}
+              <div className="w-full flex-shrink-0 flex items-center justify-between">
+                {/* Total Customers */}
+                <div className="flex-1 p-6 flex flex-col items-center justify-center relative h-full">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Users size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-center" style={{ color: "var(--text-muted)" }}>
+                      {t("total_customers_abbr")}
+                    </span>
+                  </div>
+                  <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+                    <AnimatedCounter value={statsToUse.totalCustomers} format={(v) => v.toLocaleString(locale)} />
+                  </span>
+                  {/* Right divider */}
+                  <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border-light)]" />
+                </div>
+
+                {/* Active Pledges */}
+                <div className="flex-1 p-6 flex flex-col items-center justify-center relative h-full">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Archive size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-center" style={{ color: "var(--text-muted)" }}>
+                      {t("active_pledges_abbr")}
+                    </span>
+                  </div>
+                  <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+                    <AnimatedCounter value={statsToUse.totalActivePledges} format={(v) => v.toLocaleString(locale)} />
+                  </span>
+                  {/* Right divider */}
+                  <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border-light)]" />
+                </div>
+
+                {/* Total Loan Amount */}
+                <div className="flex-1 p-6 flex flex-col items-center justify-center relative h-full">
+                  <div className="flex items-center gap-2 mb-2">
+                    <IndianRupee size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-center" style={{ color: "var(--text-muted)" }}>
+                      {t("Total Loan Amount")}
+                    </span>
+                  </div>
+                  <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+                    <AnimatedCounter
+                      value={(statsToUse.totalActiveLoanAmount || 0) + (statsToUse.totalReleasedLoanAmount || 0)}
+                      format={formatCurrencyAbbr}
+                    />
+                  </span>
+                </div>
               </div>
-              <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
-                <AnimatedCounter value={statsToUse.totalCustomers} format={(v) => v.toLocaleString(locale)} />
-              </span>
-              {/* Right divider */}
-              <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border-light)]" />
+
+              {/* Slide 2 */}
+              <div className="w-full flex-shrink-0 flex items-center justify-between">
+                {/* Total Interest Secured */}
+                <div className="flex-1 p-6 flex flex-col items-center justify-center relative h-full">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Percent size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-center" style={{ color: "var(--text-muted)" }}>
+                      Total Interest Secured
+                    </span>
+                  </div>
+                  <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+                    <AnimatedCounter value={statsToUse.totalInterestSecured || 0} format={formatCurrencyAbbr} />
+                  </span>
+                  <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border-light)]" />
+                </div>
+
+                {/* Total Market Value */}
+                <div className="flex-1 p-6 flex flex-col items-center justify-center relative h-full">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Coins size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-center" style={{ color: "var(--text-muted)" }}>
+                      Total Market Value
+                    </span>
+                  </div>
+                  <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+                    <AnimatedCounter value={statsToUse.totalMarketValue || 0} format={formatCurrencyAbbr} />
+                  </span>
+                  <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border-light)]" />
+                </div>
+
+                {/* Total Amount Recovered */}
+                <div className="flex-1 p-6 flex flex-col items-center justify-center relative h-full">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
+                    <span className="text-[10px] font-bold tracking-wider uppercase text-center" style={{ color: "var(--text-muted)" }}>
+                      Total Amount Recovered
+                    </span>
+                  </div>
+                  <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+                    <AnimatedCounter value={statsToUse.totalAmountRecovered || 0} format={formatCurrencyAbbr} />
+                  </span>
+                </div>
+              </div>
             </div>
 
-            {/* Active Pledges */}
-            <div className="flex-1 p-6 flex flex-col items-center justify-center relative">
-              <div className="flex items-center gap-2 mb-2">
-                <Archive size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
-                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
-                  ACTIVE PLEDGES
-                </span>
-              </div>
-              <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
-                <AnimatedCounter value={statsToUse.totalActivePledges} format={(v) => v.toLocaleString(locale)} />
-              </span>
-              {/* Right divider */}
-              <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border-light)]" />
-            </div>
-
-            {/* Total Balance */}
-            <div className="flex-1 p-6 flex flex-col items-center justify-center">
-              <div className="flex items-center gap-2 mb-2">
-                <IndianRupee size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
-                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
-                  TOTAL BALANCE
-                </span>
-              </div>
-              <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
-                <AnimatedCounter
-                  value={statsToUse.totalBalanceAmount || 0}
-                  format={formatCurrencyAbbr}
-                />
-              </span>
-            </div>
+            {/* Controls */}
+            {kpiSlide === 0 && (
+              <button
+                onClick={() => setKpiSlide(1)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 transition-colors cursor-pointer z-10"
+                aria-label="Next KPIs"
+              >
+                <ChevronRight size={18} style={{ color: "var(--text-secondary)" }} />
+              </button>
+            )}
+            {kpiSlide === 1 && (
+              <button
+                onClick={() => setKpiSlide(0)}
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 transition-colors cursor-pointer z-10"
+                aria-label="Previous KPIs"
+              >
+                <ChevronLeft size={18} style={{ color: "var(--text-secondary)" }} />
+              </button>
+            )}
           </div>
         </section>
 
@@ -1141,9 +1292,9 @@ export default function DashboardPage() {
 
         {/* Right Column */}
         <section className="space-y-6">
-          <TodaysTasks tasksData={dashboard?.tasks} />
+          <TopCustomersPodium data={dashboard?.topCustomers} t={t} />
           <RegionDistribution regions={dashboard?.regions} />
-          <MetalPortfolio portfolio={dashboard?.portfolio} />
+          <MetalPortfolio portfolio={dashboard?.portfolio} snapshot={dashboard?.snapshot} rates={rates} />
         </section>
       </div>
 
@@ -1165,10 +1316,10 @@ export default function DashboardPage() {
             </div>
             <div>
               <h2 className="text-[16px] font-bold" style={{ color: "#2E3318" }}>
-                Recent Pledges
+                {t("recent_pledges")}
               </h2>
               <p className="text-[11px] font-medium" style={{ color: "#6B7A4A" }}>
-                Latest {pledgesToUse.length > 0 ? pledgesToUse.length : ""} pledge transactions
+                {t("latest_n_pledges", { count: pledgesToUse.length > 0 ? pledgesToUse.length : "" })}
               </p>
             </div>
           </div>
@@ -1177,18 +1328,29 @@ export default function DashboardPage() {
             className="flex items-center gap-1.5 text-[11px] font-bold px-4 py-2 rounded-lg transition-all hover:opacity-80"
             style={{ backgroundColor: "#D0D6B8", color: "#3A4127", border: "1px solid #BCC4A0" }}
           >
-            View Full Ledger
+            {t("view_full_ledger")}
             <ArrowRight size={12} strokeWidth={2.5} />
           </Link>
         </div>
 
         {/* Column Headers */}
         <div
-          className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 px-6 py-3 min-w-[600px]"
+          className="grid grid-cols-[2fr_1.5fr_1.2fr_1.2fr_1.2fr_120px] gap-4 px-6 py-3 min-w-[850px]"
           style={{ backgroundColor: "#F2F4E9", borderLeft: "1px solid #D4D9BD", borderRight: "1px solid #D4D9BD" }}
         >
-          {["Customer", "Pledge Date", "Loan Amount", "Release Date", "Status"].map((col) => (
-            <span key={col} className="text-[9px] font-black tracking-[0.12em] uppercase" style={{ color: "#7A8A55" }}>
+          {[
+            t("col_customer"),
+            t("col_pledge_item") === "col_pledge_item" ? "PLEDGE ITEM" : t("col_pledge_item"),
+            t("col_pledge_date"),
+            t("col_loan_amount"),
+            t("col_release_date"),
+            t("col_status"),
+          ].map((col, idx) => (
+            <span
+              key={col}
+              className={`text-[9px] font-black tracking-[0.12em] uppercase ${idx === 5 ? "text-right" : ""}`}
+              style={{ color: "#7A8A55" }}
+            >
               {col}
             </span>
           ))}
@@ -1207,8 +1369,8 @@ export default function DashboardPage() {
               >
                 <Archive size={24} style={{ color: "var(--text-muted)" }} />
               </div>
-              <p className="text-[14px] font-semibold" style={{ color: "var(--text-muted)" }}>No recent pledges found.</p>
-              <p className="text-[12px] mt-1" style={{ color: "var(--text-muted)", opacity: 0.6 }}>New pledges will appear here once added.</p>
+              <p className="text-[14px] font-semibold" style={{ color: "var(--text-muted)" }}>{t("no_recent_pledges")}</p>
+              <p className="text-[12px] mt-1" style={{ color: "var(--text-muted)", opacity: 0.6 }}>{t("new_pledges_appear")}</p>
             </div>
           ) : (
             pledgesToUse.map((p: any, i: number) => {
@@ -1230,10 +1392,11 @@ export default function DashboardPage() {
               return (
                 <div
                   key={p.id}
-                  className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 items-center px-6 py-4 transition-all duration-150 min-w-[600px] group"
+                  onClick={() => router.push(`/customers/${p.customerId}/pledges/${p.id}`)}
+                  className="grid grid-cols-[2fr_1.5fr_1.2fr_1.2fr_1.2fr_120px] gap-4 items-center px-6 py-4 transition-all duration-150 min-w-[850px] group"
                   style={{
                     borderBottom: !isLast ? "1px solid var(--border-light)" : "none",
-                    cursor: "default",
+                    cursor: "pointer",
                   }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = "var(--main-bg)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = "transparent"; }}
@@ -1261,6 +1424,13 @@ export default function DashboardPage() {
                         </p>
                       )}
                     </div>
+                  </div>
+
+                  {/* Pledge Item */}
+                  <div>
+                    <p className="text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
+                      {p.pledgeItem || "—"}
+                    </p>
                   </div>
 
                   {/* Pledge Date */}
@@ -1295,7 +1465,7 @@ export default function DashboardPage() {
                         : "—"}
                     </p>
                     {!p.releaseDate && (
-                      <p className="text-[9px] font-semibold mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.7 }}>Pending</p>
+                      <p className="text-[9px] font-semibold mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.7 }}>{t("pending")}</p>
                     )}
                   </div>
 
