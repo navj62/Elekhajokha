@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/providers/LanguageProvider";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { Loader2, User, Mail, CalendarDays, Lock, CreditCard, Info, Edit2 } from "lucide-react";
+import { Loader2, User, Mail, CalendarDays, Lock, CreditCard, Info, Edit2, X } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -51,6 +51,15 @@ export default function ProfilePage() {
   const [termsSaving, setTermsSaving] = useState(false);
   const [termsErr, setTermsErr] = useState("");
 
+  // ── Item Types state ──────────────────────────────────────────────────
+  type ItemTypeEntry = { id: string; label: string; isDefault: boolean };
+  const [defaultTypes, setDefaultTypes] = useState<ItemTypeEntry[]>([]);
+  const [customTypes, setCustomTypes] = useState<ItemTypeEntry[]>([]);
+  const [itemTypesLoading, setItemTypesLoading] = useState(true);
+  const [newItemType, setNewItemType] = useState("");
+  const [itemTypeErr, setItemTypeErr] = useState("");
+  const [itemTypeAdding, setItemTypeAdding] = useState(false);
+
   useEffect(() => {
     fetch("/api/profile")
       .then((r) => r.json())
@@ -70,7 +79,57 @@ export default function ProfilePage() {
       })
       .catch((e) => setFetchErr(e.message))
       .finally(() => setFetching(false));
+
+    fetch("/api/item-types")
+      .then((r) => r.json())
+      .then((data) => {
+        setDefaultTypes(data.defaults ?? []);
+        setCustomTypes(data.custom ?? []);
+      })
+      .finally(() => setItemTypesLoading(false));
   }, []);
+
+  async function handleAddItemType() {
+    const label = newItemType.trim();
+    if (!label || label.length > 50) return;
+    setItemTypeErr("");
+    setItemTypeAdding(true);
+    try {
+      const res = await fetch("/api/item-types", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setItemTypeErr(data.message || data.error || "Failed to add");
+        return;
+      }
+      setCustomTypes((prev) => [...prev, data]);
+      setNewItemType("");
+    } catch {
+      setItemTypeErr("Unexpected error");
+    } finally {
+      setItemTypeAdding(false);
+    }
+  }
+
+  async function handleDeleteItemType(id: string) {
+    setCustomTypes((prev) => prev.filter((t) => t.id !== id));
+    try {
+      const res = await fetch(`/api/item-types/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        console.error("Delete failed:", data.error);
+        // Restore on error by re-fetching
+        fetch("/api/item-types")
+          .then((r) => r.json())
+          .then((d) => setCustomTypes(d.custom ?? []));
+      }
+    } catch {
+      fetch("/api/item-types").then((r) => r.json()).then((d) => setCustomTypes(d.custom ?? []));
+    }
+  }
 
   async function handleSave() {
     setSaveErr(""); setSaving(true);
@@ -394,6 +453,99 @@ export default function ProfilePage() {
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Item Types */}
+          <div className="bg-white rounded-[20px] border border-[#ECEAE4] shadow-sm p-6">
+            <div className="mb-5">
+              <h3 className="text-[18px] font-semibold text-[#2C2C2C]">Item Types</h3>
+              <p className="text-[13px] text-[#6F6F6F] mt-1.5 leading-relaxed">
+                Manage item types for pledges. Default types cannot be removed.
+              </p>
+            </div>
+
+            {itemTypesLoading ? (
+              <div className="flex gap-2 flex-wrap mb-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-7 w-20 rounded-full bg-[#ECEAE4] animate-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {/* Standard defaults */}
+                <div>
+                  <p className="text-[11px] font-semibold text-[#8C8F7A] uppercase tracking-wider mb-2">Standard Types</p>
+                  <div className="flex flex-wrap gap-2">
+                    {defaultTypes.map((t) => (
+                      <span
+                        key={t.id}
+                        className="px-3 py-1 rounded-full text-[12px] font-medium bg-[#F0EFE9] text-[#6F6F6F] border border-[#ECEAE4]"
+                      >
+                        {t.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom types */}
+                <div>
+                  <p className="text-[11px] font-semibold text-[#8C8F7A] uppercase tracking-wider mb-2">Your Custom Types</p>
+                  {customTypes.length === 0 ? (
+                    <p className="text-[12px] text-[#8C8F7A]">No custom types yet.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {customTypes.map((t) => (
+                        <span
+                          key={t.id}
+                          className="flex items-center gap-1 px-3 py-1 rounded-full text-[12px] font-medium bg-[#E8F0DC] text-[#4D6B2A]"
+                        >
+                          {t.label}
+                          <button
+                            onClick={() => handleDeleteItemType(t.id)}
+                            className="opacity-60 hover:opacity-100 transition-opacity"
+                            aria-label={`Remove ${t.label}`}
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Add input */}
+                <div>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      value={newItemType}
+                      onChange={(e) => {
+                        setNewItemType(e.target.value);
+                        setItemTypeErr("");
+                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleAddItemType(); }}
+                      placeholder="Add item type..."
+                      maxLength={51}
+                      className="flex-1 h-9 px-3 border border-[#ECEAE4] rounded-lg text-[13px] text-[#2C2C2C] bg-[#FAFAF8] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
+                    />
+                    <button
+                      onClick={handleAddItemType}
+                      disabled={!newItemType.trim() || newItemType.trim().length > 50 || itemTypeAdding}
+                      className="px-4 h-9 bg-[#6B7150] hover:bg-[#585E42] disabled:opacity-50 text-white text-[13px] font-semibold rounded-lg transition-colors flex items-center gap-1.5"
+                    >
+                      {itemTypeAdding && <Loader2 size={12} className="animate-spin" />}
+                      Add
+                    </button>
+                  </div>
+                  {newItemType.trim().length > 50 && (
+                    <p className="text-[11px] text-red-500 mt-1">Max 50 characters</p>
+                  )}
+                  {itemTypeErr && (
+                    <p className="text-[11px] text-red-500 mt-1">{itemTypeErr}</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
         </div>

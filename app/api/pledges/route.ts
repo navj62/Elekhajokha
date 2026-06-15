@@ -1,16 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth }                      from "@clerk/nextjs/server";
 import { prisma }                    from "@/lib/prisma";
-import { ItemType, MetalType, PledgeStatus, Prisma } from "@prisma/client";
+import { MetalType, PledgeStatus, Prisma } from "@prisma/client";
 
 /* ------------------------------------------------------------------ */
-/* Constants — derived from Prisma enums, never hardcoded             */
+/* Constants                                                            */
 /* ------------------------------------------------------------------ */
-const VALID_ITEM_TYPES  = Object.values(ItemType)   as ItemType[];
 const VALID_METAL_TYPES = Object.values(MetalType)  as MetalType[];
-const VALID_COMPOUNDING = ["MONTHLY", "HALFYEARLY", "YEARLY"] as const;
-
-type CompoundingDuration = typeof VALID_COMPOUNDING[number];
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -68,7 +64,7 @@ export async function GET(req: NextRequest) {
 
     // ── Parse filters ─────────────────────────────────────────────
     const metalType = parseEnum(searchParams.get("metalType"), VALID_METAL_TYPES);
-    const itemType  = parseEnum(searchParams.get("itemType"),  VALID_ITEM_TYPES);
+    const itemType  = searchParams.get("itemType")?.trim() || undefined;
     const status    = parseEnum(searchParams.get("status"),    Object.values(PledgeStatus) as PledgeStatus[]);
     const cursor    = searchParams.get("cursor") ?? undefined;
     const take      = Math.min(
@@ -84,7 +80,7 @@ export async function GET(req: NextRequest) {
         items: {
           some: {
             ...(metalType && { metalType }),
-            ...(itemType  && { itemType  }),
+            ...(itemType  && { itemType: { equals: itemType } }),
           },
         },
       }),
@@ -136,7 +132,7 @@ export async function GET(req: NextRequest) {
       remark:            p.remark,
       itemCount:         p.items.length,
       totalQuantity:     p.items.reduce((s, i) => s + i.quantity, 0),
-      itemTypes:         [...new Set(p.items.map((i) => i.itemType))].map(titleCase),
+      itemTypes:         [...new Set(p.items.map((i) => i.itemType))],
       metalTypes:        [...new Set(p.items.map((i) => i.metalType))].map(titleCase),
     }));
 

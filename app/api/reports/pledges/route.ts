@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
           ? (firstItem.itemName?.trim() || titleCase(firstItem.metalType)) +
             (extraItems > 0 ? ` +${extraItems}` : "")
           : "—",
-        itemType: firstItem ? titleCase(firstItem.itemType) : "—",
+        itemType: firstItem ? firstItem.itemType : "—",
       };
     };
 
@@ -316,7 +316,7 @@ export async function GET(req: NextRequest) {
         silverWeight: round2(result.reduce((s, r) => s + r.netWeightOfSilver, 0)),
         netWeight: round2(result.reduce((s, r) => s + r.netWeight, 0)),
         interestAccrued: round2(result.reduce((s, r) => s + r.interestAccrued, 0)),
-        receivableAmount: round2(result.reduce((s, r) => s + (r.receivableAmount ?? 0), 0)),
+        receivableAmount: round2(result.reduce((s, r) => s + (r.receivableAmount ?? r.loanAmount), 0)),
         loanAmount: round2(result.reduce((s, r) => s + r.loanAmount, 0)),
       };
     }

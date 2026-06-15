@@ -41,13 +41,45 @@ type Item = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Custom Select                                                      */
+/* Item Type Select (grouped, API-driven)                             */
 /* ------------------------------------------------------------------ */
 
-const ITEM_TYPES = ["Necklace", "Ring", "Chain", "Bangle", "Coin", "Pendant", "Earrings", "Bracelet", "Other"];
+type ItemTypeGroup = { defaults: string[]; custom: string[] };
 
-function CustomSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function ItemTypeSelect({
+  value,
+  onChange,
+  groups,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  groups: ItemTypeGroup;
+}) {
   const [open, setOpen] = useState(false);
+
+  const renderGroup = (label: string, items: string[]) => (
+    items.length > 0 ? (
+      <div key={label}>
+        <div className="px-4 py-1.5 text-[11px] font-semibold text-[#8C8F7A] uppercase tracking-wider bg-[#F0EFE9]">
+          {label}
+        </div>
+        {items.map((opt) => (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => { onChange(opt); setOpen(false); }}
+            className={`w-full text-left px-4 py-2.5 text-[14px] transition-colors ${
+              opt === value
+                ? "bg-[#555B3F] text-white font-bold"
+                : "text-[#2C2C2C] font-medium hover:bg-[#ECEAE4]"
+            }`}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+    ) : null
+  );
 
   return (
     <div className="relative">
@@ -56,7 +88,7 @@ function CustomSelect({ value, onChange }: { value: string; onChange: (v: string
         onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between px-4 py-3 rounded-[12px] border border-[#ECEAE4] bg-[#FAFAF8] text-[14px] text-[#2C2C2C] outline-none hover:border-[#555B3F] focus:border-[#555B3F] transition-colors"
       >
-        <span>{value}</span>
+        <span>{value || "Select type"}</span>
         <ChevronDown
           size={16}
           className={`text-[#9E9E9E] transition-transform duration-200 ${open ? "rotate-180" : ""}`}
@@ -66,20 +98,9 @@ function CustomSelect({ value, onChange }: { value: string; onChange: (v: string
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full mt-1.5 z-50 w-full bg-[#F5F4EF] border border-[#ECEAE4] rounded-[16px] shadow-[0_8px_32px_rgba(0,0,0,0.08)] overflow-hidden py-1.5">
-            {ITEM_TYPES.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => { onChange(opt); setOpen(false); }}
-                className={`w-full text-left px-4 py-2.5 text-[14px] transition-colors ${opt === value
-                  ? "bg-[#555B3F] text-white font-bold"
-                  : "text-[#2C2C2C] font-medium hover:bg-[#ECEAE4] hover:text-[#2C2C2C]"
-                  }`}
-              >
-                {opt}
-              </button>
-            ))}
+          <div className="absolute left-0 top-full mt-1.5 z-50 w-full bg-[#F5F4EF] border border-[#ECEAE4] rounded-[16px] shadow-[0_8px_32px_rgba(0,0,0,0.08)] overflow-hidden py-1">
+            {renderGroup("Standard Types", groups.defaults)}
+            {renderGroup("Custom Types", groups.custom)}
           </div>
         </>
       )}
@@ -287,6 +308,8 @@ export default function AddPledgePage() {
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [newPledgeId, setNewPledgeId] = useState<string | null>(null);
 
+  const [itemTypeGroups, setItemTypeGroups] = useState<ItemTypeGroup>({ defaults: [], custom: [] });
+
   /* ---- Fetch Customer Summary ----------------------------------- */
   useEffect(() => {
     if (!customerId) return;
@@ -316,6 +339,17 @@ export default function AddPledgePage() {
     // Default date to today
     const today = new Date().toISOString().split("T")[0];
     setPledgeDate(today);
+
+    // Fetch item types
+    fetch("/api/item-types")
+      .then((r) => r.json())
+      .then((data) => {
+        setItemTypeGroups({
+          defaults: (data.defaults ?? []).map((t: { label: string }) => t.label),
+          custom: (data.custom ?? []).map((t: { label: string }) => t.label),
+        });
+      })
+      .catch(() => {});
   }, [customerId]);
 
   /* ---- Helpers -------------------------------------------------- */
@@ -390,19 +424,6 @@ export default function AddPledgePage() {
       Yearly: "YEARLY",
     };
 
-    // Map UI item type labels to Prisma enum values
-    const itemTypeMap: Record<string, string> = {
-      Necklace: "NECKLACE",
-      Ring: "RING",
-      Chain: "CHAIN",
-      Bangle: "BANGLE",
-      Coin: "COIN",
-      Pendant: "PENDANT",
-      Earrings: "EARRING",
-      Bracelet: "BRACELET",
-      Other: "OTHER",
-    };
-
     // Build items array for the API
     const apiItems = items.map((item) => {
       const nw = Number(item.netWeight) || 0;
@@ -410,7 +431,7 @@ export default function AddPledgePage() {
       const netWeightOfMetal = (nw * purity) / 100;
 
       return {
-        itemType: itemTypeMap[item.itemType] || "OTHER",
+        itemType: item.itemType,
         metalType: item.metalType.toUpperCase(),
         itemName: item.itemName || null,
         quantity: Number(item.quantity) || 1,
@@ -634,9 +655,10 @@ export default function AddPledgePage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                     <div>
                       <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Item Type</label>
-                      <CustomSelect
+                      <ItemTypeSelect
                         value={item.itemType}
                         onChange={(v) => updateItem(item.id, "itemType", v)}
+                        groups={itemTypeGroups}
                       />
                     </div>
                     <div>

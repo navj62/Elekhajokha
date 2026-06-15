@@ -3,6 +3,32 @@ import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateCustomerPDF } from "@/lib/generatePDF";
 import { auth } from "@clerk/nextjs/server";
+import { calculateHybridInterest } from "@/lib/interest";
+import { computeCustomerRiskScore } from "@/lib/customerRiskScore";
+import type { CompoundingDuration } from "@prisma/client";
+
+function istBoundary(dateStr: string, endOfDay: boolean): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const suffix = endOfDay ? "T23:59:59.999+05:30" : "T00:00:00.000+05:30";
+  const d = new Date(`${dateStr}${suffix}`);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function computeDaysToUnderwater(
+  loanAmount: number,
+  interestRate: number,
+  amountOwed: number,
+  marketValue: number | null
+): number | null {
+  if (marketValue === null) return null;
+  if (amountOwed >= marketValue) return 0;
+  const dailyAccrual = (loanAmount * interestRate) / 100 / 365;
+  if (dailyAccrual <= 0) return null;
+  return Math.ceil((marketValue - amountOwed) / dailyAccrual);
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,29 +40,162 @@ export async function GET(req: NextRequest) {
     if (!user)
       return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-    const { searchParams } = new URL(req.url);
-    const format = searchParams.get("format");
+    const sp = req.nextUrl.searchParams;
+    const format = sp.get("format");
+    const startDateStr = sp.get("startDate");
+    const endDateStr = sp.get("endDate");
+
+    let startBoundary: Date | undefined;
+    let endBoundary: Date | undefined;
+    if (startDateStr) {
+      const d = istBoundary(startDateStr, false);
+      if (!d)
+        return NextResponse.json({ error: "INVALID_DATE", message: "Invalid startDate." }, { status: 400 });
+      startBoundary = d;
+    }
+    if (endDateStr) {
+      const d = istBoundary(endDateStr, true);
+      if (!d)
+        return NextResponse.json({ error: "INVALID_DATE", message: "Invalid endDate." }, { status: 400 });
+      endBoundary = d;
+    }
+
+    // Fetch metal prices once for risk score LTV computation
+    const [goldPrice, silverPrice] = await Promise.all([
+      prisma.metalPrice.findFirst({
+        where: { metal: "GOLD" },
+        orderBy: { createdAt: "desc" },
+        select: { inrPerGram: true },
+      }),
+      prisma.metalPrice.findFirst({
+        where: { metal: "SILVER" },
+        orderBy: { createdAt: "desc" },
+        select: { inrPerGram: true },
+      }),
+    ]);
+    const goldPpg = goldPrice ? Number(goldPrice.inrPerGram) : null;
+    const silverPpg = silverPrice ? Number(silverPrice.inrPerGram) : null;
+    const now = new Date();
 
     const customers = await prisma.customer.findMany({
-      where: { userId: user.id, deletedAt: null },
+      where: {
+        userId: user.id,
+        deletedAt: null,
+        ...(startBoundary || endBoundary
+          ? {
+              createdAt: {
+                ...(startBoundary ? { gte: startBoundary } : {}),
+                ...(endBoundary ? { lte: endBoundary } : {}),
+              },
+            }
+          : {}),
+      },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
         name: true,
         mobile: true,
         address: true,
-        pledges: { select: { loanAmount: true } },
+        createdAt: true,
+        pledges: {
+          select: {
+            status: true,
+            loanAmount: true,
+            interestRate: true,
+            pledgeDate: true,
+            allowCompounding: true,
+            compoundingDuration: true,
+            netWeightOfGold: true,
+            netWeightOfSilver: true,
+            lastMarketValue: true,
+          },
+        },
       },
     });
 
-    const result = customers.map((c) => ({
-      id: c.id,
-      name: c.name,
-      mobile: c.mobile,
-      address: c.address,
-      pledgeCount: c.pledges.length,
-      totalLoan: c.pledges.reduce((sum, p) => sum + Number(p.loanAmount), 0),
-    }));
+    const fmtDate = (d: Date) =>
+      d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+
+    const result = customers.map((c) => {
+      // Only active pledges — count and current loan outstanding
+      const activePledges = c.pledges.filter((p) => p.status === "ACTIVE");
+      const pledgeCount = activePledges.length;
+      const totalLoan = activePledges.reduce((s, p) => s + Number(p.loanAmount), 0);
+
+      let totalAmountOwed = 0;
+      let totalMarketValue = 0;
+      let largestPledgeMarketValue = 0;
+      let daysToUnderwaterWorst: number | null = null;
+
+      for (const p of activePledges) {
+        const loanAmount = Number(p.loanAmount);
+        const interestRate = Number(p.interestRate);
+        const goldW = Number(p.netWeightOfGold);
+        const silverW = Number(p.netWeightOfSilver);
+
+        const { receivableAmount } = calculateHybridInterest(
+          loanAmount,
+          interestRate,
+          new Date(p.pledgeDate),
+          now,
+          p.allowCompounding,
+          p.compoundingDuration as CompoundingDuration
+        );
+        totalAmountOwed += receivableAmount;
+
+        // Prefer live prices; fall back to cached lastMarketValue
+        const marketValue =
+          goldPpg !== null || silverPpg !== null
+            ? goldW * (goldPpg ?? 0) + silverW * (silverPpg ?? 0)
+            : p.lastMarketValue != null
+            ? Number(p.lastMarketValue)
+            : null;
+
+        if (marketValue !== null) {
+          totalMarketValue += marketValue;
+          if (marketValue > largestPledgeMarketValue) largestPledgeMarketValue = marketValue;
+          const dtu = computeDaysToUnderwater(loanAmount, interestRate, receivableAmount, marketValue);
+          if (dtu !== null) {
+            if (dtu === 0 || daysToUnderwaterWorst === null || dtu < daysToUnderwaterWorst) {
+              daysToUnderwaterWorst = dtu;
+            }
+          }
+        }
+      }
+
+      const currentLtv =
+        totalMarketValue > 0
+          ? parseFloat(((totalAmountOwed / totalMarketValue) * 100).toFixed(2))
+          : null;
+
+      const avgPledgeAgeMonths =
+        activePledges.length === 0
+          ? 0
+          : activePledges.reduce((sum, p) => {
+              return sum + (now.getTime() - new Date(p.pledgeDate).getTime()) / (1000 * 60 * 60 * 24 * 30.4375);
+            }, 0) / activePledges.length;
+
+      const { score: riskScore, tier: riskTier } = computeCustomerRiskScore({
+        currentLtv,
+        ltvThirtyDaysAgo: null, // velocity component omitted for report efficiency
+        daysToUnderwaterWorst,
+        largestPledgeMarketValue,
+        totalMarketValue,
+        avgPledgeAgeMonths,
+      });
+
+      return {
+        id: c.id,
+        name: c.name,
+        mobile: c.mobile,
+        address: c.address,
+        createdAt: fmtDate(c.createdAt),
+        pledgeCount,
+        totalLoan,
+        riskScore,
+        riskTier,
+      };
+    });
 
     if (format === "pdf") {
       const rows = result.map((c, i) => ({
@@ -45,6 +204,9 @@ export async function GET(req: NextRequest) {
         mobile: c.mobile ?? "—",
         pledgeCount: c.pledgeCount,
         totalLoan: c.totalLoan,
+        createdAt: c.createdAt,
+        riskScore: c.riskScore,
+        riskTier: c.riskTier,
       }));
       const pdfBuffer = await generateCustomerPDF("Customer Report", rows);
       return new NextResponse(new Uint8Array(pdfBuffer), {

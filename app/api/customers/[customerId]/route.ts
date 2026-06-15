@@ -90,10 +90,7 @@ export async function GET(_req: Request, context: RouteContext) {
         const firstItem = pledge.items[0];
 
         const itemLabel = firstItem
-          ? firstItem.itemName ||
-            `${firstItem.itemType?.charAt(0) + firstItem.itemType?.slice(1).toLowerCase()} (${
-              firstItem.metalType?.charAt(0) + firstItem.metalType?.slice(1).toLowerCase()
-            })`
+          ? firstItem.itemName || `${firstItem.itemType} (${firstItem.metalType?.charAt(0) + firstItem.metalType?.slice(1).toLowerCase()})`
           : null;
 
         return {

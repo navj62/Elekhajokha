@@ -106,16 +106,12 @@ function isAuthorized(req: NextRequest): boolean {
 // Improvements (e.g. back to SAFE) deliberately do NOT notify.
 const NOTIFY_TIERS = new Set<RiskTier>(["WATCH", "AT_RISK", "UNDERWATER"]);
 
-// Human label for a pledge's first item — name if set, else a title-cased
-// itemType ("GOLD_CHAIN" → "Gold chain"). Falls back to "Pledge" if itemless.
 function firstItemLabel(
   items: { itemName: string | null; itemType: string }[]
 ): string {
   const first = items[0];
   if (!first) return "Pledge";
-  const name = first.itemName?.trim();
-  if (name) return name;
-  return first.itemType.charAt(0) + first.itemType.slice(1).toLowerCase().replace(/_/g, " ");
+  return first.itemName?.trim() || first.itemType;
 }
 
 // ─────────────────────────────────────────────

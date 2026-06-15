@@ -570,9 +570,9 @@ export default function PledgeDetailPage() {
                           {item.itemName ? (
                             <>
                               <span>{item.itemName}</span>
-                              <span className="ml-1 text-[11px] text-[#9E9E9E]">({titleCase(item.itemType)})</span>
+                              <span className="ml-1 text-[11px] text-[#9E9E9E]">({item.itemType})</span>
                             </>
-                          ) : titleCase(item.itemType)}
+                          ) : item.itemType}
                         </td>
                         <td className="px-4 py-3.5 text-center text-[#2C2C2C]">{item.quantity}</td>
                         <td className="px-4 py-3.5 text-center text-[#6F6F6F] tabular-nums">{item.purity}</td>

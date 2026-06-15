@@ -1,4 +1,4 @@
-import { PrismaClient, Gender, PledgeStatus, CompoundingDuration, ItemType, MetalType, AuditAction,RiskTier } from '@prisma/client';
+import { PrismaClient, Gender, PledgeStatus, CompoundingDuration, MetalType, AuditAction,RiskTier } from '@prisma/client';
 import "dotenv/config"
 import { PrismaNeon } from '@prisma/adapter-neon'
 import ws from "ws"
@@ -50,7 +50,7 @@ const CUSTOMERS: Array<{
     durationMonths: number
     status: PledgeStatus
     releaseDate?: Date
-    itemType: ItemType
+    itemType: string
     metalType: MetalType
     itemName: string
     purity: number
@@ -75,7 +75,7 @@ const CUSTOMERS: Array<{
         goldGrams: 20, targetLtv: 74,
         interestRate: 2.5, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 6, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.NECKLACE, metalType: MetalType.GOLD,
+        itemType: 'Necklace', metalType: MetalType.GOLD,
         itemName: 'Gold Necklace 22K', purity: 91.67, quantity: 1,
         remark: 'LTV 74% — near watch zone',
       },
@@ -84,7 +84,7 @@ const CUSTOMERS: Array<{
         goldGrams: 15, targetLtv: 76,
         interestRate: 2.75, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 4, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.BANGLE, metalType: MetalType.GOLD,
+        itemType: 'Bangles', metalType: MetalType.GOLD,
         itemName: 'Gold Bangles 22K', purity: 91.67, quantity: 2,
         remark: 'LTV 76% — AT_RISK',
       },
@@ -94,7 +94,7 @@ const CUSTOMERS: Array<{
         interestRate: 2.0, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: false, durationMonths: 3, status: PledgeStatus.RELEASED,
         releaseDate: new Date('2025-01-08'),
-        itemType: ItemType.COIN, metalType: MetalType.GOLD,
+        itemType: 'Coin', metalType: MetalType.GOLD,
         itemName: 'Gold Coin 22K', purity: 91.67, quantity: 1,
         remark: 'Released — was LTV 73%',
       },
@@ -117,7 +117,7 @@ const CUSTOMERS: Array<{
         goldGrams: 25, targetLtv: 75,
         interestRate: 2.5, compoundingDuration: CompoundingDuration.HALFYEARLY,
         allowCompounding: true, durationMonths: 6, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.CHAIN, metalType: MetalType.GOLD,
+        itemType: 'Chain', metalType: MetalType.GOLD,
         itemName: 'Gold Chain 22K', purity: 91.67, quantity: 1,
         remark: 'LTV exactly 75%',
       },
@@ -126,7 +126,7 @@ const CUSTOMERS: Array<{
         goldGrams: 12, targetLtv: 74,
         interestRate: 2.25, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 3, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.EARRING, metalType: MetalType.GOLD,
+        itemType: 'Earrings', metalType: MetalType.GOLD,
         itemName: 'Gold Earrings 22K', purity: 91.67, quantity: 1,
         remark: 'LTV 74% — near threshold',
       },
@@ -135,7 +135,7 @@ const CUSTOMERS: Array<{
         goldGrams: 8, targetLtv: 76,
         interestRate: 2.75, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 3, status: PledgeStatus.OVERDUE,
-        itemType: ItemType.RING, metalType: MetalType.GOLD,
+        itemType: 'Ring', metalType: MetalType.GOLD,
         itemName: 'Gold Ring 22K', purity: 91.67, quantity: 1,
         remark: 'OVERDUE — LTV 76%',
       },
@@ -158,7 +158,7 @@ const CUSTOMERS: Array<{
         goldGrams: 18, silverGrams: 50, targetLtv: 75,
         interestRate: 2.5, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 6, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.NECKLACE, metalType: MetalType.GOLD,
+        itemType: 'Necklace', metalType: MetalType.GOLD,
         itemName: 'Gold Necklace + Silver Set', purity: 91.67, quantity: 1,
         remark: 'Mixed pledge — LTV 75%',
       },
@@ -167,7 +167,7 @@ const CUSTOMERS: Array<{
         goldGrams: 22, targetLtv: 73,
         interestRate: 2.0, compoundingDuration: CompoundingDuration.HALFYEARLY,
         allowCompounding: true, durationMonths: 9, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.BRACELET, metalType: MetalType.GOLD,
+        itemType: 'Bracelet', metalType: MetalType.GOLD,
         itemName: 'Gold Bracelet 22K', purity: 91.67, quantity: 1,
         remark: 'LTV 73% — WATCH',
       },
@@ -177,7 +177,7 @@ const CUSTOMERS: Array<{
         interestRate: 2.0, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: false, durationMonths: 4, status: PledgeStatus.RELEASED,
         releaseDate: new Date('2025-01-20'),
-        itemType: ItemType.PENDANT, metalType: MetalType.GOLD,
+        itemType: 'Pendant', metalType: MetalType.GOLD,
         itemName: 'Gold Pendant 22K', purity: 91.67, quantity: 1,
         remark: 'Released — LTV was 70%',
       },
@@ -200,7 +200,7 @@ const CUSTOMERS: Array<{
         goldGrams: 30, targetLtv: 76,
         interestRate: 3.0, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 6, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.BANGLE, metalType: MetalType.GOLD,
+        itemType: 'Bangles', metalType: MetalType.GOLD,
         itemName: 'Bridal Bangle Set 22K', purity: 91.67, quantity: 4,
         remark: 'High-value pledge LTV 76%',
       },
@@ -209,7 +209,7 @@ const CUSTOMERS: Array<{
         goldGrams: 9, targetLtv: 74,
         interestRate: 2.5, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 3, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.RING, metalType: MetalType.GOLD,
+        itemType: 'Ring', metalType: MetalType.GOLD,
         itemName: 'Gold Ring 22K', purity: 91.67, quantity: 2,
         remark: 'LTV 74%',
       },
@@ -218,7 +218,7 @@ const CUSTOMERS: Array<{
         goldGrams: 16, targetLtv: 75,
         interestRate: 2.75, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 5, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.CHAIN, metalType: MetalType.GOLD,
+        itemType: 'Chain', metalType: MetalType.GOLD,
         itemName: 'Gold Chain 22K', purity: 91.67, quantity: 1,
         remark: 'LTV 75% — AT_RISK',
       },
@@ -241,7 +241,7 @@ const CUSTOMERS: Array<{
         goldGrams: 20, targetLtv: 88,
         interestRate: 3.0, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 8, status: PledgeStatus.OVERDUE,
-        itemType: ItemType.NECKLACE, metalType: MetalType.GOLD,
+        itemType: 'Necklace', metalType: MetalType.GOLD,
         itemName: 'Gold Necklace 22K', purity: 91.67, quantity: 1,
         remark: 'OVERDUE — LTV 88% AT_RISK',
       },
@@ -250,7 +250,7 @@ const CUSTOMERS: Array<{
         goldGrams: 15, targetLtv: 92,
         interestRate: 3.0, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 6, status: PledgeStatus.OVERDUE,
-        itemType: ItemType.BANGLE, metalType: MetalType.GOLD,
+        itemType: 'Bangles', metalType: MetalType.GOLD,
         itemName: 'Gold Bangles 22K', purity: 91.67, quantity: 2,
         remark: 'OVERDUE — LTV 92% UNDERWATER',
       },
@@ -259,7 +259,7 @@ const CUSTOMERS: Array<{
         goldGrams: 10, targetLtv: 85,
         interestRate: 2.75, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 4, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.COIN, metalType: MetalType.GOLD,
+        itemType: 'Coin', metalType: MetalType.GOLD,
         itemName: 'Gold Coin 24K', purity: 99.5, quantity: 1,
         remark: 'Active but high LTV 85%',
       },
@@ -282,7 +282,7 @@ const CUSTOMERS: Array<{
         goldGrams: 12, targetLtv: 90,
         interestRate: 3.0, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 9, status: PledgeStatus.OVERDUE,
-        itemType: ItemType.CHAIN, metalType: MetalType.GOLD,
+        itemType: 'Chain', metalType: MetalType.GOLD,
         itemName: 'Gold Chain 22K', purity: 91.67, quantity: 1,
         remark: 'Long overdue — LTV 90%',
       },
@@ -291,7 +291,7 @@ const CUSTOMERS: Array<{
         goldGrams: 18, targetLtv: 76,
         interestRate: 2.5, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 5, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.BANGLE, metalType: MetalType.GOLD,
+        itemType: 'Bangles', metalType: MetalType.GOLD,
         itemName: 'Gold Bangles 22K', purity: 91.67, quantity: 2,
         remark: 'Active — LTV 76%',
       },
@@ -301,7 +301,7 @@ const CUSTOMERS: Array<{
         interestRate: 2.0, compoundingDuration: CompoundingDuration.HALFYEARLY,
         allowCompounding: false, durationMonths: 5, status: PledgeStatus.RELEASED,
         releaseDate: new Date('2024-12-05'),
-        itemType: ItemType.RING, metalType: MetalType.GOLD,
+        itemType: 'Ring', metalType: MetalType.GOLD,
         itemName: 'Gold Ring 22K', purity: 91.67, quantity: 1,
         remark: 'Released — was LTV 68%',
       },
@@ -324,7 +324,7 @@ const CUSTOMERS: Array<{
         goldGrams: 15, targetLtv: 108,   // loan > market value
         interestRate: 3.5, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 10, status: PledgeStatus.OVERDUE,
-        itemType: ItemType.NECKLACE, metalType: MetalType.GOLD,
+        itemType: 'Necklace', metalType: MetalType.GOLD,
         itemName: 'Gold Necklace 22K', purity: 91.67, quantity: 1,
         remark: 'CRITICAL — LTV 108% UNDERWATER',
       },
@@ -333,7 +333,7 @@ const CUSTOMERS: Array<{
         goldGrams: 10, targetLtv: 105,
         interestRate: 3.0, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 7, status: PledgeStatus.OVERDUE,
-        itemType: ItemType.BANGLE, metalType: MetalType.GOLD,
+        itemType: 'Bangles', metalType: MetalType.GOLD,
         itemName: 'Gold Bangles 22K', purity: 91.67, quantity: 2,
         remark: 'OVERDUE — LTV 105%',
       },
@@ -342,7 +342,7 @@ const CUSTOMERS: Array<{
         goldGrams: 20, targetLtv: 77,
         interestRate: 2.75, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 6, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.CHAIN, metalType: MetalType.GOLD,
+        itemType: 'Chain', metalType: MetalType.GOLD,
         itemName: 'Gold Chain 22K', purity: 91.67, quantity: 1,
         remark: 'New pledge — LTV 77%',
       },
@@ -365,7 +365,7 @@ const CUSTOMERS: Array<{
         goldGrams: 18, targetLtv: 112,
         interestRate: 3.5, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 12, status: PledgeStatus.OVERDUE,
-        itemType: ItemType.NECKLACE, metalType: MetalType.GOLD,
+        itemType: 'Necklace', metalType: MetalType.GOLD,
         itemName: 'Gold Necklace 22K', purity: 91.67, quantity: 1,
         remark: 'CRITICAL — LTV 112%',
       },
@@ -374,7 +374,7 @@ const CUSTOMERS: Array<{
         goldGrams: 12, targetLtv: 103,
         interestRate: 3.0, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 8, status: PledgeStatus.OVERDUE,
-        itemType: ItemType.BANGLE, metalType: MetalType.GOLD,
+        itemType: 'Bangles', metalType: MetalType.GOLD,
         itemName: 'Gold Bangles 22K', purity: 91.67, quantity: 2,
         remark: 'OVERDUE — LTV 103%',
       },
@@ -383,7 +383,7 @@ const CUSTOMERS: Array<{
         goldGrams: 14, targetLtv: 75,
         interestRate: 2.5, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 4, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.CHAIN, metalType: MetalType.GOLD,
+        itemType: 'Chain', metalType: MetalType.GOLD,
         itemName: 'Gold Chain 22K', purity: 91.67, quantity: 1,
         remark: 'Newer pledge — LTV 75%',
       },
@@ -406,7 +406,7 @@ const CUSTOMERS: Array<{
         goldGrams: 20, targetLtv: 118,   // well underwater
         interestRate: 3.5, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 12, status: PledgeStatus.OVERDUE,
-        itemType: ItemType.NECKLACE, metalType: MetalType.GOLD,
+        itemType: 'Necklace', metalType: MetalType.GOLD,
         itemName: 'Gold Necklace 22K', purity: 91.67, quantity: 1,
         remark: 'CRITICAL — LTV 118%',
       },
@@ -415,7 +415,7 @@ const CUSTOMERS: Array<{
         goldGrams: 16, targetLtv: 74,
         interestRate: 2.5, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 5, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.BANGLE, metalType: MetalType.GOLD,
+        itemType: 'Bangles', metalType: MetalType.GOLD,
         itemName: 'Gold Bangles 22K', purity: 91.67, quantity: 2,
         remark: 'New pledge — LTV 74%',
       },
@@ -425,7 +425,7 @@ const CUSTOMERS: Array<{
         interestRate: 2.0, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: false, durationMonths: 3, status: PledgeStatus.RELEASED,
         releaseDate: new Date('2025-02-10'),
-        itemType: ItemType.RING, metalType: MetalType.GOLD,
+        itemType: 'Ring', metalType: MetalType.GOLD,
         itemName: 'Gold Ring 22K', purity: 91.67, quantity: 1,
         remark: 'Released safely — LTV 55%',
       },
@@ -448,7 +448,7 @@ const CUSTOMERS: Array<{
         goldGrams: 25, targetLtv: 122,
         interestRate: 3.5, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 14, status: PledgeStatus.OVERDUE,
-        itemType: ItemType.NECKLACE, metalType: MetalType.GOLD,
+        itemType: 'Necklace', metalType: MetalType.GOLD,
         itemName: 'Gold Necklace 22K', purity: 91.67, quantity: 1,
         remark: 'CRITICAL — LTV 122%',
       },
@@ -457,7 +457,7 @@ const CUSTOMERS: Array<{
         goldGrams: 16, targetLtv: 107,
         interestRate: 3.0, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 9, status: PledgeStatus.OVERDUE,
-        itemType: ItemType.BANGLE, metalType: MetalType.GOLD,
+        itemType: 'Bangles', metalType: MetalType.GOLD,
         itemName: 'Gold Bangles 22K', purity: 91.67, quantity: 2,
         remark: 'OVERDUE — LTV 107%',
       },
@@ -466,7 +466,7 @@ const CUSTOMERS: Array<{
         goldGrams: 13, targetLtv: 76,
         interestRate: 2.75, compoundingDuration: CompoundingDuration.MONTHLY,
         allowCompounding: true, durationMonths: 4, status: PledgeStatus.ACTIVE,
-        itemType: ItemType.CHAIN, metalType: MetalType.GOLD,
+        itemType: 'Chain', metalType: MetalType.GOLD,
         itemName: 'Gold Chain 22K', purity: 91.67, quantity: 1,
         remark: 'Latest pledge — LTV 76%',
       },
@@ -480,6 +480,21 @@ async function main() {
   console.log(`   Gold  price : ₹${GOLD_PPG}/g`)
   console.log(`   Silver price: ₹${SILVER_PPG}/g\n`)
  
+  // ── Seed default PledgeItemTypes (idempotent) ─────────────────────────────
+  const defaultItemTypes = [
+    "Ring", "Necklace", "Bangles", "Chain", "Earrings",
+    "Bracelet", "Anklet", "Pendant", "Bangle Set", "Other",
+  ];
+  const existingDefaults = await prisma.pledgeItemType.count({ where: { isDefault: true } });
+  if (existingDefaults === 0) {
+    await prisma.pledgeItemType.createMany({
+      data: defaultItemTypes.map(label => ({ label, isDefault: true, userId: null })),
+    });
+    console.log(`✅ Seeded ${defaultItemTypes.length} default item types\n`);
+  } else {
+    console.log(`ℹ️  Default item types already seeded (${existingDefaults} found)\n`);
+  }
+
   const user = await prisma.user.findUnique({ where: { id: USER_ID } })
   if (!user) throw new Error(`User ${USER_ID} not found.`)
   console.log(`✅ Found user: ${user.username ?? user.email}\n`)

@@ -9,6 +9,31 @@ type Row = {
   mobile: string;
   pledgeCount: number;
   totalLoan: number;
+  createdAt: string;
+  riskScore: number;
+  riskTier: string;
+};
+
+function riskHex(tier: string): string {
+  switch (tier) {
+    case "SAFE":     return "#16a34a";
+    case "WATCH":    return "#d97706";
+    case "AT_RISK":  return "#ea580c";
+    case "CRITICAL": return "#dc2626";
+    default:         return "#6b7280";
+  }
+}
+
+// ── Column layout (portrait A4, content x: 40→555, total 515pt) ──
+// No(20) Name(110) Mobile(85) AddedOn(72) Pledges(45) Loan(90) Risk(93) = 515
+const CUSTOMER_COL = {
+  no:      { x: 40,  w: 20  },
+  name:    { x: 60,  w: 110 },
+  mobile:  { x: 170, w: 85  },
+  addedon: { x: 255, w: 72  },
+  pledges: { x: 327, w: 45  },
+  loan:    { x: 372, w: 90  },
+  risk:    { x: 462, w: 93  },
 };
 
 export function generateCustomerPDF(title: string, rows: Row[]): Promise<Buffer> {
@@ -21,13 +46,7 @@ export function generateCustomerPDF(title: string, rows: Row[]): Promise<Buffer>
     doc.on("error", reject);
 
     const pageWidth = doc.page.width - 80; // 40 margin each side
-    const col = {
-      no:      { x: 40,  w: 25  },
-      name:    { x: 65,  w: 150 },
-      mobile:  { x: 215, w: 110 },
-      pledges: { x: 325, w: 75  },
-      total:   { x: 390, w: 155 },
-    };
+    const col = CUSTOMER_COL;
     const rowH = 24;
 
     // ── Header bar ──────────────────────────────────────────
@@ -53,44 +72,50 @@ export function generateCustomerPDF(title: string, rows: Row[]): Promise<Buffer>
     // ── Table header ────────────────────────────────────────
     let y = 110;
     doc.rect(40, y, pageWidth, rowH).fill("#dbeafe");
-    doc.fillColor("#1e3a8a").fontSize(9).font("Helvetica-Bold");
+    doc.fillColor("#1e3a8a").fontSize(8).font("Helvetica-Bold");
     doc.text("#",            col.no.x,      y + 7, { width: col.no.w,      align: "center" });
     doc.text("Customer Name",col.name.x,    y + 7, { width: col.name.w,    align: "left"   });
     doc.text("Mobile",       col.mobile.x,  y + 7, { width: col.mobile.w,  align: "left"   });
+    doc.text("Added On",     col.addedon.x, y + 7, { width: col.addedon.w, align: "left"   });
     doc.text("Pledges",      col.pledges.x, y + 7, { width: col.pledges.w, align: "center" });
-    doc.text("Total Loan",   col.total.x,   y + 7, { width: col.total.w,   align: "right"  });
+    doc.text("Total Loan",   col.loan.x,    y + 7, { width: col.loan.w,    align: "right"  });
+    doc.text("Risk Score",   col.risk.x,    y + 7, { width: col.risk.w,    align: "right"  });
 
     // ── Table rows ──────────────────────────────────────────
     y += rowH;
     rows.forEach((r, i) => {
-      // alternating row bg
-      doc.rect(40, y, pageWidth, rowH).fill(i % 2 === 0 ? "#f9fafb" : "white");
-
-      doc.fillColor("#374151").fontSize(9).font("Helvetica");
-      doc.text(String(r.index),                          col.no.x,      y + 7, { width: col.no.w,      align: "center" });
-      doc.text(r.name,                                   col.name.x,    y + 7, { width: col.name.w,    align: "left"   });
-      doc.text(r.mobile || "—",                          col.mobile.x,  y + 7, { width: col.mobile.w,  align: "left"   });
-      doc.text(String(r.pledgeCount),                    col.pledges.x, y + 7, { width: col.pledges.w, align: "center" });
-      doc.text(`Rs.${r.totalLoan.toLocaleString("en-IN")}`, col.total.x, y + 7, { width: col.total.w,   align: "right"  });
-
-      // row border
-      doc.rect(40, y, pageWidth, rowH).strokeColor("#e5e7eb").lineWidth(0.5).stroke();
-      y += rowH;
-
-      // new page if needed
       if (y > doc.page.height - 60) {
         doc.addPage();
         y = 40;
       }
+
+      doc.rect(40, y, pageWidth, rowH).fill(i % 2 === 0 ? "#f9fafb" : "white");
+      doc.rect(40, y, pageWidth, rowH).strokeColor("#e5e7eb").lineWidth(0.5).stroke();
+
+      doc.fillColor("#374151").fontSize(8).font("Helvetica");
+      doc.text(String(r.index),                                col.no.x,      y + 7, { width: col.no.w,      align: "center" });
+      doc.text(r.name,                                         col.name.x,    y + 7, { width: col.name.w,    align: "left"   });
+      doc.text(r.mobile || "—",                                col.mobile.x,  y + 7, { width: col.mobile.w,  align: "left"   });
+      doc.text(r.createdAt,                                    col.addedon.x, y + 7, { width: col.addedon.w, align: "left"   });
+      doc.text(String(r.pledgeCount),                          col.pledges.x, y + 7, { width: col.pledges.w, align: "center" });
+      doc.text(`Rs.${Math.round(r.totalLoan).toLocaleString("en-IN")}`, col.loan.x, y + 7, { width: col.loan.w, align: "right" });
+
+      // Risk score colored by tier
+      const tierLabel = r.riskTier === "AT_RISK" ? "AT RISK" : r.riskTier;
+      doc.fillColor(riskHex(r.riskTier)).font("Helvetica-Bold");
+      doc.text(`${r.riskScore} ${tierLabel}`,                  col.risk.x,    y + 7, { width: col.risk.w,    align: "right"  });
+
+      y += rowH;
     });
 
     // ── Footer line ─────────────────────────────────────────
+    if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
     const totalLoan = rows.reduce((s, r) => s + r.totalLoan, 0);
     doc.rect(40, y, pageWidth, rowH).fill("#dbeafe");
-    doc.fillColor("#1e3a8a").fontSize(9).font("Helvetica-Bold");
-    doc.text("Total",                                        col.name.x,    y + 7, { width: col.name.w,    align: "left"   });
-    doc.text(String(rows.length),                            col.pledges.x, y + 7, { width: col.pledges.w, align: "center" });
-    doc.text(`Rs.${totalLoan.toLocaleString("en-IN")}`,     col.total.x,   y + 7, { width: col.total.w,   align: "right"  });
+    doc.fillColor("#1e3a8a").fontSize(8).font("Helvetica-Bold");
+    doc.text("Total",                                          col.name.x,    y + 7, { width: col.name.w,    align: "left"   });
+    doc.text(String(rows.length),                              col.pledges.x, y + 7, { width: col.pledges.w, align: "center" });
+    doc.text(`Rs.${Math.round(totalLoan).toLocaleString("en-IN")}`, col.loan.x, y + 7, { width: col.loan.w, align: "right" });
 
     doc.end();
   });

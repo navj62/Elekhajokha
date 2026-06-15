@@ -96,6 +96,7 @@ This is the heart of the app. Two pure functions plus a cron job:
 
 - **[lib/interest.ts](lib/interest.ts)** — `calculateHybridInterest(principal, annualRate, startDate, endDate, allowCompounding, compoundingDuration)`. Computes duration `T` in months with a day-based fractional rule (≤2 days → +0, ≤15 days → +0.5, else +1 month; minimum 0.5). Compounds per cycle (`MONTHLY`/`HALFYEARLY`/`YEARLY`) with simple interest on the leftover partial cycle. Returns `{ T, totalInterest, receivableAmount }`. **Single source of truth for amount owed** — the customer portal and pledge release both reuse it.
 - **[lib/calculateLTV.ts](lib/calculateLTV.ts)** — `calculateLTV(...)` calls `calculateHybridInterest`, computes metal market value (weight × INR/gram), returns `ltv` plus `riskTier`. `getRiskTier(ltv: number)` thresholds: **≤65 SAFE, ≤75 WATCH, ≤90 AT_RISK, else UNDERWATER** (note the underscore in `AT_RISK` — this is the canonical label; do not use `"AT RISK"`). `getRiskTier` expects a non-null number; guard `null` LTV at the call site (`ltv !== null ? getRiskTier(ltv) : "SAFE"`). If no price is available, `marketValue`/`ltv`/`riskTier` come back `null` (handled gracefully downstream).
+- **[lib/customerRiskScore.ts](lib/customerRiskScore.ts)** — `computeCustomerRiskScore(input)` — a composite 0–100 score per **customer** (not per pledge), combining five components: LTV pressure (0–40 pts), LTV velocity delta (-10–25 pts), proximity to UNDERWATER threshold (0–25 pts), single-pledge concentration risk (0–10 pts), and average pledge age (0–5 pts). Tiers: **≤30 SAFE, ≤50 WATCH, ≤75 AT_RISK, >75 CRITICAL**. This is a completely different system from `getRiskTier` — customer tiers use "CRITICAL" (not "UNDERWATER") and score-based thresholds instead of direct LTV values. Used exclusively by the Reports module customer table; `ltvThirtyDaysAgo` (velocity) is omitted in the report path for efficiency (passed as `null`).
 - **[app/api/cron/evaluate-risk/route.ts](app/api/cron/evaluate-risk/route.ts)** — batch job over all `ACTIVE` pledges. **Paginated** (cursor, batch size ~500, explicit thin `select`, no `transactions` include) and **batched** (per-user counts hoisted into one grouped query before the loop; per-pledge writes via batched `UPDATE … FROM (VALUES …)`; snapshot upserts fanned out with bounded concurrency). NO run-wide transaction — each batch commits independently, so the job is resumable: an interrupt at batch N leaves batches 1..N-1 durably committed, and a re-run is idempotent (cached metrics are absolute, not incremental; the `lastRiskTier` diff self-heals alert duplication; snapshots upsert on `userId+snapshotDate`). Writes a `PledgeAlert` only when a pledge's `riskTier` actually changes. Caches per-pledge metrics (`lastCalculatedLtv` clamped to 999999.99, `lastRiskTier`, `lastAmountOwed`, `lastMarketValue`, `lastEvaluatedAt`). Upserts a daily `FinancialSnapshot` per user (snapshots are written only after a full pass — all-or-nothing per run). `overallLtv`/`ltvAtRelease` are `Decimal(5,2)` (max 999.99) — coerce null→0 and clamp before writing or the insert throws. Supports `?dryRun=true`. Query count went from ~540k (would time out / exhaust the Neon pool past ~10k pledges) to ~13k with a max concurrency of ~50.
 
 ### Pledge weights
@@ -129,6 +130,32 @@ Both crons use `CRON_SECRET` with **different verbs and header schemes**, both f
 
 Driven by an external scheduler (e.g. cron-job.org); `/api/cron/*` is public in the proxy and self-authorizes via the secret. Use a strong (32+ char) `CRON_SECRET` — it is the only thing protecting these endpoints.
 
+## Reports module
+
+[app/reports/page.tsx](app/reports/page.tsx) is a client-side reporting center with three tabs — **Customer Report**, **Active Pledges**, and **Released Pledges** — and a shared date-range filter (From/To date inputs plus quick-select: Last 30 Days / This Month / Last Month). On mount it fetches the stats strip from `/api/dashboard` + the unfiltered `/api/reports/pledges` (no `status` param); each tab's data is fetched independently and re-fetched debounced 300ms on date changes. A `TOO_MANY_RECORDS` (>5000 rows) error from the API is surfaced inline, prompting the user to narrow the date range. PDF export calls the API with `?format=pdf` and mirrors the current tab and date filter.
+
+Both report API routes authenticate via the standard `auth()` → `prisma.user.findUnique` → `user.id` pattern (Invariants 1 & 4). Both accept `startDate`/`endDate` as `YYYY-MM-DD` strings, interpreted as IST wall-clock day boundaries via an `istBoundary` helper (duplicated in each route — start of day at `+05:30`, end of day at `T23:59:59.999+05:30`).
+
+- **[app/api/reports/customers/route.ts](app/api/reports/customers/route.ts)** (`GET`) — returns all non-deleted customers (filtered by `createdAt` when date range provided). For each customer, filters to **active pledges only** for counts/loan totals, then computes live `calculateHybridInterest` per active pledge. Market value prefers live metal prices fetched once; falls back to each pledge's cached `lastMarketValue`. Feeds `computeCustomerRiskScore` to attach a `riskScore` (0–100) and `riskTier` (SAFE/WATCH/AT_RISK/CRITICAL) per customer row. `?format=pdf` streams a customer PDF via `generateCustomerPDF`.
+
+- **[app/api/reports/pledges/route.ts](app/api/reports/pledges/route.ts)** (`GET`) — three modes driven by `?status=`:
+  - **`active`** — filters pledges by `pledgeDate`, enforces a hard cap of 5000 rows (`TOO_MANY_RECORDS` 400 if exceeded). Computes live LTV/interest via `calculateLTV` (prices fetched once for all rows). Returns `{ rows, totals }` where `totals` aggregates count, goldWeight, silverWeight, interestAccrued, receivableAmount, loanAmount.
+  - **`released`** — filters by `releaseDate`, same 5000-row cap. Reads finalized values from the `PledgeAudit` row with `action: "RELEASED"` (totalInterest, combined netWeightOfGold + netWeightOfSilver → `netWeight`, `ltvAtRelease`); falls back to the Pledge row for legacy pledges with no audit row. Returns `{ rows, totals }`.
+  - **no `status` param (legacy)** — unfiltered, uncapped, no interest/LTV computation — used only by the page's stats strip. Returns a bare `rows` array for backwards-compat.
+  - `?format=pdf` streams via `generatePledgePDF` (variant `"active"` or `"released"`).
+
+### PDF generation ([lib/generatePDF.ts](lib/generatePDF.ts))
+
+Three exported functions sharing the same `pdfkit` document pipeline:
+
+| Function | Layout | Color scheme | Notes |
+|---|---|---|---|
+| `generateReceiptPDF` | A4 landscape, dual-copy | Black/white | Hindi terms via `NotoSansDevanagari_Condensed-Bold.ttf`; Shopowner + Customer copies side-by-side with a dashed divider |
+| `generateCustomerPDF` | A4 portrait | Blue header (`#1e40af`) | Columns: #, Customer Name, Mobile, Added On, Pledges, Total Loan, Risk Score (color-coded by tier) |
+| `generatePledgePDF` | A4 portrait | Green header (`#065f46`) | Variant-aware columns: active → Gold Wt + Silver Wt separate; released → combined Net Wt + Release Date. LTV cell color-coded by the same thresholds as the web UI |
+
+`pdfkit` is in `serverExternalPackages` in [next.config.ts](next.config.ts) so it is not bundled by Next.js.
+
 ## Customer portal (public, token-based)
 
 Each `Customer` has an unguessable `viewToken` (UUID, backed by a unique index). `/view/[token]` ([app/view/[token]/page.tsx](app/view/[token]/page.tsx)) is a public server-rendered read-only statement of that customer's pledges (using `calculateHybridInterest` for live amounts), no Clerk auth. It exposes only the owner's `shopName`/`mobile` (intentional contact info) and that customer's own pledges — no owner id, subscription status, or other customers. Owners revoke access via `Customer.isPortalBlocked` (`/api/customers/[customerId]/toggle-portal`); the portal polls `/api/portal-status/[token]`. QR codes are generated client-side (`qrcode.react`). NOTE: these unauthenticated endpoints are not rate-limited (known gap).
@@ -148,7 +175,7 @@ Schema is well-indexed. Confirmed composites: `Customer(userId, deletedAt)`, `Pl
 - Use the shared singleton from [lib/prisma.ts](lib/prisma.ts) — never instantiate `PrismaClient` directly (globally memoized to survive dev hot-reload).
 - API error responses return a generic `{ error: "..." }` (optionally a stable error code) and log details server-side. NEVER return `err.message`/`err.stack` to the client.
 - Image uploads go through Cloudinary via [lib/upload.ts](lib/upload.ts) / `@/lib/cloudinary` (server) — env: `CLOUDINARY_*`. NOTE: no server-side file type/size validation yet (known gap — a size cap and MIME allowlist belong here).
-- PDF generation uses `pdfkit` ([lib/generatePDF.ts](lib/generatePDF.ts)) with a bundled Hindi font at `public/fonts/NotoSansDevanagari-Bold.ttf`; `pdfkit` is in `serverExternalPackages` in [next.config.ts](next.config.ts) so it isn't bundled.
+- PDF generation uses `pdfkit` ([lib/generatePDF.ts](lib/generatePDF.ts)) — three exports: `generateReceiptPDF` (pledge receipt), `generateCustomerPDF` (customer report), `generatePledgePDF` (active/released pledge report). See the Reports module section for the layout details. `pdfkit` is in `serverExternalPackages` in [next.config.ts](next.config.ts) so it isn't bundled.
 - UI components are shadcn-style primitives under `components/ui/` (Radix + `class-variance-authority` + `tailwind-merge`, Tailwind v4). Default Hindi pledge terms live in [lib/defaultTerms.ts](lib/defaultTerms.ts).
 - Route groups organize pages without affecting URLs: `(auth)`, `(UserDetails)`, `(CustomersDetails)`.
 - Shared server-only helpers (e.g. `constantTimeEqual`) live in their own `lib/` file, kept separate from client-importable utils like `lib/utils.ts` (`cn`).

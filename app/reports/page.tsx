@@ -13,6 +13,9 @@ interface CustomerRow {
   address: string | null;
   pledgeCount: number;
   totalLoan: number;
+  createdAt: string;
+  riskScore: number;
+  riskTier: "SAFE" | "WATCH" | "AT_RISK" | "CRITICAL";
 }
 
 interface PledgeRow {
@@ -50,6 +53,24 @@ function ltvColor(ltv: number | null): string {
   if (ltv <= 75) return "#8A6B17";
   if (ltv <= 90) return "#9A4B14";
   return "#B91C1C";
+}
+
+function riskTierColor(tier: string): string {
+  switch (tier) {
+    case "SAFE":     return "#4D6B2A";
+    case "WATCH":    return "#8A6B17";
+    case "AT_RISK":  return "#9A4B14";
+    case "CRITICAL": return "#B91C1C";
+    default:         return "#9E9E9E";
+  }
+}
+
+function formatRiskTier(tier: string): string {
+  switch (tier) {
+    case "AT_RISK":  return "AT RISK";
+    case "CRITICAL": return "CRITICAL";
+    default:         return tier;
+  }
 }
 
 interface Stats {
@@ -97,18 +118,18 @@ export default function ReportsPage() {
 
   // Loading states
   const [loadingData, setLoadingData] = useState(true);
+  const [loadingCustomers, setLoadingCustomers] = useState(true);
   const [generatingPDF, setGeneratingPDF] = useState(false);
 
   const isPledge = selectedReport !== "customers";
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ── Fetch everything on mount ────────────────────────────────────────────
+  // ── Fetch profile, stats, and pledges-for-stats-strip ───────────────────
   const fetchAll = useCallback(async () => {
     setLoadingData(true);
     try {
-      const [profileRes, customersRes, pledgesRes, dashboardRes] = await Promise.all([
+      const [profileRes, pledgesRes, dashboardRes] = await Promise.all([
         fetch("/api/profile"),
-        fetch("/api/reports/customers"),
         fetch("/api/reports/pledges"),
         fetch("/api/dashboard"),
       ]);
@@ -119,8 +140,7 @@ export default function ReportsPage() {
         setAdminName(name);
       }
 
-      if (customersRes.ok) setCustomers(await customersRes.json());
-      if (pledgesRes.ok)   setPledges(await pledgesRes.json());
+      if (pledgesRes.ok) setPledges(await pledgesRes.json());
 
       if (dashboardRes.ok) {
         const d = await dashboardRes.json();
@@ -136,6 +156,22 @@ export default function ReportsPage() {
       setLoadingData(false);
     }
   }, []);
+
+  // ── Fetch customer table (filterable by createdAt date range) ────────────
+  const fetchCustomers = useCallback(async () => {
+    setLoadingCustomers(true);
+    try {
+      const params = new URLSearchParams();
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+      const res = await fetch(`/api/reports/customers?${params}`);
+      if (res.ok) setCustomers(await res.json());
+    } catch (err) {
+      console.error("Customer fetch error:", err);
+    } finally {
+      setLoadingCustomers(false);
+    }
+  }, [startDate, endDate]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -180,13 +216,21 @@ export default function ReportsPage() {
     }
   }, [buildPledgeQuery]);
 
-  // Re-fetch when the variant or date range changes (debounced for typing).
+  // Re-fetch pledge table when variant or date range changes (debounced).
   useEffect(() => {
     if (!isPledge) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(fetchTable, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [isPledge, fetchTable]);
+
+  // Re-fetch customer table when date range changes or on customer tab mount (debounced).
+  useEffect(() => {
+    if (isPledge) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(fetchCustomers, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [isPledge, fetchCustomers]);
 
   // ── Quick-select date ranges (YYYY-MM-DD, local) ─────────────────────────
   const ymd = (d: Date) => {
@@ -222,7 +266,10 @@ export default function ReportsPage() {
     setGeneratingPDF(true);
     try {
       if (selectedReport === "customers") {
-        const res = await fetch("/api/reports/customers?format=pdf");
+        const params = new URLSearchParams({ format: "pdf" });
+        if (startDate) params.set("startDate", startDate);
+        if (endDate) params.set("endDate", endDate);
+        const res = await fetch(`/api/reports/customers?${params}`);
         if (!res.ok) throw new Error("PDF generation failed");
         const blob = await res.blob();
         triggerDownload(blob, "customers.pdf");
@@ -325,9 +372,8 @@ export default function ReportsPage() {
         ))}
       </div>
 
-      {/* DATE RANGE (pledge variants only) */}
-      {isPledge && (
-        <div className="flex flex-wrap items-end gap-4 mb-12">
+      {/* DATE RANGE */}
+      <div className="flex flex-wrap items-end gap-4 mb-12">
           <div className="flex flex-col gap-1">
             <label className="text-[10px] font-semibold text-[#6F6F6F] uppercase tracking-wider">From</label>
             <input
@@ -373,7 +419,6 @@ export default function ReportsPage() {
             )}
           </div>
         </div>
-      )}
 
       {/* SUMMARY STRIP */}
       <div className="flex items-center w-full border-t border-b border-[#ECEAE4] py-10 mb-16">
@@ -402,17 +447,18 @@ export default function ReportsPage() {
           <div className="flex flex-col sm:flex-row">
             {(selectedReport === "active"
               ? [
-                  { label: "Pledges",    value: String(tableTotals.count) },
-                  { label: "Gold Wt",    value: `${tableTotals.goldWeight.toFixed(2)}g` },
-                  { label: "Silver Wt",  value: `${tableTotals.silverWeight.toFixed(2)}g` },
-                  { label: "Interest",   value: formatINR(tableTotals.interestAccrued) },
-                  { label: "Receivable", value: formatINR(tableTotals.receivableAmount) },
+                  { label: "Pledges",      value: String(tableTotals.count) },
+                  { label: "Gold Wt",      value: `${tableTotals.goldWeight.toFixed(2)}g` },
+                  { label: "Silver Wt",    value: `${tableTotals.silverWeight.toFixed(2)}g` },
+                  { label: "Loan Amount",  value: formatINR(tableTotals.loanAmount) },
+                  { label: "Interest",     value: formatINR(tableTotals.interestAccrued) },
+                  { label: "Receivable",   value: formatINR(tableTotals.receivableAmount) },
                 ]
               : [
-                  { label: "Pledges",     value: String(tableTotals.count) },
-                  { label: "Net Weight",  value: `${tableTotals.netWeight.toFixed(2)}g` },
-                  { label: "Interest",    value: formatINR(tableTotals.interestAccrued) },
-                  { label: "Receivable",  value: formatINR(tableTotals.receivableAmount) },
+                  { label: "Pledges",      value: String(tableTotals.count) },
+                  { label: "Loan Amount",  value: formatINR(tableTotals.loanAmount) },
+                  { label: "Interest",     value: formatINR(tableTotals.interestAccrued) },
+                  { label: "Receivable",   value: formatINR(tableTotals.receivableAmount) },
                 ]
             ).map((stat, i, arr) => (
               <div
@@ -455,7 +501,7 @@ export default function ReportsPage() {
         </div>
 
         {selectedReport === "customers" ? (
-          loadingData ? (
+          loadingCustomers ? (
             <div className="flex items-center gap-2 text-[#6F6F6F] text-[14px] py-12">
               <Loader2 size={18} className="animate-spin text-[#555B3F]" />
               Loading records…
@@ -463,20 +509,22 @@ export default function ReportsPage() {
           ) : (
           /* ── CUSTOMER TABLE ── */
           <div className="w-full">
-            <div className="grid grid-cols-[1.5fr_1.5fr_2.5fr_1fr_1fr] gap-4 py-3 px-3 bg-[#3D4230] rounded-t-[8px] text-[11px] font-semibold text-white tracking-wider uppercase">
+            <div className="grid grid-cols-[1.3fr_1fr_1.5fr_0.6fr_0.9fr_0.85fr_0.9fr] gap-3 py-3 px-3 bg-[#3D4230] rounded-t-[8px] text-[11px] font-semibold text-white tracking-wider uppercase">
               <div>Name</div>
               <div>Mobile</div>
               <div>Address</div>
               <div className="text-center">Pledges</div>
-              <div className="text-right">Loan Amount</div>
+              <div className="text-right">Loan</div>
+              <div className="text-right">Added On</div>
+              <div className="text-right">Risk Score</div>
             </div>
             {customers.length === 0 ? (
               <div className="py-12 text-center text-[14px] text-[#9E9E9E]">No customers found.</div>
             ) : customers.map((c) => (
-              <div key={c.id} className="grid grid-cols-[1.5fr_1.5fr_2.5fr_1fr_1fr] gap-4 px-3 py-4 border-b border-[#F4F3EE] text-[13px] items-center">
-                <div className="font-semibold text-[#2C2C2C]">{c.name}</div>
+              <div key={c.id} className="grid grid-cols-[1.3fr_1fr_1.5fr_0.6fr_0.9fr_0.85fr_0.9fr] gap-3 px-3 py-4 border-b border-[#F4F3EE] text-[13px] items-center">
+                <div className="font-semibold text-[#2C2C2C] truncate">{c.name}</div>
                 <div className="text-[#6F6F6F]">{c.mobile ?? "—"}</div>
-                <div className="text-[#6F6F6F] pr-4 truncate">{c.address ?? "—"}</div>
+                <div className="text-[#6F6F6F] truncate">{c.address ?? "—"}</div>
                 <div className="text-center">
                   <span className="inline-block bg-[#F0EFDF] text-[#555B3F] font-semibold text-[11px] px-2 py-0.5 rounded">
                     {c.pledgeCount}
@@ -484,6 +532,13 @@ export default function ReportsPage() {
                 </div>
                 <div className="text-right font-semibold text-[#555B3F]">
                   {c.totalLoan > 0 ? formatINR(c.totalLoan) : "—"}
+                </div>
+                <div className="text-right text-[#6F6F6F] text-[12px]">{c.createdAt}</div>
+                <div className="text-right">
+                  <span className="font-semibold text-[13px]" style={{ color: riskTierColor(c.riskTier) }}>
+                    {c.riskScore}
+                  </span>
+                  <span className="ml-1 text-[10px] text-[#9E9E9E]">{formatRiskTier(c.riskTier)}</span>
                 </div>
               </div>
             ))}

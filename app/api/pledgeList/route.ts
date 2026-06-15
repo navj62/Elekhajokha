@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth }                      from "@clerk/nextjs/server";
 import { prisma }                    from "@/lib/prisma";
-import { ItemType, MetalType, PledgeStatus, Prisma } from "@prisma/client";
+import { MetalType, PledgeStatus, Prisma } from "@prisma/client";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                           */
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl;
 
     const metalType  = parseEnum(searchParams.get("metalType"),  Object.values(MetalType));
-    const itemType   = parseEnum(searchParams.get("itemType"),   Object.values(ItemType));
+    const itemType   = searchParams.get("itemType")?.trim() || undefined;
     const status     = parseEnum(searchParams.get("status"),     Object.values(PledgeStatus));
     const cursor     = searchParams.get("cursor") ?? undefined;
     const take       = Math.min(
@@ -76,8 +76,8 @@ export async function GET(req: NextRequest) {
       ...((metalType || itemType) && {
         items: {
           some: {
-            ...(metalType  && { metalType  }),
-            ...(itemType   && { itemType   }),
+            ...(metalType && { metalType }),
+            ...(itemType  && { itemType: { equals: itemType } }),
           },
         },
       }),
@@ -151,7 +151,7 @@ export async function GET(req: NextRequest) {
         remark:           p.remark,
         itemCount:        p.items.length,   // number of pledge item rows
         totalItems,                          // total quantity (pieces)
-        itemTypes:        itemTypes.map(titleCase),   // ["Necklace", "Ring"]
+        itemTypes:        itemTypes,
         metalTypes:       metalTypes.map(titleCase),  // ["Gold", "Silver"]
       };
     });

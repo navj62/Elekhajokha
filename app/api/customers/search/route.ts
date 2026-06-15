@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth }                      from "@clerk/nextjs/server";
 import { prisma }                    from "@/lib/prisma";
-import { PledgeStatus, ItemType, Prisma } from "@prisma/client";
+import { PledgeStatus, Prisma } from "@prisma/client";
 
 const MAX_RESULTS  = 50; 
 const DEFAULT_TAKE = 20;
@@ -17,7 +17,7 @@ function buildItemLabel(item: {
   itemType:  string;
   metalType: string;
 }): string {
-  return item.itemName?.trim() || `${titleCase(item.itemType)} (${titleCase(item.metalType)})`;
+  return item.itemName?.trim() || `${item.itemType} (${titleCase(item.metalType)})`;
 }
 
 export async function GET(req: NextRequest) {
@@ -59,15 +59,9 @@ export async function GET(req: NextRequest) {
     }
 
     if (search) {
-      const matchingItemTypes = Object.values(ItemType).filter((t) =>
-        t.toLowerCase().includes(search.toLowerCase())
-      );
-
       const itemOrClauses: Prisma.PledgeItemWhereInput[] = [
         { itemName: { contains: search, mode: "insensitive" } },
-        ...(matchingItemTypes.length > 0
-          ? [{ itemType: { in: matchingItemTypes } }]
-          : []),
+        { itemType: { contains: search, mode: "insensitive" } },
       ];
 
       const itemsWhere: Prisma.PledgeItemListRelationFilter = {
@@ -156,7 +150,7 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    let mapped = customers.map((cust) => {
+    const mapped = customers.map((cust) => {
       const latestItem = cust.pledges[0]?.items[0];
       
       let totalLoanAmount = 0;

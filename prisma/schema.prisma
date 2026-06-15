@@ -37,6 +37,7 @@ model User {
   alerts                 PledgeAlert[]
   tasks                  Task[]
   financialSnapshot      FinancialSnapshot[]
+  customItemTypes        PledgeItemType[]
 
   @@index([razorpaySubscriptionId])
   @@index([subscriptionStatus, isActive])
@@ -106,10 +107,23 @@ model Pledge {
   @@map("pledges")
 }
 
+model PledgeItemType {
+  id        String   @id @default(uuid())
+  label     String
+  isDefault Boolean  @default(false)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isDefault])
+  @@map("pledge_item_types")
+}
+
 model PledgeItem {
   id               String    @id @default(uuid())
   pledgeId         String
-  itemType         ItemType
+  itemType         String
   metalType        MetalType
   itemName         String?
   quantity         Int       @default(1)
@@ -283,20 +297,6 @@ enum SubscriptionStatus {
   active
   halted
   expired
-}
-
-enum ItemType {
-  NECKLACE
-  CHAIN
-  RING
-  BANGLE
-  BRACELET
-  EARRING
-  ANKLET
-  PENDANT
-  COIN
-  BAR
-  OTHER
 }
 
 enum MetalType {

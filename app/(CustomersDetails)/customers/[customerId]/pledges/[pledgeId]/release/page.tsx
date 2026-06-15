@@ -430,7 +430,7 @@ export default function ReleasePledgePage() {
                   {pledge.items.map(item => (
                     <tr key={item.id} className="bg-[#FDFCF9]">
                       <td className="px-4 py-3 font-semibold text-[#2C2C2C] whitespace-nowrap">
-                        {item.itemName || titleCase(item.itemType)}
+                        {item.itemName || item.itemType}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${item.metalType === "GOLD" ? "bg-[#FDF4DC] text-[#8B6914]" : "bg-[#F0EFEC] text-[#6F6F6F]"

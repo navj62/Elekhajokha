@@ -12,9 +12,8 @@ import SubscriptionGuard from "@/components/SubscriptionGuard";
 /*  Constants                                                           */
 /* ------------------------------------------------------------------ */
 const ITEM_TYPES = [
-  "NECKLACE", "CHAIN", "RING", "BANGLE",
-  "BRACELET", "EARRING", "ANKLET", "PENDANT",
-  "COIN", "BAR", "OTHER",
+  "Ring", "Necklace", "Bangles", "Chain", "Earrings",
+  "Bracelet", "Anklet", "Pendant", "Bangle Set", "Other",
 ] as const;
 
 const METAL_TYPES  = ["GOLD", "SILVER"] as const;
@@ -25,7 +24,6 @@ const DEBOUNCE_MS = 300;
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
-type ItemTypeValue  = typeof ITEM_TYPES[number];
 type MetalTypeValue = typeof METAL_TYPES[number];
 type StatusValue    = typeof STATUS_TYPES[number];
 
@@ -48,7 +46,7 @@ interface PledgeRow {
 interface Filters {
   search:    string;
   metalType: MetalTypeValue | "";
-  itemType:  ItemTypeValue  | "";
+  itemType:  string;
   status:    StatusValue    | "";
 }
 
@@ -368,9 +366,9 @@ export default function PledgesPage() {
             {/* Item Type */}
             <ThemedSelect
               value={staged.itemType}
-              onChange={v => setStaged(s => ({ ...s, itemType: v as ItemTypeValue | "" }))}
+              onChange={v => setStaged(s => ({ ...s, itemType: v }))}
               placeholder="All Items"
-              options={ITEM_TYPES.map(t => ({ label: titleCase(t), value: t }))}
+              options={ITEM_TYPES.map(t => ({ label: t, value: t }))}
             />
 
             {/* Status */}

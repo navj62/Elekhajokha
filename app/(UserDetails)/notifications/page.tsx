@@ -64,15 +64,9 @@ const ALERT_ICON: Record<AlertType, string> = {
 
 function formatItemNames(items: PledgeItem[]): string {
   if (!items || items.length === 0) return "Pledge";
-  const names = items.map((item) =>
-    item.itemName?.trim() ? item.itemName.trim() : toTitleCase(item.itemType)
-  );
+  const names = items.map((item) => item.itemName?.trim() || item.itemType);
   if (names.length <= 2) return names.join(", ");
   return `${names[0]}, ${names[1]} +${names.length - 2} more`;
-}
-
-function toTitleCase(str: string) {
-  return str.charAt(0) + str.slice(1).toLowerCase().replace(/_/g, " ");
 }
 
 function formatRelativeTime(dateStr: string): string {

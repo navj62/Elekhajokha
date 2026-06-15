@@ -2,13 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { uploadImage } from "@/lib/upload";
-import { Prisma, ItemType, MetalType } from "@prisma/client";
+import { Prisma, MetalType } from "@prisma/client";
 
 type RouteContext = {
   params: Promise<{ customerId: string }>;
 };
 
-const VALID_ITEM_TYPES  = Object.values(ItemType)  as string[];
 const VALID_METAL_TYPES = Object.values(MetalType) as string[];
 
 function toDecimal(value: unknown): Prisma.Decimal {
@@ -86,11 +85,30 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (!Array.isArray(rawItems) || rawItems.length === 0)
       return NextResponse.json({ error: "At least one item required" }, { status: 400 });
 
+    // ── Validate itemType labels exist in PledgeItemType table ───
+    const uniqueLabels = [...new Set(rawItems.map((i) => String(i.itemType ?? "").trim()))];
+    if (uniqueLabels.some((l) => !l)) {
+      return NextResponse.json({ error: "Invalid item data", details: ["itemType is required"] }, { status: 400 });
+    }
+    const validLabelRows = await prisma.pledgeItemType.findMany({
+      where: {
+        label: { in: uniqueLabels },
+        OR: [{ isDefault: true }, { userId: user.id }],
+      },
+      select: { label: true },
+    });
+    const validLabels = new Set(validLabelRows.map((r) => r.label));
+    const badLabels = uniqueLabels.filter((l) => !validLabels.has(l));
+    if (badLabels.length) {
+      return NextResponse.json(
+        { error: "Invalid item data", details: badLabels.map((l) => `Invalid itemType: "${l}"`) },
+        { status: 400 }
+      );
+    }
+
     // ── Validate each item ────────────────────────────────────────
     const itemErrors: string[] = [];
     rawItems.forEach((item, i) => {
-      if (!VALID_ITEM_TYPES.includes(item.itemType))
-        itemErrors.push(`Item[${i}]: invalid itemType "${item.itemType}"`);
       if (!VALID_METAL_TYPES.includes(item.metalType))
         itemErrors.push(`Item[${i}]: invalid metalType "${item.metalType}"`);
       // netWeightOfMetal is no longer trusted from the payload — it's derived
@@ -147,7 +165,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         netWeightOfSilver:  new Prisma.Decimal(netWeightOfSilver),
         items: {
           create: rawItems.map(item => ({
-            itemType:         item.itemType  as ItemType,
+            itemType:         String(item.itemType).trim(),
             metalType:        item.metalType as MetalType,
             itemName:         item.itemName  || null,
             quantity:         Number(item.quantity) || 1,
