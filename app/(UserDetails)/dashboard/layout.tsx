@@ -28,7 +28,7 @@ const navItems = [
   { labelKey: "nav_add_customers", href: "/add-customer", icon: UserPlus },
   { labelKey: "nav_customer", href: "/customers", icon: Users },
   { labelKey: "nav_reports", href: "/reports", icon: BarChart3 },
-  { labelKey: "nav_settings", href: "/settings", icon: Settings },
+  { labelKey: "nav_settings", href: "/profile", icon: Settings },
   { labelKey: "ltv", href: "/ltv", icon: BarChart3 },
   { labelKey: "pledges", href: "/pledgeList", icon: BarChart3 },
 ];
