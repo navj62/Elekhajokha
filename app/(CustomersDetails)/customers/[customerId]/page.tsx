@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
 import {
   Edit3, Plus, Upload, MapPin, Phone,
-  CheckCircle2, Eye, Unlock, Loader2, CheckSquare, Search, X,
+  CheckCircle2, Eye, Unlock, Archive, Loader2, CheckSquare, Search, X,
 } from "lucide-react";
 
 import { QRCodeCanvas } from "qrcode.react";
@@ -17,7 +17,7 @@ import { Switch } from "@/components/ui/switch";
 /* ------------------------------------------------------------------ */
 type Pledge = {
   id: string;
-  status: "ACTIVE" | "RELEASED" | "OVERDUE";
+  status: "ACTIVE" | "RELEASED" | "OVERDUE" | "SOLD";
   pledgeDate: string;
   loanAmount: string;
   releaseDate: string | null;
@@ -68,9 +68,10 @@ function getInitials(name: string) {
 function renderStatusBadge(status?: string | null) {
   if (!status) return null;
   let bg = "#EAEAEA", color = "#6D6D6D", dot = "#A0A0A0";
-  if (status === "ACTIVE") { bg = "#E6E8DA"; color = "#5C633F"; dot = "#838C58"; }
+  if (status === "ACTIVE")  { bg = "#E6E8DA"; color = "#5C633F"; dot = "#838C58"; }
   if (status === "OVERDUE") { bg = "#F8D7DA"; color = "#C94A4A"; dot = "#D66666"; }
-  const label = status.charAt(0) + status.slice(1).toLowerCase();
+  if (status === "SOLD")    { bg = "#FEE2E2"; color = "#B91C1C"; dot = "#DC2626"; }
+  const label = status === "SOLD" ? "Sold to Shop" : status.charAt(0) + status.slice(1).toLowerCase();
   return (
     <span style={{ backgroundColor: bg, color, borderRadius: "20px", padding: "4px 10px", fontSize: "10px", fontWeight: 700, letterSpacing: "0.5px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
       <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: dot }} />
@@ -110,9 +111,9 @@ export default function CustomerDetailPage() {
   const displayedPledges = useMemo(() => {
     let result = customer?.pledges ?? [];
 
-    // 1. Show-released toggle (default OFF → active only)
+    // 1. Show-released toggle (default OFF → active + overdue; ON → all)
     if (!showReleased) {
-      result = result.filter((p) => p.status === "ACTIVE");
+      result = result.filter((p) => p.status === "ACTIVE" || p.status === "OVERDUE");
     }
 
     // 2. Search — asset label + formatted pledge date (case-insensitive)
@@ -914,11 +915,20 @@ export default function CustomerDetailPage() {
                               </Link>
                               <Link href={`/customers/${customerId}/pledges/${pledge.id}/release`}>
                                 <button
-                                  disabled={pledge.status === "RELEASED"}
+                                  disabled={pledge.status === "RELEASED" || pledge.status === "SOLD"}
                                   className="p-2 rounded-full hover:bg-[#EAE9DF] text-[#9E9E9E] hover:text-[#555B3F] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                                   title="Release this pledge"
                                 >
                                   <Unlock size={15} />
+                                </button>
+                              </Link>
+                              <Link href={`/customers/${customerId}/pledges/${pledge.id}/sell`}>
+                                <button
+                                  disabled={pledge.status === "RELEASED" || pledge.status === "SOLD"}
+                                  className="p-2 rounded-full hover:bg-[#EAE9DF] text-[#9E9E9E] hover:text-[#92400E] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                  title="Add to Inventory"
+                                >
+                                  <Archive size={15} />
                                 </button>
                               </Link>
                             </div>
