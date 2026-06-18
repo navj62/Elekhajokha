@@ -90,6 +90,10 @@ const STATUS_STYLES: Record<
     label: "Overdue",
     className: "bg-red-100 text-red-700 border-red-200",
   },
+  SOLD: {
+    label: "Sold",
+    className: "bg-orange-100 text-orange-700 border-orange-200",
+  },
 };
 
 /* ------------------------------------------------------------------ */

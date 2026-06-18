@@ -38,6 +38,7 @@ model User {
   tasks                  Task[]
   financialSnapshot      FinancialSnapshot[]
   customItemTypes        PledgeItemType[]
+  inventoryItems         InventoryItem[]
 
   @@index([razorpaySubscriptionId])
   @@index([subscriptionStatus, isActive])
@@ -96,11 +97,13 @@ model Pledge {
   lastEvaluatedAt     DateTime?
   lastAmountOwed      Decimal?            @db.Decimal(14, 2)
   lastMarketValue     Decimal?            @db.Decimal(14, 2)
+  salePrice           Decimal?            @db.Decimal(12, 2)
   pledgeAudits        PledgeAudit[]
   items               PledgeItem[]
   customer            Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
   transactions        Transaction[]
   alerts              PledgeAlert[]
+  inventoryItem       InventoryItem?
 
   @@index([status, createdAt])
   @@index([customerId, status])
@@ -284,6 +287,7 @@ enum AuditAction {
   RELEASED
   DELETED
   RECALCULATED
+  SOLD
 }
 
 enum SubscriptionPlan {
@@ -308,6 +312,7 @@ enum PledgeStatus {
   ACTIVE
   RELEASED
   OVERDUE
+  SOLD
 }
 
 enum CompoundingDuration {
@@ -327,4 +332,58 @@ enum AlertType {
   TIER_CHANGE
   CRITICAL
   INFO
+}
+
+enum InventorySource {
+  PLEDGE_SALE
+  DIRECT_PURCHASE
+}
+
+enum InventoryStatus {
+  IN_STOCK
+  SOLD
+}
+
+model InventoryItem {
+  id             String          @id @default(uuid())
+  ownerId        String
+  owner          User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // Source
+  sourceType     InventorySource
+  sourcePledgeId String?         @unique
+  sourcePledge   Pledge?         @relation(fields: [sourcePledgeId], references: [id], onDelete: SetNull)
+
+  // Item details
+  description    String
+  itemType       String
+  metalType      String
+  purity         Decimal?        @db.Decimal(6, 3)
+  weightGrams    Decimal         @db.Decimal(10, 3)
+  photoUrl       String?
+
+  // Acquisition
+  acquiredAt     DateTime        @default(now())
+  acquiredCost   Decimal         @db.Decimal(12, 2)
+  amountOwedAt   Decimal?        @db.Decimal(12, 2)
+  sellerName     String?
+  sellerIdNum    String?
+
+  // Sale
+  status         InventoryStatus @default(IN_STOCK)
+  soldAt         DateTime?
+  soldPrice      Decimal?        @db.Decimal(12, 2)
+  buyerName      String?
+  buyerMobile    String?
+  saleNotes      String?
+
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([ownerId, status])
+  @@index([ownerId, sourceType])
+  @@index([ownerId, createdAt])
+  @@index([sourcePledgeId])
+  @@map("inventory_items")
 }
