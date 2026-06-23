@@ -110,6 +110,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "itemType is required" }, { status: 400 });
     if (!metalType)
       return NextResponse.json({ error: "metalType is required" }, { status: 400 });
+
+    // Validate metalType against the accepted set, then store title case to
+    // match the UI's display convention ("Gold"/"Silver"/"Other"). The GET
+    // filter compares with mode: "insensitive", so casing never breaks filtering.
+    const METAL_TITLE_CASE: Record<string, string> = {
+      GOLD:   "Gold",
+      SILVER: "Silver",
+      OTHER:  "Other",
+    };
+    const normalizedMetal = metalType.trim().toUpperCase();
+    if (!METAL_TITLE_CASE[normalizedMetal])
+      return NextResponse.json({ error: "VALIDATION", message: "Invalid metal type." }, { status: 400 });
+    const metalTypeNormalized = METAL_TITLE_CASE[normalizedMetal];
+
+    if (purity !== null) {
+      if (isNaN(purity) || purity <= 0 || purity > 100)
+        return NextResponse.json({ error: "VALIDATION", message: "Purity must be between 0 and 100." }, { status: 400 });
+    }
+
     if (isNaN(weightGrams) || weightGrams <= 0)
       return NextResponse.json({ error: "weightGrams must be > 0" }, { status: 400 });
     if (isNaN(acquiredCost) || acquiredCost < 0)
@@ -141,7 +160,7 @@ export async function POST(req: NextRequest) {
         sourceType:  "DIRECT_PURCHASE",
         description,
         itemType:    validType.label,
-        metalType,
+        metalType:   metalTypeNormalized,
         purity:      purity != null ? new Prisma.Decimal(purity) : null,
         weightGrams: new Prisma.Decimal(weightGrams),
         acquiredCost: new Prisma.Decimal(acquiredCost),

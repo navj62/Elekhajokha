@@ -43,8 +43,8 @@ export async function PATCH(req: Request, context: RouteContext) {
     });
     if (!pledge)
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
-    if (pledge.status !== "ACTIVE")
-      return NextResponse.json({ error: "Only active pledges can be released" }, { status: 400 });
+    if (pledge.status !== "ACTIVE" && pledge.status !== "OVERDUE")
+      return NextResponse.json({ error: "Only active or overdue pledges can be released" }, { status: 400 });
 
     const body = await req.json();
     const { releaseDate, allowCompounding, compoundingDuration } = body;
@@ -105,7 +105,7 @@ export async function PATCH(req: Request, context: RouteContext) {
     try {
       updated = await prisma.$transaction(async (tx) => {
         const result = await tx.pledge.updateMany({
-          where: { id: pledgeId, status: "ACTIVE" }, // ✅ guard against double-release
+          where: { id: pledgeId, status: { in: ["ACTIVE", "OVERDUE"] } }, // ✅ guard against double-release
           data: {
             status:              "RELEASED",
             releaseDate:         releaseDateObj,

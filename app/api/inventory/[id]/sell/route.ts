@@ -41,16 +41,34 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (!soldAt || isNaN(soldAtDate.getTime()))
       return NextResponse.json({ error: "Invalid soldAt" }, { status: 400 });
 
-    const updated = await prisma.inventoryItem.update({
-      where: { id },
-      data: {
-        status:     "SOLD",
-        soldAt:     soldAtDate,
-        soldPrice:  new Prisma.Decimal(soldPrice),
-        buyerName:  typeof buyerName  === "string" ? buyerName.trim()  || null : null,
-        buyerMobile: typeof buyerMobile === "string" ? buyerMobile.trim() || null : null,
-        saleNotes:  typeof saleNotes  === "string" ? saleNotes.trim()  || null : null,
+    // Atomic guard: the status predicate lives in the WHERE clause so two
+    // concurrent sells can't both pass an app-code check and overwrite each
+    // other. Mirrors the pledge release / pledge-sell updateMany pattern.
+    const result = await prisma.inventoryItem.updateMany({
+      where: {
+        id,
+        ownerId: user.id,
+        status:  "IN_STOCK",
       },
+      data: {
+        status:      "SOLD",
+        soldAt:      soldAtDate,
+        soldPrice:   new Prisma.Decimal(soldPrice),
+        buyerName:   typeof buyerName  === "string" ? buyerName.trim()  || null : null,
+        buyerMobile: typeof buyerMobile === "string" ? buyerMobile.trim() || null : null,
+        saleNotes:   typeof saleNotes  === "string" ? saleNotes.trim()  || null : null,
+      },
+    });
+
+    if (result.count === 0) {
+      return NextResponse.json(
+        { error: "ALREADY_SOLD", message: "Item is already sold." },
+        { status: 409 }
+      );
+    }
+
+    const updated = await prisma.inventoryItem.findFirst({
+      where: { id, ownerId: user.id },
     });
 
     return NextResponse.json({ item: updated });
