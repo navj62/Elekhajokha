@@ -99,9 +99,9 @@ export async function POST(req: Request, context: RouteContext) {
       );
     }
 
-    /* ---- STEP 3: STATUS (all ACTIVE) ----------------------------- */
+    /* ---- STEP 3: STATUS (all ACTIVE or OVERDUE) ------------------ */
     const offendingIds = pledges
-      .filter((p) => p.status !== "ACTIVE")
+      .filter((p) => p.status !== "ACTIVE" && p.status !== "OVERDUE")
       .map((p) => p.id);
 
     if (offendingIds.length > 0) {

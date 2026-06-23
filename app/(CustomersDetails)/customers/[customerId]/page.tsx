@@ -291,8 +291,8 @@ export default function CustomerDetailPage() {
   const outstanding = totalLoan - repaid;
   const progressValue = totalLoan > 0 ? (repaid / totalLoan) * 100 : 0;
 
-  /* ---- Bulk selection (ACTIVE pledges only) ------------------- */
-  const activePledges = customer?.pledges.filter((p) => p.status === "ACTIVE") ?? [];
+  /* ---- Bulk selection (ACTIVE or OVERDUE pledges) ------------- */
+  const activePledges = customer?.pledges.filter((p) => p.status === "ACTIVE" || p.status === "OVERDUE") ?? [];
   const allActiveSelected =
     activePledges.length > 0 && activePledges.every((p) => selectedIds.has(p.id));
 
@@ -878,7 +878,7 @@ export default function CustomerDetailPage() {
                               type="checkbox"
                               aria-label="Select pledge"
                               checked={selectedIds.has(pledge.id)}
-                              disabled={pledge.status !== "ACTIVE"}
+                              disabled={pledge.status !== "ACTIVE" && pledge.status !== "OVERDUE"}
                               onChange={() => toggleOne(pledge.id)}
                               className="h-4 w-4 accent-[#555B3F] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                             />

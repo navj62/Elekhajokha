@@ -113,8 +113,8 @@ export async function POST(req: Request, context: RouteContext) {
       );
     }
 
-    /* ---- STEP: STATUS (all ACTIVE) ------------------------------- */
-    const offendingIds = pledges.filter((p) => p.status !== "ACTIVE").map((p) => p.id);
+    /* ---- STEP: STATUS (all ACTIVE or OVERDUE) -------------------- */
+    const offendingIds = pledges.filter((p) => p.status !== "ACTIVE" && p.status !== "OVERDUE").map((p) => p.id);
     if (offendingIds.length > 0) {
       return NextResponse.json(
         {
@@ -187,7 +187,7 @@ export async function POST(req: Request, context: RouteContext) {
               },
             });
             if (!pledge) throw new Error("OWNERSHIP_VIOLATION:" + inputPledge.id);
-            if (pledge.status !== "ACTIVE") throw new Error("ALREADY_RELEASED:" + pledge.id);
+            if (pledge.status !== "ACTIVE" && pledge.status !== "OVERDUE") throw new Error("ALREADY_RELEASED:" + pledge.id);
 
             const calc = calculateHybridInterest(
               Number(pledge.loanAmount),
@@ -212,7 +212,7 @@ export async function POST(req: Request, context: RouteContext) {
 
             // Double-release guard (MIRRORS single-release exactly).
             const result = await tx.pledge.updateMany({
-              where: { id: pledge.id, status: "ACTIVE" },
+              where: { id: pledge.id, status: { in: ["ACTIVE", "OVERDUE"] } },
               data: {
                 status:              "RELEASED",
                 releaseDate:         releaseDateObj,
