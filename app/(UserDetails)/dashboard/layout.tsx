@@ -22,6 +22,7 @@ import {
   HelpCircle,
   Globe,
 } from "lucide-react";
+import MetalRateStrip from "@/components/inventory/MetalRateStrip";
 import { useState } from "react";
 
 const navItems = [
@@ -54,10 +55,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           }`}
         style={{ backgroundColor: "#F5F4E7", borderRight: "1px solid var(--border-light)" }}
       >
-        <div className="flex flex-col px-8 pt-10 pb-10">
+        <div className="flex flex-col px-8 pt-10 pb-3">
           <span className="text-[15px] font-bold" style={{ color: "var(--text-primary)" }}>Lekha-Jokha</span>
           <span className="text-[12px] font-medium mt-0.5" style={{ color: "var(--text-secondary)" }}>{t("workspace")}</span>
         </div>
+        <MetalRateStrip variant="compact" />
         <button className="lg:hidden absolute top-10 right-6" onClick={() => setSidebarOpen(false)}>
           <X size={20} style={{ color: "var(--text-primary)" }} />
         </button>

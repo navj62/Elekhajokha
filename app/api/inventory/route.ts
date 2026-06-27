@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
     const weightGrams  = Number(fd.get("weightGrams"));
     const acquiredCost = Number(fd.get("acquiredCost"));
     const acquiredAt   = String(fd.get("acquiredAt")   ?? "");
-    const sellerName   = String(fd.get("sellerName")   ?? "").trim() || null;
+    const sellerName   = String(fd.get("sellerName")   ?? "").trim();
     const sellerIdNum  = String(fd.get("sellerIdNum")  ?? "").trim() || null;
     const notes        = String(fd.get("notes")        ?? "").trim() || null;
     const photoFile    = fd.get("photo");
@@ -139,6 +139,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid acquiredAt" }, { status: 400 });
     if (acquiredAtDate > new Date())
       return NextResponse.json({ error: "acquiredAt cannot be in the future" }, { status: 400 });
+
+    if (!sellerName)
+      return NextResponse.json({ error: "VALIDATION", message: "Seller name is required." }, { status: 400 });
 
     const validType = await prisma.pledgeItemType.findFirst({
       where: {

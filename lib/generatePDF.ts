@@ -347,6 +347,165 @@ export function generatePledgePDF(
   });
 }
 
+// ── Purchase receipt (direct-purchase inventory item) ───────────────
+
+type PurchaseReceiptItem = {
+  id: string;
+  description: string;
+  itemType: string;
+  metalType: string;
+  purity: string | null;
+  weightGrams: string;
+  acquiredCost: string;
+  acquiredAt: string;
+  sellerName: string | null;
+  sellerIdNum: string | null;
+  notes: string | null;
+};
+
+type PurchaseReceiptShop = {
+  shopName: string | null;
+  mobile: string | null;
+  address: string | null;
+};
+
+export function generateInventoryPurchasePDF(
+  item: PurchaseReceiptItem,
+  shop: PurchaseReceiptShop
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ margin: 40, size: "A4" });
+    const chunks: Buffer[] = [];
+
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end",  () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const pageW  = doc.page.width - 80; // 40 margin each side
+    const olive  = "#565C3F";
+    const oliveL = "#EAE9DF";
+
+    // ── Olive header bar ─────────────────────────────────────────────
+    doc.rect(40, 40, pageW, 48).fill(olive);
+    doc
+      .fillColor("white")
+      .fontSize(18)
+      .font("Helvetica-Bold")
+      .text("Purchase Receipt", 40, 48, { width: pageW, align: "center" });
+    doc
+      .fillColor("rgba(255,255,255,0.7)")
+      .fontSize(9)
+      .font("Helvetica")
+      .text("Direct Purchase — Inventory Record", 40, 68, { width: pageW, align: "center" });
+
+    // ── Letterhead ───────────────────────────────────────────────────
+    let y = 104;
+    if (shop.shopName) {
+      doc.fillColor("#1a1a1a").fontSize(13).font("Helvetica-Bold")
+        .text(shop.shopName, 40, y, { width: pageW, align: "center" });
+      y += 17;
+    }
+    if (shop.address) {
+      doc.fillColor("#555").fontSize(9).font("Helvetica")
+        .text(shop.address, 40, y, { width: pageW, align: "center" });
+      y += 14;
+    }
+    if (shop.mobile) {
+      doc.fillColor("#555").fontSize(9)
+        .text(`Mobile: ${shop.mobile}`, 40, y, { width: pageW, align: "center" });
+      y += 14;
+    }
+
+    // ── Receipt ref line ─────────────────────────────────────────────
+    y += 6;
+    doc.moveTo(40, y).lineTo(40 + pageW, y).strokeColor("#e5e7eb").lineWidth(0.5).stroke();
+    y += 10;
+
+    const shortId = item.id.slice(-8).toUpperCase();
+    const dateStr = new Date(item.acquiredAt).toLocaleDateString("en-IN", {
+      day: "numeric", month: "short", year: "numeric",
+    });
+    doc.fillColor("#555").fontSize(8.5).font("Helvetica")
+      .text(`Receipt Ref: ${shortId}`, 40, y, { width: pageW / 2, align: "left" })
+      .text(`Purchase Date: ${dateStr}`, 40 + pageW / 2, y, { width: pageW / 2, align: "right" });
+    y += 20;
+
+    // ── Helper: section header ───────────────────────────────────────
+    function sectionHeader(label: string) {
+      doc.rect(40, y, pageW, 22).fill(oliveL);
+      doc.fillColor(olive).fontSize(8.5).font("Helvetica-Bold")
+        .text(label.toUpperCase(), 44, y + 6, { width: pageW - 8 });
+      y += 22;
+    }
+
+    // ── Helper: field row ────────────────────────────────────────────
+    function fieldRow(label: string, value: string, isLast = false) {
+      const rowH = 22;
+      doc.rect(40, y, pageW, rowH).fill("#fafafa").strokeColor("#e5e7eb").lineWidth(0.5).stroke();
+      doc.fillColor("#6b7280").fontSize(8).font("Helvetica").text(label, 48, y + 6, { width: 140 });
+      doc.fillColor("#1a1a1a").fontSize(8.5).font("Helvetica").text(value, 194, y + 6, { width: pageW - 160 });
+      y += rowH;
+      if (isLast) {
+        doc.moveTo(40, y).lineTo(40 + pageW, y).strokeColor("#e5e7eb").lineWidth(0.5).stroke();
+      }
+    }
+
+    // ── Section: Seller ──────────────────────────────────────────────
+    sectionHeader("Seller Information");
+    fieldRow("Seller Name",      item.sellerName   ?? "—");
+    fieldRow("Seller ID Number", item.sellerIdNum  ?? "—", true);
+    y += 12;
+
+    // ── Section: Item Details ────────────────────────────────────────
+    sectionHeader("Item Details");
+    fieldRow("Description",  item.description);
+    fieldRow("Item Type",    item.itemType);
+    fieldRow("Metal Type",   item.metalType);
+    fieldRow("Purity",       item.purity != null ? `${Number(item.purity).toFixed(2)}%` : "—");
+    fieldRow("Weight",       `${Number(item.weightGrams).toFixed(3)} g`, true);
+    y += 12;
+
+    // ── Section: Payment ─────────────────────────────────────────────
+    sectionHeader("Payment");
+    y += 10;
+    const priceStr = "₹" + Number(item.acquiredCost).toLocaleString("en-IN");
+    doc.fillColor(olive).fontSize(28).font("Helvetica-Bold")
+      .text(priceStr, 40, y, { width: pageW, align: "center" });
+    y += 38;
+    doc.fillColor("#9ca3af").fontSize(8).font("Helvetica")
+      .text("Total Purchase Price", 40, y, { width: pageW, align: "center" });
+    y += 18;
+    doc.moveTo(40, y).lineTo(40 + pageW, y).strokeColor("#e5e7eb").lineWidth(0.5).stroke();
+    y += 12;
+
+    // ── Notes ────────────────────────────────────────────────────────
+    if (item.notes) {
+      sectionHeader("Notes");
+      doc.fillColor("#374151").fontSize(8.5).font("Helvetica")
+        .text(item.notes, 48, y + 4, { width: pageW - 16 });
+      const notesH = doc.heightOfString(item.notes, { width: pageW - 16 });
+      y += Math.max(28, notesH + 16);
+    }
+
+    // ── Signature lines ──────────────────────────────────────────────
+    const sigY = Math.max(y + 20, doc.page.height - 130);
+    const sigW = pageW / 2 - 12;
+
+    doc.moveTo(48,            sigY).lineTo(48 + sigW,      sigY).strokeColor("#9ca3af").lineWidth(0.8).stroke();
+    doc.moveTo(48 + sigW + 24, sigY).lineTo(40 + pageW, sigY).strokeColor("#9ca3af").lineWidth(0.8).stroke();
+
+    doc.fillColor("#6b7280").fontSize(8).font("Helvetica")
+      .text("Seller Signature",      48,            sigY + 5, { width: sigW,  align: "center" })
+      .text("Shop Owner Signature",  48 + sigW + 24, sigY + 5, { width: sigW,  align: "center" });
+
+    const dateLineY = sigY + 18;
+    doc.text(`Date: _______________`, 48,            dateLineY, { width: sigW,  align: "center" });
+    doc.text(`Date: _______________`, 48 + sigW + 24, dateLineY, { width: sigW,  align: "center" });
+
+    doc.end();
+  });
+}
+
 const DEFAULT_SHOPOWNER_TERMS = [
   "• मेरे द्वारा गिरवी रखी गई उपरोक्त रकम मेरे स्वामित्व, पूर्ण प्रामाणिक, आविवादित संपत्ति है।",
   "• मय ब्याज (प्रतिमाह/प्रति चौकडा) मूलधन को वापस लौटाने पर ही आपसे पुन: रकम लेने का मुझे अधिकार होगा।",
