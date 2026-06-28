@@ -134,10 +134,10 @@ export default function SellPledgePage() {
     );
   }, [pledge, saleDate, isBeforeSale]);
 
-  const amountOwed   = calc?.receivableAmount ?? 0;
-  const buyPriceNum  = buyPrice === "" ? 0 : Math.max(0, Number(buyPrice));
-  const netPosition  = amountOwed - buyPriceNum;
-  const isForfeiture = buyPriceNum === 0;
+  const amountOwed        = calc?.receivableAmount ?? 0;
+  const buyPriceNum       = buyPrice === "" ? 0 : Math.max(0, Number(buyPrice));
+  const cashToPayCustomer = Math.max(buyPriceNum - amountOwed, 0);
+  const uncoveredLoss     = Math.max(amountOwed - buyPriceNum, 0);
 
   const canSell =
     pledge !== null &&
@@ -221,15 +221,23 @@ export default function SellPledgePage() {
             <span className="font-semibold text-[#2C2C2C]">{fmt(amountOwed)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[#6F6F6F]">Amount Paid</span>
+            <span className="text-[#6F6F6F]">Acquisition Cost</span>
             <span className="font-semibold text-[#2C2C2C]">{fmt(buyPriceNum)}</span>
           </div>
           <div className="flex justify-between border-t border-[#ECEAE4] pt-2.5 mt-2">
-            <span className="font-semibold text-[#2C2C2C]">Net Position</span>
-            <span className={`font-bold text-[16px] tabular-nums ${netPosition >= 0 ? "text-[#4D6B2A]" : "text-[#9A4B14]"}`}>
-              {netPosition >= 0 ? "+" : "−"}{fmt(Math.abs(netPosition))}
+            <span className="font-bold text-[#2C2C2C]">Cash Paid to Customer</span>
+            <span className={`font-bold text-[16px] tabular-nums ${cashToPayCustomer > 0 ? "text-[#565C3F]" : "text-[#6F6F6F]"}`}>
+              {fmt(cashToPayCustomer)}
             </span>
           </div>
+          {uncoveredLoss > 0 && (
+            <p className="text-[11px] text-[#B45309] bg-[#FFF7ED] border border-[#FED7AA] rounded-[8px] px-3 py-2 mt-1">
+              No cash payment — the loan amount exceeded the item&apos;s stated value. The shop absorbed {fmt(uncoveredLoss)} as an uncovered loss.
+            </p>
+          )}
+          {cashToPayCustomer === 0 && uncoveredLoss === 0 && (
+            <p className="text-[11px] text-[#6F6F6F] mt-1">Break even — no cash payment.</p>
+          )}
         </div>
         <button
           onClick={() => router.push(`/customers/${params.customerId}`)}
@@ -274,12 +282,11 @@ export default function SellPledgePage() {
   }
 
   if (pledge.status === "SOLD") {
-    const salePriceNum = Number(pledge.salePrice ?? 0);
-    const isForfeiture = salePriceNum === 0;
-    const inv = pledge.inventoryItem;
-    const storedNetPos = inv !== null
-      ? Number(inv.amountOwedAt ?? 0) - Number(inv.acquiredCost)
-      : null;
+    const salePriceNum        = Number(pledge.salePrice ?? 0);
+    const inv                 = pledge.inventoryItem;
+    const storedAmountOwed    = Number(pledge.receivableAmount ?? inv?.amountOwedAt ?? 0);
+    const storedCashToPay     = Math.max(salePriceNum - storedAmountOwed, 0);
+    const storedUncoveredLoss = Math.max(storedAmountOwed - salePriceNum, 0);
     return (
       <div className="max-w-2xl mx-auto p-6 flex flex-col items-center justify-center min-h-[60vh] text-center gap-5">
         <div className="w-20 h-20 rounded-full bg-[#FEF3C7] border border-[#FDE68A] flex items-center justify-center">
@@ -294,30 +301,24 @@ export default function SellPledgePage() {
             </span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-[#6F6F6F]">Amount Paid</span>
-            {isForfeiture ? (
-              <span
-                className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold"
-                style={{ backgroundColor: "#FFF4D1", color: "#8A6B17" }}
-              >
-                Forfeited
-              </span>
-            ) : (
-              <span className="font-semibold text-[#2C2C2C]">
-                ₹{Math.round(salePriceNum).toLocaleString("en-IN")}
-              </span>
-            )}
+            <span className="text-[#6F6F6F]">Acquisition Cost</span>
+            <span className="font-semibold text-[#2C2C2C]">
+              ₹{Math.round(salePriceNum).toLocaleString("en-IN")}
+            </span>
           </div>
-          {storedNetPos !== null && (
-            <div className="flex justify-between items-center">
-              <span className="text-[#6F6F6F]">Net Position</span>
-              <span className={`font-bold tabular-nums ${
-                storedNetPos > 0 ? "text-[#4D6B2A]" : storedNetPos < 0 ? "text-[#9A4B14]" : "text-[#6F6F6F]"
-              }`}>
-                {storedNetPos > 0 ? "+" : storedNetPos < 0 ? "−" : ""}
-                {fmt(Math.abs(storedNetPos))}
-              </span>
-            </div>
+          <div className="flex justify-between items-center">
+            <span className="text-[#6F6F6F]">Cash Paid to Customer</span>
+            <span className={`font-semibold tabular-nums ${storedCashToPay > 0 ? "text-[#565C3F]" : "text-[#6F6F6F]"}`}>
+              ₹{Math.round(storedCashToPay).toLocaleString("en-IN")}
+            </span>
+          </div>
+          {storedUncoveredLoss > 0 && (
+            <p className="text-[11px] text-[#B45309] bg-[#FFF7ED] border border-[#FED7AA] rounded-[8px] px-3 py-2 text-left">
+              No cash payment — the loan amount exceeded the item&apos;s stated value. The shop absorbed ₹{Math.round(storedUncoveredLoss).toLocaleString("en-IN")} as an uncovered loss on this pledge.
+            </p>
+          )}
+          {storedCashToPay === 0 && storedUncoveredLoss === 0 && (
+            <p className="text-[11px] text-[#6F6F6F]">Break even — no cash payment.</p>
           )}
           {inv && (
             <div className="flex justify-between items-center border-t border-[#ECEAE4] pt-2.5 mt-2">
@@ -578,7 +579,7 @@ export default function SellPledgePage() {
             {/* Buy Price */}
             <div>
               <label className="block text-[11px] font-bold tracking-widest text-[#2C2C2C] mb-2 uppercase">
-                Amount Paid to Customer (₹)
+                Acquisition Cost / Item Value (₹)
               </label>
               <input
                 type="number"
@@ -589,52 +590,37 @@ export default function SellPledgePage() {
                 className="w-full bg-[#F9F8F3] border border-[#ECEAE4] rounded-[12px] px-4 py-3 text-[14px] text-[#2C2C2C] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
               />
               <p className="text-[11px] text-[#8C8F7A] mt-1.5 ml-1">
-                Enter 0 if forfeiting the pledge.
+                The value you&apos;re assigning to this item. The actual cash handed to the customer is calculated automatically below.
               </p>
             </div>
 
-            {/* Net Position */}
+            {/* Breakdown — Amount Owed / Acquisition Cost / Cash to Pay */}
             {calc && !isBeforeSale && (
-              <div className="bg-[#F9F8F3] border border-[#ECEAE4] rounded-[12px] px-4 py-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[12px] font-semibold text-[#6F6F6F]">Net Position</span>
-                  <span className={`text-[18px] font-bold tabular-nums ${
-                    netPosition > 0
-                      ? "text-[#4D6B2A]"
-                      : netPosition < 0
-                      ? "text-[#9A4B14]"
-                      : "text-[#6F6F6F]"
-                  }`}>
-                    {netPosition > 0 ? "+" : netPosition < 0 ? "−" : ""}
-                    {fmt(Math.abs(netPosition))}
+              <div className="bg-[#F9F8F3] border border-[#ECEAE4] rounded-[12px] px-4 py-4 space-y-3">
+                <div className="flex items-center justify-between text-[13px]">
+                  <span className="text-[#6F6F6F]">Amount Owed</span>
+                  <span className="font-semibold text-[#2C2C2C] tabular-nums">{fmt(amountOwed)}</span>
+                </div>
+                <div className="flex items-center justify-between text-[13px]">
+                  <span className="text-[#6F6F6F]">Acquisition Cost</span>
+                  <span className="font-semibold text-[#2C2C2C] tabular-nums">{fmt(buyPriceNum)}</span>
+                </div>
+                <div className="flex items-center justify-between border-t border-[#ECEAE4] pt-3">
+                  <span className="text-[13px] font-bold text-[#2C2C2C]">Cash to Pay Customer</span>
+                  <span className={`text-[18px] font-bold tabular-nums ${cashToPayCustomer > 0 ? "text-[#565C3F]" : "text-[#6F6F6F]"}`}>
+                    {fmt(cashToPayCustomer)}
                   </span>
                 </div>
-                <p className={`text-[11px] mt-1 ${
-                  netPosition > 0
-                    ? "text-[#4D6B2A]"
-                    : netPosition < 0
-                    ? "text-[#9A4B14]"
-                    : "text-[#6F6F6F]"
-                }`}>
-                  {netPosition > 0
-                    ? `You recover ${fmt(netPosition)} above what you paid`
-                    : netPosition < 0
-                    ? `You paid ${fmt(Math.abs(netPosition))} more than owed (loss)`
-                    : "Break even"}
-                </p>
-              </div>
-            )}
-
-            {/* Forfeiture badge */}
-            {isForfeiture && (
-              <div
-                className="flex items-center gap-2 px-4 py-3 rounded-[12px]"
-                style={{ backgroundColor: "#FFF4D1", border: "1px solid #F5D97A" }}
-              >
-                <Info size={14} style={{ color: "#8A6B17", flexShrink: 0 }} />
-                <p className="text-[12px]" style={{ color: "#8A6B17" }}>
-                  This will be recorded as a forfeiture (₹0 paid)
-                </p>
+                {uncoveredLoss > 0 && (
+                  <div className="bg-[#FFF7ED] border border-[#FED7AA] rounded-[8px] px-3 py-2.5">
+                    <p className="text-[11px] text-[#B45309] leading-relaxed">
+                      No cash payment — the loan amount exceeds the item&apos;s stated value. The shop absorbs {fmt(uncoveredLoss)} as an uncovered loss on this pledge.
+                    </p>
+                  </div>
+                )}
+                {cashToPayCustomer === 0 && uncoveredLoss === 0 && (
+                  <p className="text-[11px] text-[#6F6F6F]">Break even — the acquisition cost exactly covers the amount owed.</p>
+                )}
               </div>
             )}
 
@@ -727,19 +713,22 @@ export default function SellPledgePage() {
                 <span className="font-semibold text-[#2C2C2C]">{fmt(amountOwed)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[#6F6F6F]">You are paying</span>
+                <span className="text-[#6F6F6F]">Acquisition Cost</span>
                 <span className="font-semibold text-[#2C2C2C]">{fmt(buyPriceNum)}</span>
               </div>
               <div className="flex justify-between border-t border-[#ECEAE4] pt-3 mt-3">
-                <span className="font-semibold text-[#2C2C2C]">Net position</span>
-                <span className={`font-bold tabular-nums ${netPosition >= 0 ? "text-[#4D6B2A]" : "text-[#9A4B14]"}`}>
-                  {netPosition >= 0 ? "+" : "−"}{fmt(Math.abs(netPosition))}
+                <span className="font-semibold text-[#2C2C2C]">Cash to Pay Customer</span>
+                <span className={`font-bold tabular-nums ${cashToPayCustomer > 0 ? "text-[#565C3F]" : "text-[#6F6F6F]"}`}>
+                  {fmt(cashToPayCustomer)}
                 </span>
               </div>
-              {isForfeiture && (
-                <p className="text-[12px] text-[#8A6B17] bg-[#FFF4D1] rounded-[8px] px-3 py-2 mt-2">
-                  This is a forfeiture (₹0 paid to customer).
+              {uncoveredLoss > 0 && (
+                <p className="text-[12px] text-[#B45309] bg-[#FFF7ED] border border-[#FED7AA] rounded-[8px] px-3 py-2 mt-2">
+                  No cash payment — the shop absorbs {fmt(uncoveredLoss)} as an uncovered loss on this pledge.
                 </p>
+              )}
+              {cashToPayCustomer === 0 && uncoveredLoss === 0 && (
+                <p className="text-[12px] text-[#6F6F6F] mt-1">Break even — no cash payment.</p>
               )}
             </div>
 

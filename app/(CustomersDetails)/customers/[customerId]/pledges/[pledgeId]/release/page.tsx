@@ -302,8 +302,10 @@ export default function ReleasePledgePage() {
   }
 
   if (pledge.status === "SOLD") {
-    const salePriceNum = Number(pledge.salePrice ?? 0);
-    const isForfeiture = salePriceNum === 0;
+    const salePriceNum        = Number(pledge.salePrice ?? 0);
+    const storedAmountOwed    = Number(pledge.receivableAmount ?? 0);
+    const storedCashToPay     = Math.max(salePriceNum - storedAmountOwed, 0);
+    const storedUncoveredLoss = Math.max(storedAmountOwed - salePriceNum, 0);
     return (
       <div className="max-w-2xl mx-auto p-6 flex flex-col items-center justify-center min-h-[60vh] text-center gap-5">
         <div className="w-20 h-20 rounded-full bg-[#FEF3C7] border border-[#FDE68A] flex items-center justify-center">
@@ -318,20 +320,25 @@ export default function ReleasePledgePage() {
             </span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-[#6F6F6F]">Amount Paid</span>
-            {isForfeiture ? (
-              <span
-                className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold"
-                style={{ backgroundColor: "#FFF4D1", color: "#8A6B17" }}
-              >
-                Forfeited
-              </span>
-            ) : (
-              <span className="font-semibold text-[#2C2C2C]">
-                ₹{Math.round(salePriceNum).toLocaleString("en-IN")}
-              </span>
-            )}
+            <span className="text-[#6F6F6F]">Acquisition Cost</span>
+            <span className="font-semibold text-[#2C2C2C]">
+              ₹{Math.round(salePriceNum).toLocaleString("en-IN")}
+            </span>
           </div>
+          <div className="flex justify-between items-center">
+            <span className="text-[#6F6F6F]">Cash Paid to Customer</span>
+            <span className={`font-semibold tabular-nums ${storedCashToPay > 0 ? "text-[#565C3F]" : "text-[#6F6F6F]"}`}>
+              ₹{Math.round(storedCashToPay).toLocaleString("en-IN")}
+            </span>
+          </div>
+          {storedUncoveredLoss > 0 && (
+            <p className="text-[11px] text-[#B45309] bg-[#FFF7ED] border border-[#FED7AA] rounded-[8px] px-3 py-2 text-left">
+              No cash payment — the loan amount exceeded the item&apos;s stated value. The shop absorbed ₹{Math.round(storedUncoveredLoss).toLocaleString("en-IN")} as an uncovered loss on this pledge.
+            </p>
+          )}
+          {storedCashToPay === 0 && storedUncoveredLoss === 0 && (
+            <p className="text-[11px] text-[#6F6F6F]">Break even — no cash payment.</p>
+          )}
           {pledge.inventoryItem && (
             <div className="flex justify-between items-center border-t border-[#ECEAE4] pt-2.5 mt-2">
               <span className="text-[#6F6F6F]">Inventory</span>
