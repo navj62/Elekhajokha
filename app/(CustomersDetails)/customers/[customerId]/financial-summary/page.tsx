@@ -38,7 +38,7 @@ interface ProcessedPledge {
   id:               string;
   name:             string;
   pledgeDate:       string;
-  status:           "ACTIVE" | "RELEASED" | "OVERDUE";
+  status:           "ACTIVE" | "RELEASED" | "OVERDUE" | "SOLD";
   loanAmount:       number;
   amountOwed:       number;
   marketValue:      number | null;
@@ -307,7 +307,7 @@ export default function FinancialSummaryPage() {
   const bd            = customer.riskBreakdown;
   const breakdownSum  = (bd.ltv + bd.velocity + bd.timeToUnderwater + bd.concentration + bd.age).toFixed(1);
 
-  const activePledges   = pledges.filter((p) => p.status !== "RELEASED");
+  const activePledges   = pledges.filter((p) => p.status === "ACTIVE" || p.status === "OVERDUE");
   const releasedPledges = pledges.filter((p) => p.status === "RELEASED");
   const visiblePledges  = showReleased
     ? [...activePledges, ...releasedPledges]

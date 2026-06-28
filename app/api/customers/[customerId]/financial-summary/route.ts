@@ -136,7 +136,7 @@ export async function GET(_req: Request, context: RouteContext) {
 
     /* ── All pledges for this customer (scoped via customer guard above) ── */
     const pledges = await prisma.pledge.findMany({
-      where: { customerId },
+      where: { customerId, status: { not: "SOLD" } },
       orderBy: { pledgeDate: "asc" },
       select: {
         id: true,
@@ -230,7 +230,7 @@ export async function GET(_req: Request, context: RouteContext) {
     });
 
     /* ── Portfolio aggregates ──────────────────────────────────── */
-    const activePledges = processed.filter((p) => p.status !== "RELEASED");
+    const activePledges = processed.filter((p) => p.status === "ACTIVE" || p.status === "OVERDUE");
     const releasedPledges = processed.filter((p) => p.status === "RELEASED");
 
     const totalLoanAmount = activePledges.reduce((s, p) => s + p.loanAmount, 0);
@@ -313,7 +313,7 @@ export async function GET(_req: Request, context: RouteContext) {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     let totalAmountOwed30dAgo = 0;
-    for (const rawPledge of pledges.filter((p) => p.status !== "RELEASED")) {
+    for (const rawPledge of pledges.filter((p) => p.status === "ACTIVE" || p.status === "OVERDUE")) {
       const pledgeDate = new Date(rawPledge.pledgeDate);
       const endDate30 = pledgeDate > thirtyDaysAgo ? pledgeDate : thirtyDaysAgo;
       const interest30 = calculateHybridInterest(
