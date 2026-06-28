@@ -188,8 +188,17 @@ export async function GET(_req: Request, context: RouteContext) {
       include: {
         items: true,
         customer: {
-  select: { id: true, name: true, address: true, mobile: true, region: true },
-}
+          select: { id: true, name: true, address: true, mobile: true, region: true },
+        },
+        inventoryItem: {
+          select: {
+            id: true,
+            acquiredCost: true,
+            amountOwedAt: true,
+            acquiredAt: true,
+            status: true,
+          },
+        },
       },
     });
 

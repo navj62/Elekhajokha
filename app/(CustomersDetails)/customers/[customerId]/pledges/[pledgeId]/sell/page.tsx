@@ -4,7 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
-  Loader2, Archive, ArrowLeft, AlertCircle, RefreshCw, Phone, MapPin, Info,
+  Loader2, Archive, ArrowLeft, AlertCircle, RefreshCw, Phone, MapPin, Info, CheckCircle,
 } from "lucide-react";
 
 import { calculateHybridInterest } from "@/lib/interest";
@@ -36,6 +36,16 @@ interface Pledge {
   itemPhoto: string | null;
   netWeightOfGold: number;
   netWeightOfSilver: number;
+  releaseDate: string | null;
+  receivableAmount: number | null;
+  salePrice: number | null;
+  inventoryItem: {
+    id: string;
+    acquiredCost: number;
+    amountOwedAt: number | null;
+    acquiredAt: string;
+    status: string;
+  } | null;
   items: PledgeItem[];
   customer: {
     id: string;
@@ -220,6 +230,103 @@ export default function SellPledgePage() {
               {netPosition >= 0 ? "+" : "−"}{fmt(Math.abs(netPosition))}
             </span>
           </div>
+        </div>
+        <button
+          onClick={() => router.push(`/customers/${params.customerId}`)}
+          className="bg-[#6B7150] hover:bg-[#585E42] text-white text-[13px] font-semibold px-6 py-2.5 rounded-[10px] transition-colors mt-2"
+        >
+          Back to Customer
+        </button>
+      </div>
+    );
+  }
+
+  /* ── Closed-state guards ── */
+  if (pledge.status === "RELEASED") {
+    return (
+      <div className="max-w-2xl mx-auto p-6 flex flex-col items-center justify-center min-h-[60vh] text-center gap-5">
+        <div className="w-20 h-20 rounded-full bg-[#E8EBD8] border border-[#D3D9BB] flex items-center justify-center">
+          <CheckCircle size={40} className="text-[#6B7150]" />
+        </div>
+        <h2 className="text-[24px] font-semibold text-[#2C2C2C]">This Pledge Has Already Been Released</h2>
+        <div className="w-full max-w-sm bg-[#F9F8F3] border border-[#ECEAE4] rounded-[16px] p-5 text-[13px] space-y-2.5">
+          <div className="flex justify-between">
+            <span className="text-[#6F6F6F]">Released on</span>
+            <span className="font-semibold text-[#2C2C2C]">
+              {pledge.releaseDate ? fmtDate(pledge.releaseDate) : "—"}
+            </span>
+          </div>
+          <div className="flex justify-between border-t border-[#ECEAE4] pt-2.5 mt-2">
+            <span className="font-semibold text-[#2C2C2C]">Receivable Amount</span>
+            <span className="font-bold text-[#6B7150] text-[16px]">
+              ₹{Math.round(Number(pledge.receivableAmount ?? 0)).toLocaleString("en-IN")}
+            </span>
+          </div>
+        </div>
+        <button
+          onClick={() => router.push(`/customers/${params.customerId}`)}
+          className="bg-[#6B7150] hover:bg-[#585E42] text-white text-[13px] font-semibold px-6 py-2.5 rounded-[10px] transition-colors mt-2"
+        >
+          Back to Customer
+        </button>
+      </div>
+    );
+  }
+
+  if (pledge.status === "SOLD") {
+    const salePriceNum = Number(pledge.salePrice ?? 0);
+    const isForfeiture = salePriceNum === 0;
+    const inv = pledge.inventoryItem;
+    const storedNetPos = inv !== null
+      ? Number(inv.amountOwedAt ?? 0) - Number(inv.acquiredCost)
+      : null;
+    return (
+      <div className="max-w-2xl mx-auto p-6 flex flex-col items-center justify-center min-h-[60vh] text-center gap-5">
+        <div className="w-20 h-20 rounded-full bg-[#FEF3C7] border border-[#FDE68A] flex items-center justify-center">
+          <Archive size={36} className="text-[#92400E]" />
+        </div>
+        <h2 className="text-[24px] font-semibold text-[#2C2C2C]">This Pledge Was Already Sold to the Shop</h2>
+        <div className="w-full max-w-sm bg-[#F9F8F3] border border-[#ECEAE4] rounded-[16px] p-5 text-[13px] space-y-2.5">
+          <div className="flex justify-between">
+            <span className="text-[#6F6F6F]">Date</span>
+            <span className="font-semibold text-[#2C2C2C]">
+              {pledge.releaseDate ? fmtDate(pledge.releaseDate) : "—"}
+            </span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-[#6F6F6F]">Amount Paid</span>
+            {isForfeiture ? (
+              <span
+                className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold"
+                style={{ backgroundColor: "#FFF4D1", color: "#8A6B17" }}
+              >
+                Forfeited
+              </span>
+            ) : (
+              <span className="font-semibold text-[#2C2C2C]">
+                ₹{Math.round(salePriceNum).toLocaleString("en-IN")}
+              </span>
+            )}
+          </div>
+          {storedNetPos !== null && (
+            <div className="flex justify-between items-center">
+              <span className="text-[#6F6F6F]">Net Position</span>
+              <span className={`font-bold tabular-nums ${
+                storedNetPos > 0 ? "text-[#4D6B2A]" : storedNetPos < 0 ? "text-[#9A4B14]" : "text-[#6F6F6F]"
+              }`}>
+                {storedNetPos > 0 ? "+" : storedNetPos < 0 ? "−" : ""}
+                {fmt(Math.abs(storedNetPos))}
+              </span>
+            </div>
+          )}
+          {inv && (
+            <div className="flex justify-between items-center border-t border-[#ECEAE4] pt-2.5 mt-2">
+              <span className="text-[#6F6F6F]">Inventory</span>
+              <Link href="/inventory" className="text-[#6B7150] font-semibold underline underline-offset-2">
+                View in Inventory →
+              </Link>
+            </div>
+          )}
         </div>
         <button
           onClick={() => router.push(`/customers/${params.customerId}`)}
