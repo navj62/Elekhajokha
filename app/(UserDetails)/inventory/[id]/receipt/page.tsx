@@ -14,6 +14,7 @@ interface ReceiptItem {
   weightGrams: string;
   acquiredCost: string;
   acquiredAt: string;
+  acquiredMetalRate: string | null;
   sellerName: string | null;
   sellerIdNum: string | null;
   notes: string | null;
@@ -204,6 +205,12 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
               <LabelValue label="Item Type"    value={item.itemType} />
               <LabelValue label="Metal"        value={metalLabel} />
               <LabelValue label="Weight"       value={`${Number(item.weightGrams).toFixed(3)} g`} />
+              {item.acquiredMetalRate != null && (
+                <LabelValue
+                  label={`${item.metalType.charAt(0).toUpperCase() + item.metalType.slice(1).toLowerCase()} rate at purchase`}
+                  value={`₹${Number(item.acquiredMetalRate).toLocaleString("en-IN")}/g`}
+                />
+              )}
               <LabelValue label="Date Acquired" value={fmtDate(item.acquiredAt)} />
             </div>
 

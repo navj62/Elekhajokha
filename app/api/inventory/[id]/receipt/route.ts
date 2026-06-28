@@ -32,17 +32,18 @@ export async function GET(req: NextRequest, context: RouteContext) {
         address:  user.address,
       };
       const pdfItem = {
-        id:           item.id,
-        description:  item.description,
-        itemType:     item.itemType,
-        metalType:    item.metalType,
-        purity:       item.purity != null ? String(item.purity) : null,
-        weightGrams:  String(item.weightGrams),
-        acquiredCost: String(item.acquiredCost),
-        acquiredAt:   item.acquiredAt.toISOString(),
-        sellerName:   item.sellerName,
-        sellerIdNum:  item.sellerIdNum,
-        notes:        item.notes,
+        id:                item.id,
+        description:       item.description,
+        itemType:          item.itemType,
+        metalType:         item.metalType,
+        purity:            item.purity            != null ? String(item.purity)            : null,
+        weightGrams:       String(item.weightGrams),
+        acquiredCost:      String(item.acquiredCost),
+        acquiredAt:        item.acquiredAt.toISOString(),
+        acquiredMetalRate: item.acquiredMetalRate  != null ? String(item.acquiredMetalRate) : null,
+        sellerName:        item.sellerName,
+        sellerIdNum:       item.sellerIdNum,
+        notes:             item.notes,
       };
 
       const buf = await generateInventoryPurchasePDF(pdfItem, shop);
@@ -61,11 +62,12 @@ export async function GET(req: NextRequest, context: RouteContext) {
     return NextResponse.json({
       item: {
         ...item,
-        purity:       item.purity        != null ? String(item.purity)        : null,
-        weightGrams:  String(item.weightGrams),
-        acquiredCost: String(item.acquiredCost),
-        amountOwedAt: item.amountOwedAt  != null ? String(item.amountOwedAt)  : null,
-        soldPrice:    item.soldPrice     != null ? String(item.soldPrice)      : null,
+        purity:            item.purity            != null ? String(item.purity)            : null,
+        weightGrams:       String(item.weightGrams),
+        acquiredCost:      String(item.acquiredCost),
+        amountOwedAt:      item.amountOwedAt      != null ? String(item.amountOwedAt)      : null,
+        acquiredMetalRate: item.acquiredMetalRate  != null ? String(item.acquiredMetalRate) : null,
+        soldPrice:         item.soldPrice          != null ? String(item.soldPrice)         : null,
       },
       shop: {
         shopName: user.shopName,

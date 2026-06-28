@@ -363,11 +363,12 @@ model InventoryItem {
   photoUrl       String?
 
   // Acquisition
-  acquiredAt     DateTime        @default(now())
-  acquiredCost   Decimal         @db.Decimal(12, 2)
-  amountOwedAt   Decimal?        @db.Decimal(12, 2)
-  sellerName     String?
-  sellerIdNum    String?
+  acquiredAt         DateTime        @default(now())
+  acquiredCost       Decimal         @db.Decimal(12, 2)
+  amountOwedAt       Decimal?        @db.Decimal(12, 2)
+  acquiredMetalRate  Decimal?        @db.Decimal(10, 2)
+  sellerName         String?
+  sellerIdNum        String?
 
   // Sale
   status         InventoryStatus @default(IN_STOCK)

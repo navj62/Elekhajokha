@@ -358,6 +358,7 @@ type PurchaseReceiptItem = {
   weightGrams: string;
   acquiredCost: string;
   acquiredAt: string;
+  acquiredMetalRate: string | null;
   sellerName: string | null;
   sellerIdNum: string | null;
   notes: string | null;
@@ -462,7 +463,18 @@ export function generateInventoryPurchasePDF(
     fieldRow("Item Type",    item.itemType);
     fieldRow("Metal Type",   item.metalType);
     fieldRow("Purity",       item.purity != null ? `${Number(item.purity).toFixed(2)}%` : "—");
-    fieldRow("Weight",       `${Number(item.weightGrams).toFixed(3)} g`, true);
+    fieldRow("Weight",       `${Number(item.weightGrams).toFixed(3)} g`);
+    if (item.acquiredMetalRate != null) {
+      const metal = item.metalType.charAt(0).toUpperCase() +
+        item.metalType.slice(1).toLowerCase();
+      fieldRow(
+        `${metal} rate at purchase`,
+        `Rs.${Number(item.acquiredMetalRate).toLocaleString("en-IN")}/g`,
+        true,
+      );
+    } else {
+      doc.moveTo(40, y).lineTo(40 + pageW, y).strokeColor("#e5e7eb").lineWidth(0.5).stroke();
+    }
     y += 12;
 
     // ── Section: Payment ─────────────────────────────────────────────

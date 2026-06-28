@@ -152,6 +152,17 @@ export async function POST(req: NextRequest) {
     if (!validType)
       return NextResponse.json({ error: "Invalid item type" }, { status: 400 });
 
+    // Snapshot the current per-gram rate for this metal at acquisition time.
+    // "OTHER" has no market rate concept → null.
+    let acquiredMetalRate: number | null = null;
+    if (normalizedMetal === "GOLD" || normalizedMetal === "SILVER") {
+      const price = await prisma.metalPrice.findFirst({
+        where:   { metal: normalizedMetal },
+        orderBy: { createdAt: "desc" },
+      });
+      acquiredMetalRate = price ? parseFloat(price.inrPerGram.toString()) : null;
+    }
+
     let photoUrl: string | null = null;
     if (photoFile instanceof File && photoFile.size > 0) {
       photoUrl = await uploadImage(photoFile, "ELEKHAJOKHA/inventory");
@@ -159,20 +170,22 @@ export async function POST(req: NextRequest) {
 
     const item = await prisma.inventoryItem.create({
       data: {
-        ownerId:     user.id,
-        sourceType:  "DIRECT_PURCHASE",
+        ownerId:          user.id,
+        sourceType:       "DIRECT_PURCHASE",
         description,
-        itemType:    validType.label,
-        metalType:   metalTypeNormalized,
-        purity:      purity != null ? new Prisma.Decimal(purity) : null,
-        weightGrams: new Prisma.Decimal(weightGrams),
-        acquiredCost: new Prisma.Decimal(acquiredCost),
-        acquiredAt:  acquiredAtDate,
+        itemType:         validType.label,
+        metalType:        metalTypeNormalized,
+        purity:           purity != null ? new Prisma.Decimal(purity) : null,
+        weightGrams:      new Prisma.Decimal(weightGrams),
+        acquiredCost:     new Prisma.Decimal(acquiredCost),
+        acquiredAt:       acquiredAtDate,
+        acquiredMetalRate: acquiredMetalRate !== null
+          ? new Prisma.Decimal(acquiredMetalRate) : null,
         sellerName,
         sellerIdNum,
         notes,
         photoUrl,
-        status:      "IN_STOCK",
+        status:           "IN_STOCK",
       },
     });
 

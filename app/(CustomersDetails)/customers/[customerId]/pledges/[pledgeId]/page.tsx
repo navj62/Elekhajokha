@@ -161,6 +161,7 @@ export default function PledgeDetailPage() {
   const [txnAmount, setTxnAmount] = useState("");
   const [txnType, setTxnType] = useState<Transaction["type"]>("REPAYMENT_PRINCIPAL");
   const [txnNote, setTxnNote] = useState("");
+  const [txnDate, setTxnDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [txnLoading, setTxnLoading] = useState(false);
   const [txnError, setTxnError] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -271,7 +272,7 @@ export default function PledgeDetailPage() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount, type: txnType, note: txnNote.trim() || undefined }),
+          body: JSON.stringify({ amount, type: txnType, note: txnNote.trim() || undefined, transactionDate: txnDate }),
         }
       );
       const data = await res.json();
@@ -279,6 +280,7 @@ export default function PledgeDetailPage() {
       setTransactions(prev => [data.transaction, ...prev]);
       setTxnAmount("");
       setTxnNote("");
+      setTxnDate(new Date().toISOString().split("T")[0]);
       setShowForm(false);
     } catch (err) {
       setTxnError(err instanceof Error ? err.message : "Unexpected error");
@@ -667,6 +669,17 @@ export default function PledgeDetailPage() {
                       </button>
                     ))}
                   </div>
+                </div>
+                {/* Date */}
+                <div>
+                  <p className="text-[10px] font-bold tracking-widest text-[#8C8F7A] uppercase mb-2">Date</p>
+                  <input
+                    type="date"
+                    value={txnDate}
+                    max={new Date().toISOString().split("T")[0]}
+                    onChange={e => setTxnDate(e.target.value)}
+                    className="w-full px-3 py-2 text-[13px] bg-white border border-[#ECEAE4] rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#C5C7B8] text-[#2C2C2C]"
+                  />
                 </div>
                 {/* Note */}
                 <div>

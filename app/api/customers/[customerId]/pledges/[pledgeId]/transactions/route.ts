@@ -56,7 +56,7 @@ export async function POST(req: Request, context: RouteContext) {
       return NextResponse.json({ error: result.error }, { status: result.status });
 
     const body = await req.json();
-    const { amount, type, note } = body;
+    const { amount, type, note, transactionDate } = body;
 
     if (amount === undefined || amount === null)
       return NextResponse.json({ error: "Amount is required" }, { status: 400 });
@@ -71,12 +71,21 @@ export async function POST(req: Request, context: RouteContext) {
         { status: 400 }
       );
 
+    let createdAt = new Date();
+    if (transactionDate) {
+      const parsed = new Date(transactionDate);
+      if (isNaN(parsed.getTime()))
+        return NextResponse.json({ error: "Invalid transaction date" }, { status: 400 });
+      createdAt = parsed;
+    }
+
     const transaction = await prisma.transaction.create({
       data: {
         pledgeId,
-        amount: new Prisma.Decimal(amountNum), // ✅ was raw number
-        type:   type as TransactionType,
-        note:   note?.toString().trim() || null,
+        amount:    new Prisma.Decimal(amountNum),
+        type:      type as TransactionType,
+        note:      note?.toString().trim() || null,
+        createdAt,
       },
     });
 

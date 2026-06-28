@@ -150,22 +150,31 @@ export async function POST(req: Request, context: RouteContext) {
           },
         });
 
+        // Reuse the goldPpg/silverPpg already fetched above — no extra query.
+        // metalType here is the PledgeItem enum serialised as "GOLD"/"SILVER" (uppercase).
+        const acquiredMetalRate =
+          metalType === "GOLD"   ? goldPpg :
+          metalType === "SILVER" ? silverPpg :
+          null;
+
         await tx.inventoryItem.create({
           data: {
-            ownerId:        user.id,
-            sourceType:     "PLEDGE_SALE",
-            sourcePledgeId: pledgeId,
+            ownerId:           user.id,
+            sourceType:        "PLEDGE_SALE",
+            sourcePledgeId:    pledgeId,
             description,
             itemType,
             metalType,
-            purity:         purity !== null ? new Prisma.Decimal(purity.toString()) : null,
-            weightGrams:    new Prisma.Decimal(weightGrams),
-            photoUrl:       pledge.itemPhoto ?? null,
-            acquiredAt:     saleDateObj,
-            acquiredCost:   new Prisma.Decimal(buyPrice),
-            amountOwedAt:   new Prisma.Decimal(calc.receivableAmount),
-            notes:          typeof notes === "string" && notes.trim() ? notes.trim() : null,
-            status:         "IN_STOCK",
+            purity:            purity !== null ? new Prisma.Decimal(purity.toString()) : null,
+            weightGrams:       new Prisma.Decimal(weightGrams),
+            photoUrl:          pledge.itemPhoto ?? null,
+            acquiredAt:        saleDateObj,
+            acquiredCost:      new Prisma.Decimal(buyPrice),
+            amountOwedAt:      new Prisma.Decimal(calc.receivableAmount),
+            acquiredMetalRate: acquiredMetalRate !== null
+              ? new Prisma.Decimal(acquiredMetalRate) : null,
+            notes:             typeof notes === "string" && notes.trim() ? notes.trim() : null,
+            status:            "IN_STOCK",
           },
         });
       }, { timeout: 30000 });
