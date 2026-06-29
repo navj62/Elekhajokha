@@ -121,7 +121,7 @@ Valid types live in the `PledgeItemType` table (`pledge_item_types`):
 - **System defaults** (`isDefault: true`, `userId: null`) — 10 rows seeded by `prisma/seed.ts`: Ring, Necklace, Bangles, Chain, Earrings, Bracelet, Anklet, Pendant, Bangle Set, Other. Shared across all users, not deletable via API.
 - **Custom types** (`isDefault: false`, `userId` set) — user-created, private, deletable.
 
-API: `GET /api/item-types` returns `{ defaults, custom }`; `POST /api/item-types` creates a custom type (50-char max, case-insensitive duplicate check against both defaults and user's own); `DELETE /api/item-types/[id]` is ownership-checked, blocks default deletion. The pledge-create API validates the submitted label against `PledgeItemType` (`isDefault: true OR userId === user.id`) — does not accept arbitrary strings. **`PledgeItem.itemType` stores the label string, NOT a FK** — deleting a custom type never corrupts existing pledges. Display renders the string directly (no conversion wrapper). Search uses `{ itemType: { contains, mode: "insensitive" } }`. Profile page manages custom types. Pledge-create form and inventory direct-purchase modal both use a grouped dropdown (Standard / Custom) fed from `GET /api/item-types`.
+API: `GET /api/item-types` returns `{ defaults, custom }`; `POST /api/item-types` creates a custom type (50-char max, case-insensitive duplicate check against both defaults and user's own); `DELETE /api/item-types/[id]` is ownership-checked, blocks default deletion. The pledge-create API validates the submitted label against `PledgeItemType` (`isDefault: true OR userId === user.id`) — does not accept arbitrary strings. **`PledgeItem.itemType` stores the label string, NOT a FK** — deleting a custom type never corrupts existing pledges. Display renders the string directly (no conversion wrapper). Search uses `{ itemType: { contains, mode: "insensitive" } }`. Profile page manages custom types. Pledge-create form and inventory direct-purchase page both use a grouped dropdown (Standard / Custom) fed from `GET /api/item-types`.
 
 ### Pledge lifecycle and status
 `Pledge.status` is one of `ACTIVE | RELEASED | OVERDUE | SOLD` (the Prisma `PledgeStatus` enum has all four — do not assume a 3-value enum):
@@ -131,7 +131,7 @@ API: `GET /api/item-types` returns `{ defaults, custom }`; `POST /api/item-types
 - **SOLD** — item acquired by the shop via the "Add to Inventory" flow (customer sold it OR owner forfeited; `salePrice = 0` means forfeiture). Terminal. SOLD pledges must never inflate at-risk/overdue metrics or the customer risk score. Display as "Sold to Shop" badge on the customer page.
 
 ### Pledge release & audit trail
-Releasing a pledge (PATCH on the pledge route) is the most safety-critical write: finalizes interest, snapshots metal price/market-value/LTV into a `PledgeAudit` row, guards against double-release via `updateMany({ where: { status: { in: ["ACTIVE", "OVERDUE"] } } })` inside a transaction (throws `ALREADY_RELEASED` → 409 if already flipped). Accepts both ACTIVE and OVERDUE pledges (status gate `status !== "ACTIVE" && status !== "OVERDUE"` → 400). Body reads only `{ releaseDate, allowCompounding, compoundingDuration }` — cannot edit items/weights. `CALCULATION_VERSION = 1` stamped on every audit row. Single-release page exposes a compounding toggle (seeded from stored pledge values, live preview via useMemo, PATCH honors it) and renders `Transaction` history.
+Releasing a pledge (PATCH on the pledge route) is the most safety-critical write: finalizes interest, snapshots metal price/market-value/LTV into a `PledgeAudit` row, guards against double-release via `updateMany({ where: { status: { in: ["ACTIVE", "OVERDUE"] } } })` inside a transaction (throws `ALREADY_RELEASED` → 409 if already flipped). Accepts both ACTIVE and OVERDUE pledges (status gate `status !== "ACTIVE" && status !== "OVERDUE"` → 400). Body reads only `{ releaseDate, allowCompounding, compoundingDuration }` — cannot edit items/weights. `CALCULATION_VERSION = 1` stamped on every audit row. Single-release page exposes a compounding toggle (seeded from stored pledge values, live preview via useMemo, PATCH honors it) and renders `Transaction` history. **For already-terminal pledges (RELEASED or SOLD), the release page shows a closed-state summary instead of the action form — never show the release form for a pledge that is already closed.**
 
 ### Bulk pledge release
 Two POST routes under `app/api/customers/[customerId]/pledges/bulk-release/`. Additive — single-release is unchanged.
@@ -160,7 +160,7 @@ An `InventoryItem` represents a physical item owned by the shop. Schema in `inve
 2. `PledgeAudit` with `action: "SOLD"` — mirrors RELEASED audit field-for-field (Invariant 12).
 3. `InventoryItem` created: `sourceType = PLEDGE_SALE`, `sourcePledgeId`, item details from pledge's first item (description, itemType, metalType, purity, combined weight → `weightGrams`, inherited `photoUrl`), `acquiredCost = buyPrice`, `amountOwedAt = calculateHybridInterest(...).receivableAmount` at `saleDate` (Invariant 11).
 
-Confirm page (`pledges/[pledgeId]/sell/page.tsx`): mirrors release page two-panel layout. Shows live amount-owed (client-side via `calculateHybridInterest` on date change), buy-price input, derived **net position** (`amountOwed - buyPrice`: green = recovered above cost, neutral = break-even, orange = loss). `buyPrice = 0` shows a "forfeiture" badge (yellow). Confirmation modal before submit. On success: redirect to customer page.
+Confirm page (`pledges/[pledgeId]/sell/page.tsx`): mirrors release page two-panel layout. Shows live amount-owed (client-side via `calculateHybridInterest` on date change), buy-price input, derived **net position** (`amountOwed - buyPrice`: green = recovered above cost, neutral = break-even, orange = loss). `buyPrice = 0` shows a "forfeiture" badge (yellow). Confirmation modal before submit. On success: redirect to customer page. **For already-terminal pledges (SOLD or RELEASED), the sell page shows a closed-state summary instead of the action form.**
 
 **Display rules:**
 - `acquiredCost = 0` → "Forfeited" badge (yellow `#FFF4D1 / #8A6B17`). Never show "₹0".
@@ -170,16 +170,23 @@ Confirm page (`pledges/[pledgeId]/sell/page.tsx`): mirrors release page two-pane
 
 ### Inventory API
 - `GET /api/inventory` — filtered list (`status` in_stock/sold/all, `sourceType` pledge/direct/all, `metalType` gold/silver/other/all), `orderBy acquiredAt desc`. Returns `{ items, summary }` (summary: in-stock count + value, sold count + revenue). Scoped by `ownerId: user.id`.
-- `POST /api/inventory` — direct purchase. Body: description, itemType (validated against `PledgeItemType`), metalType, purity, weightGrams, acquiredCost, acquiredAt, sellerName?, sellerIdNum?, notes?, photoUrl?. `metalType` is validated against `GOLD/SILVER/OTHER` (case-insensitive) and **stored title case** (`Gold`/`Silver`/`Other`) to match the UI display convention; the GET filter compares `mode: "insensitive"` so casing never breaks filtering. `purity` (when provided) bounded `0 < purity ≤ 100`. `weightGrams > 0`, `acquiredCost ≥ 0`. Creates `DIRECT_PURCHASE` item, `status: IN_STOCK`.
+- `POST /api/inventory` — direct purchase. Body: description, itemType (validated against `PledgeItemType`), metalType, purity, weightGrams, acquiredCost, acquiredAt, sellerName (required), sellerIdNum?, notes?, photoUrl?. `metalType` is validated against `GOLD/SILVER/OTHER` (case-insensitive) and **stored title case** (`Gold`/`Silver`/`Other`) to match the UI display convention; the GET filter compares `mode: "insensitive"` so casing never breaks filtering. `purity` (when provided) bounded `0 < purity ≤ 100`. `weightGrams > 0`, `acquiredCost ≥ 0`. Snapshots current per-gram INR rate into `acquiredMetalRate` for Gold/Silver at creation time (null for OTHER or when no price exists). Creates `DIRECT_PURCHASE` item, `status: IN_STOCK`.
 - `GET /api/inventory/[id]` — single item, ownership-checked via `ownerId`.
+- `GET /api/inventory/[id]/receipt` — returns JSON `{ item, shop }` for the purchase receipt screen. `?format=pdf` generates and streams a PDF via `generateInventoryPurchasePDF`. Ownership enforced via `ownerId`.
 - `POST /api/inventory/[id]/sell` — body: soldPrice (>0), soldAt, buyerName?, buyerMobile?, saleNotes?. The IN_STOCK→SOLD transition is atomic: `updateMany({ where: { id, ownerId, status: "IN_STOCK" }, … })` with `count === 0` → 409 `ALREADY_SOLD` (mirrors the pledge release/sell guard — the status predicate lives in the WHERE clause, NOT a separate app-code read, so concurrent double-sells can't overwrite each other). The `findFirst` ownership read remains as a 404 fast-path.
 
 ### Inventory page (`app/(UserDetails)/inventory/page.tsx`)
 Client component. Sidebar link: Archive icon, placed after Reports. Summary strip (4 KPI cards): In Stock count, Total Acquired Value, Sold count, Total Sold Revenue. Filter pills: status / source / metal. Sort dropdown: newest/oldest/value high-low/low-high. Table columns: Photo thumbnail | Item (description + source badge linking to customer if PLEDGE_SALE) | Type | Metal+Purity | Weight | Acquired date | Cost (or "Forfeited" badge if 0) | Net (pledge items only) | Status (IN_STOCK badge or "Sold · ₹X · date"). Row action: "Sell" button for IN_STOCK items. Empty state with Inbox icon.
 
-Two modals (no page navigation):
-- **Direct purchase modal** — triggered by "Add Item" button. Fields: description, itemType (grouped dropdown from `/api/item-types`), metalType, purity, weight, purchase price, date, photo (Cloudinary, ≤5MB, JPEG/PNG/WEBP), sellerName?, sellerIdNum?, notes?.
+One modal (no page navigation for sell), one dedicated page for purchase:
+- **Direct purchase** — "Add Item" button navigates to `app/(UserDetails)/inventory/buy/page.tsx` (dedicated full page, not a modal). Fields: description, itemType (grouped dropdown from `/api/item-types`), metalType, purity, weight, purchase price, date, photo (Cloudinary, ≤5MB, JPEG/PNG/WEBP), sellerName (required), sellerIdNum?, notes?. Shows `MetalRateStrip` (live rates). On success redirects to `/inventory/[id]/receipt` (on-screen receipt with PDF download).
 - **Sell modal** — triggered by "Sell" on each IN_STOCK row. Fields: soldPrice (>0), soldAt, buyerName?, buyerMobile?, notes?. Shows live profit display as user types.
+
+### Purchase receipt (`app/(UserDetails)/inventory/[id]/receipt/page.tsx`)
+Client page showing a formatted on-screen receipt after a direct purchase. Fetches from `GET /api/inventory/[id]/receipt`. "Download PDF" triggers `?format=pdf` which streams `generateInventoryPurchasePDF` output (olive header `#565C3F`, A4 portrait). Receipt shows shop letterhead, item details, weight, metal rate at acquisition, seller info, and a reference ID derived from the last 8 chars of the inventory item id.
+
+### MetalRateStrip (`components/inventory/MetalRateStrip.tsx`)
+Client component showing live gold/silver INR-per-gram rates fetched from `/api/market-rates`. Accepts `variant: "full" | "compact"`. Displays relative timestamp ("5 min ago"). Used in the buy-item page to help the shop owner benchmark the purchase price against live market.
 
 ## Metal price pipeline
 
@@ -227,6 +234,7 @@ All report routes: standard auth pattern (Invariants 1 & 4). Dates as `YYYY-MM-D
 | `generateReceiptPDF` | A4 landscape, dual-copy | Black/white | Hindi terms via NotoSansDevanagari font; shop + customer copies with dashed divider |
 | `generateCustomerPDF` | A4 portrait | Blue header `#1e40af` | Columns: #, Name, Mobile, Added On, Pledges, Total Loan, Risk Score |
 | `generatePledgePDF` | A4 portrait | Green header `#065f46` | Variant-aware: active → Gold Wt + Silver Wt separate; released → combined Net Wt + Released date. No PHOTO column. LTV color-coded. Totals footer. |
+| `generateInventoryPurchasePDF` | A4 portrait | Olive header `#565C3F` | Direct-purchase receipt: shop letterhead, item details, metal rate at acquisition, seller info, short reference id |
 
 `fetchImageBuffer` (receipt PDF image fetch) must use a 5s `AbortController` timeout and fall back to `null` on failure — prevents the receipt endpoint from timing out on a slow Cloudinary CDN response. `pdfkit` is in `serverExternalPackages` in `next.config.ts`.
 
@@ -236,7 +244,7 @@ Each `Customer` has an unguessable `viewToken` (UUID, unique index). `/view/[tok
 
 ## Data model notes
 
-Full schema in [prisma/schema.prisma](prisma/schema.prisma). Cascade on delete: `User → Customer → Pledge → {PledgeItem, Transaction, PledgeAudit, PledgeAlert}`. `User → InventoryItem` cascades. `User → PledgeItemType` (custom types) cascades. `Pledge → InventoryItem` uses `onDelete: SetNull` (pledge deletion nulls `sourcePledgeId` but keeps the inventory row). Soft-deletes: `deletedAt` on `User`/`Customer` only (NOT on `Pledge`). Money: `Decimal`. `FinancialSnapshot` unique on `userId + snapshotDate`. `Transaction` types: REPAYMENT_PRINCIPAL / REPAYMENT_INTEREST / TOPUP.
+Full schema in [prisma/schema.prisma](prisma/schema.prisma). Cascade on delete: `User → Customer → Pledge → {PledgeItem, Transaction, PledgeAudit, PledgeAlert}`. `User → InventoryItem` cascades. `User → PledgeItemType` (custom types) cascades. `Pledge → InventoryItem` uses `onDelete: SetNull` (pledge deletion nulls `sourcePledgeId` but keeps the inventory row). Soft-deletes: `deletedAt` on `User`/`Customer` only (NOT on `Pledge`). Money: `Decimal`. `FinancialSnapshot` unique on `userId + snapshotDate`. `Transaction` types: REPAYMENT_PRINCIPAL / REPAYMENT_INTEREST / TOPUP. `InventoryItem.acquiredMetalRate` (`Decimal(10,2)?`) — snapshot of the INR-per-gram rate for the item's metal at the moment of acquisition; null for OTHER metal or when no price is on record. Read-only after creation; used only for the purchase receipt display.
 
 Cascade caveat: `PledgeAudit`/`Transaction` are financial records but currently cascade-delete with parent. Hard deletes are rare (soft deletes for users/customers, guarded for pledges) but treat any new hard-delete path as a compliance risk. Known gap: `onDelete: Restrict` or soft-delete + snapshot.
 
@@ -249,7 +257,7 @@ Cascade caveat: `PledgeAudit`/`Transaction` are financial records but currently 
 - Singleton Prisma client from [lib/prisma.ts](lib/prisma.ts) — never `new PrismaClient()`.
 - API errors: generic `{ error: "..." }` with optional stable code, logged server-side. NEVER return `err.message`/`err.stack` to the client.
 - Image uploads: Cloudinary via `lib/upload.ts`. No server-side MIME/size validation yet (known gap).
-- PDF: `pdfkit` ([lib/generatePDF.ts](lib/generatePDF.ts)), three exports. In `serverExternalPackages`.
+- PDF: `pdfkit` ([lib/generatePDF.ts](lib/generatePDF.ts)), four exports (`generateReceiptPDF`, `generateCustomerPDF`, `generatePledgePDF`, `generateInventoryPurchasePDF`). In `serverExternalPackages`.
 - UI: shadcn primitives under `components/ui/` (Radix + `class-variance-authority` + `tailwind-merge`, Tailwind v4). Hindi terms in `lib/defaultTerms.ts`.
 - Route groups: `(auth)`, `(UserDetails)`, `(CustomersDetails)`.
 - Server-only helpers (e.g. `constantTimeEqual`) in their own `lib/` file, separate from client-importable utils.
@@ -286,5 +294,3 @@ Deliberately tracked so reviews focus on real bugs rather than re-discovering th
 - **Inventory reports not built.** Acquisition/sales/current-stock reports are unbuilt. Future: a Reports tab reading `action: "SOLD"` audits + `InventoryItem` rows.
 - **No error monitoring** (no Sentry; `console.*` only). **No structured logging.** **Security headers** — four basic headers (X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, HSTS) should be in `next.config.ts`; CSP deferred (Clerk/Razorpay inline scripts need tuning). **No test runner.** **Backup/DR: Neon defaults only.** **Cron: no retry/dead-letter/alerting on missed runs.**
 - **Sign-up hooks violation (fix before production).** [app/(auth)/sign-up/page.tsx](app/(auth)/sign-up/page.tsx) has a `useEffect` after a conditional early return — Rules of Hooks violation. Can intermittently crash sign-up as the Clerk SDK initializes. Fix: move ALL hooks above the early return, gate on `isLoaded` instead. Flagged by `react-hooks/rules-of-hooks`.
-- **`src/generated/prisma/` must be gitignored.** Committed generated Prisma client diverges from `node_modules/@prisma/client` and inflates lint output with ~100 false errors. Add `src/generated/` to `.gitignore` and delete the committed copy. `prisma generate` runs during `npm run build` on Vercel — the client is regenerated fresh each deploy.
-- **`test-db.js` must be deleted** from repo root (committed dev artifact; picked up by ESLint; could be accidentally run by a CI step).
