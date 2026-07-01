@@ -15,7 +15,6 @@ import {
   TrendingUp,
 } from "lucide-react";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
-import MetalRateStrip from "@/components/inventory/MetalRateStrip";
 
 /* ================================================================== */
 /*  Types                                                               */
@@ -65,6 +64,31 @@ interface ItemType {
   isDefault: boolean;
 }
 
+interface Analytics {
+  stock: {
+    count: number;
+    goldWeightGrams: number;
+    silverWeightGrams: number;
+    acquiredCost: number;
+    marketValue: number | null;
+    isMarketValuePartial: boolean;
+  };
+  sold: {
+    count: number;
+    goldWeightGrams: number;
+    silverWeightGrams: number;
+    moneyCollected: number;
+    costBasis: number;
+    realizedProfit: number;
+  };
+  total: { itemCount: number };
+  rates: {
+    goldPerGram: number | null;
+    silverPerGram: number | null;
+    updatedAt: string | null;
+  };
+}
+
 /* ================================================================== */
 /*  Helpers                                                             */
 /* ================================================================== */
@@ -83,6 +107,18 @@ function fmtINR(n: number) {
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function relativeTime(iso: string | null): string {
+  if (!iso) return "unknown";
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days} day${days > 1 ? "s" : ""} ago`;
 }
 
 /* ================================================================== */
@@ -563,6 +599,174 @@ function InventoryRow({
 }
 
 /* ================================================================== */
+/*  Portfolio Metals — live analytics section                          */
+/* ================================================================== */
+
+function StatBlock({
+  label,
+  value,
+  sub,
+  valueColor,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: React.ReactNode;
+  valueColor?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
+        {label}
+      </span>
+      <span className="text-[18px] font-bold" style={{ color: valueColor ?? "var(--text-primary)" }}>
+        {value}
+      </span>
+      {sub && <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{sub}</span>}
+    </div>
+  );
+}
+
+function PortfolioMetals() {
+  const [data, setData]       = useState<Analytics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const res = await fetch("/api/inventory/analytics", { cache: "no-store" });
+      if (!res.ok) throw new Error("failed");
+      setData(await res.json());
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) {
+    return (
+      <div
+        className="rounded-[18px] p-6 space-y-4"
+        style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
+      >
+        <div className="h-4 w-40 rounded animate-pulse" style={{ backgroundColor: "var(--border-light)" }} />
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="h-12 rounded animate-pulse" style={{ backgroundColor: "var(--border-light)" }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div
+        className="rounded-[18px] p-6 flex items-center justify-between"
+        style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
+      >
+        <p className="text-[13px]" style={{ color: "var(--text-secondary)" }}>
+          Could not load portfolio data.
+        </p>
+        <button
+          onClick={load}
+          className="text-[12.5px] font-semibold underline"
+          style={{ color: "#565C3F" }}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  // Empty state: hide entirely — no all-zero metrics for a new user.
+  if (!data || data.total.itemCount === 0) return null;
+
+  const { stock, sold, rates } = data;
+  const unrealized = stock.marketValue !== null ? stock.marketValue - stock.acquiredCost : null;
+
+  return (
+    <div
+      className="rounded-[18px] p-6 space-y-5"
+      style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
+    >
+      <div className="flex items-center gap-2">
+        <TrendingUp size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
+        <h2 className="text-[13px] font-bold tracking-wider uppercase" style={{ color: "var(--text-primary)" }}>
+          Portfolio Metals
+        </h2>
+      </div>
+
+      {/* IN STOCK */}
+      <div>
+        <p className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "#4D6B2A" }}>
+          In Stock
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-x-4 gap-y-5">
+          <StatBlock label="Net Gold Weight"   value={`${stock.goldWeightGrams.toFixed(3)}g`} />
+          <StatBlock label="Net Silver Weight" value={`${stock.silverWeightGrams.toFixed(3)}g`} />
+          <StatBlock
+            label="Market Value"
+            value={stock.marketValue !== null ? `₹${Math.round(stock.marketValue).toLocaleString("en-IN")}` : "—"}
+            sub={
+              stock.marketValue === null
+                ? "Rates unavailable"
+                : stock.isMarketValuePartial
+                ? "(partial — one price unavailable)"
+                : undefined
+            }
+          />
+          <StatBlock label="Acquired Cost" value={`₹${Math.round(stock.acquiredCost).toLocaleString("en-IN")}`} />
+          {unrealized !== null && (
+            <StatBlock
+              label="Unrealized P&L"
+              value={`${unrealized >= 0 ? "+" : "−"}₹${Math.abs(Math.round(unrealized)).toLocaleString("en-IN")}`}
+              valueColor={unrealized >= 0 ? "#4D6B2A" : "#B91C1C"}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* SOLD */}
+      {sold.count > 0 && (
+        <div className="pt-4" style={{ borderTop: "1px solid var(--border-light)" }}>
+          <p className="text-[11px] font-bold uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>
+            Sold
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-4">
+            <StatBlock label="Gold Sold"       value={`${sold.goldWeightGrams.toFixed(3)}g`} />
+            <StatBlock label="Silver Sold"     value={`${sold.silverWeightGrams.toFixed(3)}g`} />
+            <StatBlock label="Total Collected" value={`₹${Math.round(sold.moneyCollected).toLocaleString("en-IN")}`} />
+            <StatBlock
+              label="Realized Profit"
+              value={`${sold.realizedProfit >= 0 ? "+" : "−"}₹${Math.abs(Math.round(sold.realizedProfit)).toLocaleString("en-IN")}`}
+              valueColor={sold.realizedProfit >= 0 ? "#4D6B2A" : "#B91C1C"}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Rate footnote */}
+      <p className="text-[11px] pt-1" style={{ color: "var(--text-muted)" }}>
+        {rates.goldPerGram !== null
+          ? `Gold ₹${rates.goldPerGram.toLocaleString("en-IN")}/g`
+          : "Gold rate unavailable"}
+        {" · "}
+        {rates.silverPerGram !== null
+          ? `Silver ₹${rates.silverPerGram.toLocaleString("en-IN", { maximumFractionDigits: 2 })}/g`
+          : "Silver rate unavailable"}
+        {rates.updatedAt && ` · Updated ${relativeTime(rates.updatedAt)}`}
+      </p>
+    </div>
+  );
+}
+
+/* ================================================================== */
 /*  Main Page                                                           */
 /* ================================================================== */
 
@@ -637,9 +841,6 @@ export default function InventoryPage() {
             <p className="text-[13px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
               Items acquired through pledges and direct purchases
             </p>
-            <div className="mt-1.5">
-              <MetalRateStrip variant="full" />
-            </div>
           </div>
           <Link href="/inventory/buy">
             <button
@@ -702,6 +903,9 @@ export default function InventoryPage() {
             </div>
           ))}
         </div>
+
+        {/* Portfolio Metals — live analytics (hidden when no items) */}
+        <PortfolioMetals />
 
         {/* Filters + Sort */}
         <div className="flex items-center justify-between gap-4 flex-wrap">

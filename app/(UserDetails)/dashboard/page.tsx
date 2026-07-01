@@ -927,6 +927,7 @@ export default function DashboardPage() {
   const [rates, setRates] = useState<MarketRates | null>(null);
   const [ratesLoading, setRatesLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [inventory, setInventory] = useState<{ marketValue: number | null; inStockCount: number } | null>(null);
 
   /* ---- Fetch dashboard snapshot ---- */
   const loadSnapshot = useCallback(async () => {
@@ -960,10 +961,24 @@ export default function DashboardPage() {
     }
   }, []);
 
+  /* ---- Fetch live inventory analytics (not stored in FinancialSnapshot) ---- */
+  const loadInventory = useCallback(async () => {
+    try {
+      const res = await fetch("/api/inventory/analytics", { cache: "no-store" });
+      if (res.ok) {
+        const d = await res.json();
+        setInventory({ marketValue: d.stock.marketValue, inStockCount: d.stock.count });
+      }
+    } catch (e) {
+      console.error("Inventory analytics error:", e);
+    }
+  }, []);
+
   useEffect(() => {
     loadSnapshot();
     loadRates();
-  }, [loadSnapshot, loadRates]);
+    loadInventory();
+  }, [loadSnapshot, loadRates, loadInventory]);
 
   const statsToUse = dashboard?.stats || {
     totalCustomers: 0,
@@ -1111,7 +1126,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Total Balance */}
-            <div className="flex-1 p-6 flex flex-col items-center justify-center">
+            <div className="flex-1 p-6 flex flex-col items-center justify-center relative">
               <div className="flex items-center gap-2 mb-2">
                 <IndianRupee size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
                 <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
@@ -1123,6 +1138,38 @@ export default function DashboardPage() {
                   value={statsToUse.totalBalanceAmount || 0}
                   format={formatCurrencyAbbr}
                 />
+              </span>
+              {/* Right divider */}
+              <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border-light)]" />
+            </div>
+
+            {/* Inventory Value (live) */}
+            <div className="flex-1 p-6 flex flex-col items-center justify-center relative">
+              <div className="flex items-center gap-2 mb-2">
+                <BarChart3 size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
+                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
+                  INVENTORY VALUE
+                </span>
+              </div>
+              <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+                {inventory && inventory.marketValue !== null
+                  ? formatCurrencyAbbr(inventory.marketValue)
+                  : "—"}
+              </span>
+              {/* Right divider */}
+              <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border-light)]" />
+            </div>
+
+            {/* Items in Stock (live) */}
+            <div className="flex-1 p-6 flex flex-col items-center justify-center">
+              <div className="flex items-center gap-2 mb-2">
+                <Archive size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
+                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
+                  ITEMS IN STOCK
+                </span>
+              </div>
+              <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+                {inventory ? inventory.inStockCount.toLocaleString(locale) : "—"}
               </span>
             </div>
           </div>
