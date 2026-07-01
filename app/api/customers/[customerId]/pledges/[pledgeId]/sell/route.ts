@@ -33,7 +33,7 @@ export async function POST(req: Request, context: RouteContext) {
       },
       include: {
         items: {
-          select: { itemType: true, metalType: true, itemName: true, purity: true },
+          select: { itemType: true, metalType: true, itemName: true, purity: true, grossWeight: true },
         },
       },
     });
@@ -106,7 +106,16 @@ export async function POST(req: Request, context: RouteContext) {
     const itemType     = firstItem?.itemType ?? "Other";
     const metalType    = String(firstItem?.metalType ?? "GOLD");
     const purity       = firstItem?.purity ?? null;
-    const weightGrams  = netWeightOfGold + netWeightOfSilver;
+
+    // Gross weight = sum of the pledge's per-item physical gross weights (items
+    // already loaded above — no extra query). The pledge aggregate only stores
+    // net weights, so gross is reconstructed from the items. Net weights are the
+    // financially meaningful values and are copied separately from the pledge
+    // aggregates, preserving both metals for a mixed gold+silver pledge.
+    const grossWeight = pledge.items.reduce(
+      (sum, it) => sum + Number(it.grossWeight),
+      0,
+    );
 
     // ── Atomic transaction ────────────────────────────────────────────
     try {
@@ -166,7 +175,9 @@ export async function POST(req: Request, context: RouteContext) {
             itemType,
             metalType,
             purity:            purity !== null ? new Prisma.Decimal(purity.toString()) : null,
-            weightGrams:       new Prisma.Decimal(weightGrams),
+            grossWeight:       new Prisma.Decimal(grossWeight),
+            netWeightOfGold:   pledge.netWeightOfGold,
+            netWeightOfSilver: pledge.netWeightOfSilver,
             photoUrl:          pledge.itemPhoto ?? null,
             acquiredAt:        saleDateObj,
             acquiredCost:      new Prisma.Decimal(buyPrice),

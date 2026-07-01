@@ -46,7 +46,7 @@ export default function BuyItemPage() {
     itemType:     "",
     metalType:    "Gold",
     purity:       "",
-    weightGrams:  "",
+    grossWeight:  "",
     acquiredCost: "",
     acquiredAt:   todayISO(),
     sellerName:   "",
@@ -68,6 +68,16 @@ export default function BuyItemPage() {
       .then((d) => { if (d.defaults) setItemTypes(d); })
       .catch(() => {});
   }, []);
+
+  const isMetalItem = form.metalType === "Gold" || form.metalType === "Silver";
+  // Live preview only — the server re-derives and stores the authoritative value.
+  const derivedNetWeight = (() => {
+    const g = Number(form.grossWeight);
+    const p = Number(form.purity);
+    if (!isMetalItem || !form.grossWeight || !form.purity || isNaN(g) || isNaN(p) || g <= 0 || p <= 0)
+      return null;
+    return Math.round(g * (p / 100) * 1000) / 1000;
+  })();
 
   function set(key: string, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -91,9 +101,13 @@ export default function BuyItemPage() {
     if (!form.description.trim())          next.description  = "Description is required.";
     if (!form.itemType)                    next.itemType     = "Item type is required.";
     if (!form.metalType)                   next.metalType    = "Metal type is required.";
-    const wg = Number(form.weightGrams);
-    if (!form.weightGrams || isNaN(wg) || wg <= 0)
-                                           next.weightGrams  = "Weight must be > 0.";
+    const wg = Number(form.grossWeight);
+    if (!form.grossWeight || isNaN(wg) || wg <= 0)
+                                           next.grossWeight  = "Gross weight must be > 0.";
+    const isMetal = form.metalType === "Gold" || form.metalType === "Silver";
+    const pv = Number(form.purity);
+    if (isMetal && (form.purity === "" || isNaN(pv) || pv <= 0 || pv > 100))
+                                           next.purity       = "Purity (0–100) is required for gold/silver.";
     const ac = Number(form.acquiredCost);
     if (form.acquiredCost === "" || isNaN(ac) || ac < 0)
                                            next.acquiredCost = "Purchase price must be ≥ 0.";
@@ -116,7 +130,7 @@ export default function BuyItemPage() {
       fd.append("itemType",     form.itemType);
       fd.append("metalType",    form.metalType);
       if (form.purity) fd.append("purity", form.purity);
-      fd.append("weightGrams",  form.weightGrams);
+      fd.append("grossWeight",  form.grossWeight);
       fd.append("acquiredCost", form.acquiredCost);
       fd.append("acquiredAt",   form.acquiredAt);
       fd.append("sellerName",   form.sellerName.trim());
@@ -245,11 +259,11 @@ export default function BuyItemPage() {
               </div>
             </div>
 
-            {/* Purity + Weight */}
+            {/* Purity + Gross Weight */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                  Purity (optional)
+                  Purity {isMetalItem ? "*" : "(optional)"}
                 </label>
                 <input
                   type="number"
@@ -262,24 +276,42 @@ export default function BuyItemPage() {
                   className={inputCls}
                   style={inputStyle}
                 />
+                {errors.purity && <p className="text-[11.5px] mt-1 text-red-600">{errors.purity}</p>}
               </div>
 
               <div>
                 <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                  Weight (grams) *
+                  Gross Weight (grams) *
                 </label>
                 <input
                   type="number"
                   min="0.001"
                   step="any"
-                  value={form.weightGrams}
-                  onChange={(e) => set("weightGrams", e.target.value)}
+                  value={form.grossWeight}
+                  onChange={(e) => set("grossWeight", e.target.value)}
                   placeholder="e.g. 12.5"
                   className={inputCls}
                   style={inputStyle}
                 />
-                {errors.weightGrams && <p className="text-[11.5px] mt-1 text-red-600">{errors.weightGrams}</p>}
+                {errors.grossWeight && <p className="text-[11.5px] mt-1 text-red-600">{errors.grossWeight}</p>}
               </div>
+            </div>
+
+            {/* Live-derived net weight (convenience only — server is source of truth) */}
+            <div
+              className="px-3 py-2 rounded-[10px] text-[12px] font-medium"
+              style={{ backgroundColor: "var(--main-bg)", border: "1px solid var(--border-light)", color: "var(--text-secondary)" }}
+            >
+              {isMetalItem ? (
+                <>
+                  Net {form.metalType.toLowerCase()} weight:{" "}
+                  <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                    {derivedNetWeight !== null ? `${derivedNetWeight.toFixed(3)} g` : "—"}
+                  </span>
+                </>
+              ) : (
+                <>Net weight: n/a (non gold/silver item)</>
+              )}
             </div>
 
             {/* Purchase Price + Date */}

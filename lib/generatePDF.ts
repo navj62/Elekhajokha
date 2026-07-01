@@ -355,7 +355,9 @@ type PurchaseReceiptItem = {
   itemType: string;
   metalType: string;
   purity: string | null;
-  weightGrams: string;
+  grossWeight: string;
+  netWeightOfGold: string;
+  netWeightOfSilver: string;
   acquiredCost: string;
   acquiredAt: string;
   acquiredMetalRate: string | null;
@@ -463,7 +465,14 @@ export function generateInventoryPurchasePDF(
     fieldRow("Item Type",    item.itemType);
     fieldRow("Metal Type",   item.metalType);
     fieldRow("Purity",       item.purity != null ? `${Number(item.purity).toFixed(2)}%` : "—");
-    fieldRow("Weight",       `${Number(item.weightGrams).toFixed(3)} g`);
+    fieldRow("Gross Weight", `${Number(item.grossWeight).toFixed(3)} g`);
+    const netGold   = Number(item.netWeightOfGold);
+    const netSilver = Number(item.netWeightOfSilver);
+    const netWeight = netGold > 0 ? netGold : netSilver > 0 ? netSilver : null;
+    if (netWeight !== null) {
+      const metalName = item.metalType.charAt(0).toUpperCase() + item.metalType.slice(1).toLowerCase();
+      fieldRow(`Net ${metalName} Weight`, `${netWeight.toFixed(3)} g`);
+    }
     if (item.acquiredMetalRate != null) {
       const metal = item.metalType.charAt(0).toUpperCase() +
         item.metalType.slice(1).toLowerCase();

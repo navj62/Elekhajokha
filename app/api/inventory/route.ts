@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
     const metalType    = String(fd.get("metalType")     ?? "").trim();
     const purityRaw    = fd.get("purity");
     const purity       = purityRaw !== null && purityRaw !== "" ? Number(purityRaw) : null;
-    const weightGrams  = Number(fd.get("weightGrams"));
+    const grossWeight  = Number(fd.get("grossWeight"));
     const acquiredCost = Number(fd.get("acquiredCost"));
     const acquiredAt   = String(fd.get("acquiredAt")   ?? "");
     const sellerName   = String(fd.get("sellerName")   ?? "").trim();
@@ -129,8 +129,31 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "VALIDATION", message: "Purity must be between 0 and 100." }, { status: 400 });
     }
 
-    if (isNaN(weightGrams) || weightGrams <= 0)
-      return NextResponse.json({ error: "weightGrams must be > 0" }, { status: 400 });
+    if (isNaN(grossWeight) || grossWeight <= 0)
+      return NextResponse.json({ error: "grossWeight must be > 0" }, { status: 400 });
+
+    // A GOLD/SILVER item needs a purity to derive its pure-metal net weight.
+    if ((normalizedMetal === "GOLD" || normalizedMetal === "SILVER") && (purity === null))
+      return NextResponse.json(
+        { error: "VALIDATION", message: "Purity is required for gold and silver items." },
+        { status: 400 }
+      );
+
+    // Derive pure-metal net weight server-side — NEVER trust a client-sent net
+    // weight (Invariant 3). Round to 3dp, mirroring the pledge create route.
+    // A single InventoryItem has one metalType, so only one net field is ever
+    // populated; the other stays 0 so aggregation can SUM each metal without
+    // branching on metalType.
+    const purityFraction = purity && purity > 0 ? purity / 100 : 0;
+    let netWeightOfGold   = 0;
+    let netWeightOfSilver = 0;
+    if (normalizedMetal === "GOLD") {
+      netWeightOfGold = Math.round(grossWeight * purityFraction * 1000) / 1000;
+    } else if (normalizedMetal === "SILVER") {
+      netWeightOfSilver = Math.round(grossWeight * purityFraction * 1000) / 1000;
+    }
+    // OTHER → both net weights stay 0; grossWeight is still stored for reference.
+
     if (isNaN(acquiredCost) || acquiredCost < 0)
       return NextResponse.json({ error: "acquiredCost must be >= 0" }, { status: 400 });
 
@@ -176,7 +199,9 @@ export async function POST(req: NextRequest) {
         itemType:         validType.label,
         metalType:        metalTypeNormalized,
         purity:           purity != null ? new Prisma.Decimal(purity) : null,
-        weightGrams:      new Prisma.Decimal(weightGrams),
+        grossWeight:       new Prisma.Decimal(grossWeight),
+        netWeightOfGold:   new Prisma.Decimal(netWeightOfGold),
+        netWeightOfSilver: new Prisma.Decimal(netWeightOfSilver),
         acquiredCost:     new Prisma.Decimal(acquiredCost),
         acquiredAt:       acquiredAtDate,
         acquiredMetalRate: acquiredMetalRate !== null

@@ -359,7 +359,9 @@ model InventoryItem {
   itemType       String
   metalType      String
   purity         Decimal?        @db.Decimal(6, 3)
-  weightGrams    Decimal         @db.Decimal(10, 3)
+  grossWeight        Decimal     @db.Decimal(10, 3)
+  netWeightOfGold    Decimal     @default(0) @db.Decimal(10, 3)
+  netWeightOfSilver  Decimal     @default(0) @db.Decimal(10, 3)
   photoUrl       String?
 
   // Acquisition

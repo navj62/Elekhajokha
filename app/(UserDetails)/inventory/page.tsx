@@ -35,7 +35,9 @@ interface InventoryItem {
   itemType: string;
   metalType: string;
   purity: string | null;
-  weightGrams: string;
+  grossWeight: string;
+  netWeightOfGold: string;
+  netWeightOfSilver: string;
   photoUrl: string | null;
   acquiredAt: string;
   acquiredCost: string;
@@ -191,7 +193,7 @@ function SellModal({
               {item.description}
             </p>
             <p className="text-[11.5px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
-              {metalLabel} · {Number(item.weightGrams).toFixed(2)}g ·{" "}
+              {metalLabel} · {Number(item.grossWeight).toFixed(2)}g ·{" "}
               <span style={{ color: "var(--text-muted)" }}>
                 Acquired for {acquiredCost === 0 ? "free (forfeited)" : fmtINR(acquiredCost)}
               </span>
@@ -402,6 +404,11 @@ function InventoryRow({
     ? `${item.metalType} ${Number(item.purity).toFixed(0)}K`
     : item.metalType;
 
+  // A single item populates at most one net field; show whichever is non-zero.
+  const netGold   = Number(item.netWeightOfGold);
+  const netSilver = Number(item.netWeightOfSilver);
+  const netMetalWeight = netGold > 0 ? netGold : netSilver > 0 ? netSilver : null;
+
   return (
     <tr style={{ borderBottom: "1px solid var(--border-light)" }}>
       {/* Photo */}
@@ -454,8 +461,15 @@ function InventoryRow({
       </td>
 
       {/* Weight */}
-      <td className="py-3 px-3 text-[12.5px]" style={{ color: "var(--text-secondary)" }}>
-        {Number(item.weightGrams).toFixed(2)}g
+      <td className="py-3 px-3">
+        <p className="text-[12.5px]" style={{ color: "var(--text-secondary)" }}>
+          {Number(item.grossWeight).toFixed(2)}g
+        </p>
+        {netMetalWeight !== null && (
+          <p className="text-[11px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+            net {netMetalWeight.toFixed(3)}g
+          </p>
+        )}
       </td>
 
       {/* Acquired */}

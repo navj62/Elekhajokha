@@ -11,7 +11,9 @@ interface ReceiptItem {
   itemType: string;
   metalType: string;
   purity: string | null;
-  weightGrams: string;
+  grossWeight: string;
+  netWeightOfGold: string;
+  netWeightOfSilver: string;
   acquiredCost: string;
   acquiredAt: string;
   acquiredMetalRate: string | null;
@@ -113,6 +115,9 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
   const metalLabel   = item.purity
     ? `${item.metalType} (${Number(item.purity).toFixed(2)}%)`
     : item.metalType;
+  const netGold   = Number(item.netWeightOfGold);
+  const netSilver = Number(item.netWeightOfSilver);
+  const netWeight = netGold > 0 ? netGold : netSilver > 0 ? netSilver : null;
 
   return (
     <SubscriptionGuard>
@@ -204,7 +209,13 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
               <LabelValue label="Description"  value={item.description} />
               <LabelValue label="Item Type"    value={item.itemType} />
               <LabelValue label="Metal"        value={metalLabel} />
-              <LabelValue label="Weight"       value={`${Number(item.weightGrams).toFixed(3)} g`} />
+              <LabelValue label="Gross Weight" value={`${Number(item.grossWeight).toFixed(3)} g`} />
+              {netWeight !== null && (
+                <LabelValue
+                  label={`Net ${item.metalType} Weight`}
+                  value={`${netWeight.toFixed(3)} g`}
+                />
+              )}
               {item.acquiredMetalRate != null && (
                 <LabelValue
                   label={`${item.metalType.charAt(0).toUpperCase() + item.metalType.slice(1).toLowerCase()} rate at purchase`}
