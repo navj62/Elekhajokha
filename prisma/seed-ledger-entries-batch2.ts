@@ -13,9 +13,6 @@
  *
  * USAGE:
  *   npx tsx prisma/seed-ledger-entries-batch2.ts
- *
- * BEFORE RUNNING — check the CONFIG block below. Everything there is an
- * assumption made because the ledger photo doesn't carry this info.
  */
 
 import { PrismaClient, MetalType, PledgeStatus, CompoundingDuration } from '@prisma/client';
@@ -32,7 +29,7 @@ const prisma = new PrismaClient({ adapter });
 neonConfig.webSocketConstructor = ws as unknown as typeof WebSocket;
 
 // ───────────────────────────────────────────────────────────
-// CONFIG — edit these before running
+// CONFIG
 // ───────────────────────────────────────────────────────────
 
 const OWNER_ID = 'b121d4e7-6be0-4b0a-8009-3670f09d32a3';
@@ -255,8 +252,7 @@ async function main() {
 
   if (!owner) {
     throw new Error(
-      `No user found with id="${OWNER_ID}". ` +
-        `Update OWNER_ID at the top of this script.`,
+      `No user found with id="${OWNER_ID}". Update OWNER_ID at the top of this script.`,
     );
   }
 
@@ -276,8 +272,6 @@ async function main() {
     }
   }
 
-  // Safety check: warn if any of these customer names already exist for
-  // this owner, in case this batch was already run once before.
   const existingNames = await prisma.customer.findMany({
     where: {
       userId: owner.id,
@@ -298,53 +292,56 @@ async function main() {
     await new Promise((resolve) => setTimeout(resolve, 5000));
   }
 
-  await prisma.$transaction(async (tx) => {
-    for (const entry of LEDGER_ENTRIES) {
-      const purity = purityFor(entry.metalType);
-      const netWeightOfMetal = Number(
-        (entry.weightGrams * (purity / 100)).toFixed(3),
-      );
+  await prisma.$transaction(
+    async (tx) => {
+      for (const entry of LEDGER_ENTRIES) {
+        const purity = purityFor(entry.metalType);
+        const netWeightOfMetal = Number(
+          (entry.weightGrams * (purity / 100)).toFixed(3),
+        );
 
-      const customer = await tx.customer.create({
-        data: {
-          userId: owner.id,
-          name: entry.customerName,
-          region: entry.region,
-          address: entry.region,
-        },
-      });
+        const customer = await tx.customer.create({
+          data: {
+            userId: owner.id,
+            name: entry.customerName,
+            region: entry.region,
+            address: entry.region,
+          },
+        });
 
-      const pledge = await tx.pledge.create({
-        data: {
-          customerId: customer.id,
-          pledgeDate: new Date(entry.pledgeDate),
-          loanAmount: entry.loanAmount,
-          interestRate: DEFAULT_INTEREST_RATE,
-          compoundingDuration: DEFAULT_COMPOUNDING,
-          allowCompounding: DEFAULT_ALLOW_COMPOUNDING,
-          status: DEFAULT_STATUS,
-          netWeightOfGold: entry.metalType === 'GOLD' ? netWeightOfMetal : 0,
-          netWeightOfSilver: entry.metalType === 'SILVER' ? netWeightOfMetal : 0,
-        },
-      });
+        const pledge = await tx.pledge.create({
+          data: {
+            customerId: customer.id,
+            pledgeDate: new Date(entry.pledgeDate),
+            loanAmount: entry.loanAmount,
+            interestRate: DEFAULT_INTEREST_RATE,
+            compoundingDuration: DEFAULT_COMPOUNDING,
+            allowCompounding: DEFAULT_ALLOW_COMPOUNDING,
+            status: DEFAULT_STATUS,
+            netWeightOfGold: entry.metalType === 'GOLD' ? netWeightOfMetal : 0,
+            netWeightOfSilver: entry.metalType === 'SILVER' ? netWeightOfMetal : 0,
+          },
+        });
 
-      await tx.pledgeItem.create({
-        data: {
-          pledgeId: pledge.id,
-          itemType: entry.itemType,
-          metalType: entry.metalType,
-          itemName: entry.itemName,
-          quantity: entry.quantity,
-          grossWeight: entry.weightGrams,
-          netWeight: entry.weightGrams,
-          purity,
-          netWeightOfMetal,
-        },
-      });
+        await tx.pledgeItem.create({
+          data: {
+            pledgeId: pledge.id,
+            itemType: entry.itemType,
+            metalType: entry.metalType,
+            itemName: entry.itemName,
+            quantity: entry.quantity,
+            grossWeight: entry.weightGrams,
+            netWeight: entry.weightGrams,
+            purity,
+            netWeightOfMetal,
+          },
+        });
 
-      console.log(`Seeded pledge for ${entry.customerName} (₹${entry.loanAmount})`);
-    }
-  });
+        console.log(`Seeded pledge for ${entry.customerName} (₹${entry.loanAmount})`);
+      }
+    },
+    { timeout: 30000, maxWait: 10000 },
+  );
 
   console.log(`\nDone — ${LEDGER_ENTRIES.length} pledges seeded for user ${owner.username}.`);
 }
