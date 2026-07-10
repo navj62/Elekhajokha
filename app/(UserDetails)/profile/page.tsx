@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useLanguage } from "@/components/providers/LanguageProvider";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { Loader2, User, Mail, CalendarDays, Lock, CreditCard, Info, Edit2, X } from "lucide-react";
+import { Loader2, User, Mail, CalendarDays, Lock, Info, Edit2, X } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -141,7 +140,7 @@ export default function ProfilePage() {
       const updated = await res.json();
       setProfile((p) => p ? { ...p, ...updated } : p);
       setEditing(false);
-    } catch (e: any) { setSaveErr(e.message); }
+    } catch (e) { setSaveErr((e as Error).message); }
     finally { setSaving(false); }
   }
 
@@ -153,7 +152,7 @@ export default function ProfilePage() {
       fd.append("customerTerms", customerTerms);
       const res = await fetch("/api/profile", { method: "PATCH", body: fd });
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
-    } catch (e: any) { setTermsErr(e.message); }
+    } catch (e) { setTermsErr((e as Error).message); }
     finally { setTermsSaving(false); }
   }
 

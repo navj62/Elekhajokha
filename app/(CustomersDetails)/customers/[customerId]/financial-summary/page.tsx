@@ -273,7 +273,6 @@ export default function FinancialSummaryPage() {
     }
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (customerId) load();
   }, [customerId]);

@@ -404,7 +404,7 @@ export default function AddPledgePage() {
     ]);
   };
 
-  const updateItem = (id: string, field: keyof Item, value: any) => {
+  const updateItem = <K extends keyof Item>(id: string, field: K, value: Item[K]) => {
     setItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
     );
@@ -582,10 +582,10 @@ export default function AddPledgePage() {
                   <div>
                     <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Compounding Duration</label>
                     <div className="flex items-center bg-[#FAFAF8] p-1 rounded-[12px] border border-[#ECEAE4]">
-                      {["Monthly", "Half-Yearly", "Yearly"].map((opt) => (
+                      {(["Monthly", "Half-Yearly", "Yearly"] as const).map((opt) => (
                         <button
                           key={opt}
-                          onClick={() => setCompounding(opt as any)}
+                          onClick={() => setCompounding(opt)}
                           className={`flex-1 py-2 text-[13px] font-bold rounded-[8px] transition-all ${compounding === opt
                             ? "bg-[#555B3F] shadow-sm text-[#F8FAD7] border border-[#E0DED6]"
                             : "text-[#6F6F6F] hover:text-[#2C2C2C] border border-transparent"
@@ -636,7 +636,7 @@ export default function AddPledgePage() {
                   <div className="mb-6">
                     <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Metal Type</label>
                     <div className="flex items-center bg-[#EBE9E0] p-1 rounded-full max-w-[400px]">
-                      {["Gold", "Silver"].map((metal) => (
+                      {(["Gold", "Silver"] as const).map((metal) => (
                         <button
                           key={metal}
                           onClick={() => updateItem(item.id, "metalType", metal)}

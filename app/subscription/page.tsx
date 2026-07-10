@@ -24,8 +24,18 @@ interface AccessInfo {
   hadTrial:  boolean;
 }
 
+interface RazorpayInstance {
+  open: () => void;
+  on: (
+    event: string,
+    handler: (response: { error?: { description?: string } }) => void
+  ) => void;
+}
+
 declare global {
-  interface Window { Razorpay: any; }
+  interface Window {
+    Razorpay: new (options: Record<string, unknown>) => RazorpayInstance;
+  }
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -361,7 +371,7 @@ export default function SubscribePage() {
         {/* Trial banner for current trial users */}
         {accessInfo?.status === "trial" && (
           <div className="max-w-[900px] mx-auto w-full bg-[#FAFAF8] border border-[#ECEAE4] rounded-[16px] p-3 text-[13px] text-[#6F6F6F] text-center mb-6 shadow-sm">
-            ⏳ You're currently on a free trial. Upgrade below to get full access after it ends.
+            ⏳ You&apos;re currently on a free trial. Upgrade below to get full access after it ends.
           </div>
         )}
         
@@ -496,7 +506,7 @@ export default function SubscribePage() {
              </div>
              <div>
                <h4 className="font-bold text-[#2C2C2C] text-[13px] mb-0.5">24/7 Support</h4>
-               <p className="text-[12px] text-[#6F6F6F]">We're here to help</p>
+               <p className="text-[12px] text-[#6F6F6F]">We&apos;re here to help</p>
              </div>
           </div>
           <div className="flex items-start gap-3">

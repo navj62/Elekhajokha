@@ -37,6 +37,16 @@ interface Transaction {
   createdAt: string;
 }
 
+// Lightweight row shape for the "all pledges" modal list (GET .../pledges).
+// loanAmount is number | string because Prisma Decimal serializes to string.
+interface PledgeListRow {
+  id: string;
+  pledgeDate: string;
+  status: string;
+  loanAmount: number | string;
+  items?: unknown[];
+}
+
 interface PledgeDetail {
   id: string;
   pledgeDate: string;
@@ -170,7 +180,7 @@ export default function PledgeDetailPage() {
   // Modal states
   const [showAllTxnModal, setShowAllTxnModal] = useState(false);
   const [showAllPledgesModal, setShowAllPledgesModal] = useState(false);
-  const [allPledges, setAllPledges] = useState<any[]>([]);
+  const [allPledges, setAllPledges] = useState<PledgeListRow[]>([]);
   const [loadingPledges, setLoadingPledges] = useState(false);
 
   const handleViewAllPledges = async () => {

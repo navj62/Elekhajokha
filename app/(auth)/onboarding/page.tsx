@@ -126,8 +126,8 @@ export default function OnboardingPage() {
       await user?.reload();
 
       router.replace("/dashboard");
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -459,7 +459,7 @@ export default function OnboardingPage() {
             </div>
             <div className="flex-1 text-center md:text-left">
               <p className="text-[14px] text-[#2B2B2B] font-medium leading-[1.6] mb-2.5">
-                "Put your heart, mind, and soul into even your smallest acts. This is the secret of success."
+                &quot;Put your heart, mind, and soul into even your smallest acts. This is the secret of success.&quot;
               </p>
               <p className="text-[#A3A3A3] text-[12px] font-medium">— Swami Sivananda</p>
             </div>

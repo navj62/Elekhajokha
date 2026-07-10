@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { uploadImage } from "@/lib/upload";
-import { Prisma, MetalType } from "@prisma/client";
+import { Prisma, MetalType, CompoundingDuration } from "@prisma/client";
 
 type RouteContext = {
   params: Promise<{ customerId: string }>;
@@ -75,6 +75,9 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (!itemsRaw)
       return NextResponse.json({ error: "Missing items" }, { status: 400 });
 
+    // Untrusted parsed JSON from the client; each field is validated/coerced
+    // below. Proper typing belongs to the planned Zod validation layer.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let rawItems: any[];
     try {
       rawItems = JSON.parse(itemsRaw);
@@ -157,7 +160,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
         pledgeDate:          new Date(pledgeDate),
         loanAmount:          toDecimal(loanAmount),
         interestRate:        toDecimal(interestRate),
-        compoundingDuration: compoundingDuration as any,
+        compoundingDuration: compoundingDuration as CompoundingDuration,
         status:              "ACTIVE",
         remark,
         itemPhoto,
@@ -181,7 +184,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json(pledge, { status: 201 });
 
-  } catch (err: any) {
+  } catch (err) {
     console.error("PLEDGE CREATE ERROR:", err);
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }

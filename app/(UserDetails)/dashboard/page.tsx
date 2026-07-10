@@ -10,8 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowRight,
-  TrendingUp,
-  TrendingDown,
   CheckCircle2,
   Circle,
   Plus,
@@ -187,7 +185,13 @@ function AnimatedCounter({
 /*  Custom Chart Tooltip                                                */
 /* ================================================================== */
 
-function ChartTooltipContent({ active, payload, label }: any) {
+interface ChartTooltipProps {
+  active?: boolean;
+  label?: string | number;
+  payload?: Array<{ color?: string; name?: string; value?: number | string }>;
+}
+
+function ChartTooltipContent({ active, payload, label }: ChartTooltipProps) {
   if (!active || !payload?.length) return null;
   return (
     <div
@@ -202,7 +206,7 @@ function ChartTooltipContent({ active, payload, label }: any) {
       }}
     >
       <p style={{ fontWeight: 700, marginBottom: 4, color: "#2C2C2C" }}>{label}</p>
-      {payload.map((entry: any, i: number) => (
+      {payload.map((entry, i: number) => (
         <p key={i} style={{ color: entry.color, margin: "2px 0" }}>
           {entry.name}: {typeof entry.value === "number" && entry.value >= 1000
             ? `₹${(entry.value).toLocaleString("en-IN")}`
@@ -618,7 +622,7 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isDone: !done }),
       });
-    } catch (e) {
+    } catch {
       // revert on error
       setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done } : t)));
     } finally {
@@ -1262,7 +1266,7 @@ export default function DashboardPage() {
               <p className="text-[12px] mt-1" style={{ color: "var(--text-muted)", opacity: 0.6 }}>New pledges will appear here once added.</p>
             </div>
           ) : (
-            pledgesToUse.map((p: any, i: number) => {
+            pledgesToUse.map((p, i: number) => {
               const isLast = i === pledgesToUse.length - 1;
               const sStyle = getStatusStyle(p.status);
               const initials =
@@ -1275,7 +1279,6 @@ export default function DashboardPage() {
                   .substring(0, 2) ||
                 "U";
               const statusKey = getStatusKey(p.status);
-              const isActive = p.status?.toLowerCase().includes("active") || (!p.status?.toLowerCase().includes("release") && !p.status?.toLowerCase().includes("overdue"));
               const isOverdue = p.status?.toLowerCase().includes("overdue");
 
               return (

@@ -33,7 +33,7 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   if (userId) {
-    const hasOnboarded = (sessionClaims?.metadata as any)?.onboardingComplete === true;
+    const hasOnboarded = (sessionClaims?.metadata as { onboardingComplete?: boolean })?.onboardingComplete === true;
 
     if (
       req.nextUrl.pathname.startsWith("/sign-in") ||

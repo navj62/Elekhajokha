@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
 import { AlertTriangle, CheckCircle2, Loader2, Camera, Image as ImageIcon, Check } from "lucide-react";
@@ -270,7 +270,7 @@ export default function AddCustomerPage() {
                     style={inputStyle}
                     placeholder="0000 0000 0000"
                     onChange={(e) => {
-                      let val = e.target.value.replace(/\D/g, "");
+                      const val = e.target.value.replace(/\D/g, "");
                       e.target.value = val.replace(/(\d{4})(?=\d)/g, "$1 ");
                     }}
                   />

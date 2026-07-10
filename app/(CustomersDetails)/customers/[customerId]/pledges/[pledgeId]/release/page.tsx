@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   Loader2, CheckCircle, ArrowLeft, Calendar,
-  AlertTriangle, RefreshCw, Check, Phone, MapPin, Info, Archive,
+  AlertTriangle, RefreshCw, Phone, MapPin, Info, Archive,
 } from "lucide-react";
 
 import { calculateHybridInterest } from "@/lib/interest";
@@ -142,8 +142,6 @@ export default function ReleasePledgePage() {
   const isBeforePledge = pledge
     ? new Date(releaseDate) < new Date(pledge.pledgeDate)
     : false;
-
-  const isFuture = new Date(releaseDate) > new Date(today);
 
   /* ── Calculation ── */
   const calc = useMemo(() => {

@@ -183,8 +183,7 @@ export async function GET() {
     // In Loan charts, we can approximate disbursed from pledges if we don't have separate DISBURSEMENT transactions.
     // The spec said "Total Disbursed, Recovered Amount, Recovery Rate, from actual transactions."
     // Let's use pledges for disbursed and transactions for recovered.
-    pledgesThisYear.forEach((p) => {
-      const mIdx = p.createdAt.getMonth();
+    pledgesThisYear.forEach(() => {
       // Assuming we need actual amount. But graph needs concise numbers, we will pass raw numbers.
       // Wait, we need the pledge amount for disbursed.
     });

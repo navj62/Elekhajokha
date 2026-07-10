@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
   useCallback,
-  useMemo,
 } from "react";
 
 import SubscriptionGuard from "@/components/SubscriptionGuard";
@@ -155,7 +154,7 @@ export default function CustomersPage() {
         });
       });
       showToast(data.isPinned ? "Customer pinned" : "Customer unpinned");
-    } catch (err) {
+    } catch {
       showToast("Error updating pin status");
     }
   };

@@ -110,7 +110,7 @@ if (!user) {
       plan,
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error("create-subscription error:", error);
 
     return NextResponse.json(

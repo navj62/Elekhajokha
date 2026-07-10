@@ -54,14 +54,14 @@ export async function POST(req: Request) {
 
     const username =
       user.username ||
-      (user.public_metadata as any)?.username ||
-      (user.unsafe_metadata as any)?.username ||
+      (user.public_metadata as { username?: string })?.username ||
+      (user.unsafe_metadata as { username?: string })?.username ||
       `user_${user.id.slice(0, 8)}`;
 
     const email = user.email_addresses?.[0]?.email_address ?? null;
     const mobile =
       user.phone_numbers?.[0]?.phone_number ??
-      (user.public_metadata as any)?.mobile ??
+      (user.public_metadata as { mobile?: string })?.mobile ??
       null;
 
     const firstName = user.first_name ?? null;

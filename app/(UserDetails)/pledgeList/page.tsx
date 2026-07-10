@@ -237,7 +237,6 @@ export default function PledgesPage() {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ── Load more ─────────────────────────────────────────────────── */

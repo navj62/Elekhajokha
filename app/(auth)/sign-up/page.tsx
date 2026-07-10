@@ -522,7 +522,7 @@ export default function SignUpPage() {
                 <Shield size={18} className="text-white" />
               </div>
               <p className="text-white text-[18px] font-bold leading-snug tracking-tight mb-6">
-                "Precision in numbers starts with clarity in identity."
+                &quot;Precision in numbers starts with clarity in identity.&quot;
               </p>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">

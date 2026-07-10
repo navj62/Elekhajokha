@@ -1,0 +1,44 @@
+name: CI
+
+# Correctness gate only: typecheck + test + lint. No build, deploy, or secrets.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: Typecheck / Test / Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'                 # keyed off package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Prisma Client isn't committed; a clean checkout has no generated types,
+      # so `tsc --noEmit` would fail without this. `generate` reads only the
+      # schema and needs no DB connection or env vars.
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Test
+        run: npm test
+
+      # Uses the CI-scoped config (eslint.config.ci.mjs): identical to the
+      # strict local config except the 3 new-in-Next-16 react-hooks preview
+      # rules are off (19 tracked sites). Local `npm run lint` stays strict.
+      - name: Lint
+        run: npx eslint . --config eslint.config.ci.mjs

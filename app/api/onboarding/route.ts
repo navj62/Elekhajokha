@@ -1,7 +1,7 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { Gender } from "@/src/generated/prisma"
+import { Gender } from "@prisma/client"
 import { uploadImage } from "@/lib/upload";
 
 export async function POST(req: Request) {

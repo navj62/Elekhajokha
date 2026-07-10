@@ -1,15 +1,12 @@
 // components/LandingPage.tsx
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Building2, ShieldCheck, Users, Lock, Calculator,
   FileText, BarChart2, Coins, Check, LogIn, ArrowRight
 } from "lucide-react";
 
 export default function LandingPage() {
-  const router = useRouter();
-
   return (
     <div className="min-h-screen text-[#24251f] bg-[#f4f3e8] font-sans antialiased selection:bg-[#737956]/20 selection:text-[#585e3c]">
 
