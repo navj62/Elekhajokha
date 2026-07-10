@@ -27,9 +27,14 @@ jobs:
 
       # Prisma Client isn't committed; a clean checkout has no generated types,
       # so `tsc --noEmit` would fail without this. `generate` reads only the
-      # schema and needs no DB connection or env vars.
+      # schema and makes no DB connection — but prisma.config.ts resolves
+      # DATABASE_URL at load time, so the config load needs it present.
       - name: Generate Prisma Client
         run: npx prisma generate
+        env:
+          # Dummy value: prisma generate reads the schema only and never connects.
+          # Present solely so prisma.config.ts can resolve DATABASE_URL at load.
+          DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci"
 
       - name: Typecheck
         run: npx tsc --noEmit
