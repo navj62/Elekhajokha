@@ -31,7 +31,11 @@ export async function GET(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     const pledge = await prisma.pledge.findFirst({
-      where: { id: pledgeId, customerId },
+      where: {
+        id: pledgeId,
+        customerId,
+        customer: { userId: user.id },
+      },
       include: {
         customer: { select: { name: true, address: true } },
         items: {
