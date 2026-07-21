@@ -53,14 +53,41 @@ npx prisma db seed           # runs tsx prisma/seed.ts (seeds default PledgeItem
 There is no test runner configured in this repo. After any change, run `npx tsc --noEmit` and `npm run lint`; for build-time issues (dynamic imports, server/client boundaries) run `npm run build`. For flows that touch payment or the DB, verify manually in `prisma studio` — typecheck passing is necessary but not sufficient.
 
 ### Prisma datasource gotcha
-The runtime client and the CLI read **different** connection strings:
+The runtime client and the CLI read their connection string from **different files**, but both currently point at `DATABASE_URL`:
 - App runtime ([lib/prisma.ts](lib/prisma.ts)) connects via the Neon serverless adapter using `DATABASE_URL` (pooled).
-- The Prisma CLI ([prisma.config.ts](prisma.config.ts)) uses `DIRECT_URL` (direct, unpooled) — required for migrations.
+- The Prisma CLI ([prisma.config.ts](prisma.config.ts)) reads `env("DATABASE_URL")` for `datasource.url` — **not** `DIRECT_URL`. (A prior version of this doc claimed the CLI used `DIRECT_URL`; verify against [prisma.config.ts](prisma.config.ts) — it does not.)
 
 [prisma/schema.prisma](prisma/schema.prisma) intentionally declares `datasource db` with no inline `url`; the URL is injected by the adapter at runtime and by `prisma.config.ts` for the CLI. Don't "fix" this by adding `url = env(...)` to the schema.
 
+**`DIRECT_URL` is currently read by nothing** — not by `prisma.config.ts`, not by the schema, not by app code (a repo-wide grep for `DIRECT_URL` returns zero hits). It has been retained in the required-env checklist below as a documented convention: migrations should run against a direct, unpooled connection, and if you point the CLI at it (by switching `prisma.config.ts` to `env("DIRECT_URL")`), it must be present. As wired today it is unused — treat it as optional-but-recommended for production migrations, not load-bearing.
+
 ### Prisma client staleness (critical)
 After ANY schema change — especially enum changes or enum removals — run `npx prisma generate` AND clear the Turbopack cache (`rm -rf .next`) before restarting dev. A stale generated client combined with a cached Turbopack chunk produced a runtime `P2023 "Value 'Ring' not found in enum 'ItemType'"` error after the ItemType enum was dropped, even though the schema and DB were correct. When in doubt: generate → clear cache → restart.
+
+### Migration tracking can lie (real incident)
+`npx prisma migrate status` reported **"Database schema is up to date"** while a migration's DDL had never actually executed against the live database. The migration file existed with correct SQL, and Prisma's `_prisma_migrations` table had it recorded as applied — but the columns were genuinely **absent** from the database, producing `P2022 "column does not exist"` errors at runtime.
+
+When `migrate status` contradicts a runtime column error, the migration-history table is not trustworthy. The ONLY reliable check is to query `information_schema` directly, bypassing Prisma entirely with the raw Neon driver:
+
+```bash
+npx tsx -r dotenv/config -e "
+import('@neondatabase/serverless').then(async ({ neon }) => {
+  const sql = neon(process.env.DATABASE_URL);
+  console.log(await sql\`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_name = 'your_table' ORDER BY column_name;
+  \`);
+});
+"
+```
+
+Two things that make this hard to diagnose:
+- **`prisma db execute` does NOT print SELECT results** — it only reports "Script executed successfully". It cannot be used to inspect the DB.
+- **Prisma's Neon adapter throws `"Failed to deserialize column of type 'name'"`** on `information_schema` queries via `$queryRaw`, even with `::text` casts. Hence the raw `neon()` driver above rather than Prisma.
+
+**The fix** when this happens: run the migration's DDL directly via the raw driver, then `npx prisma generate` + `rm -rf .next`.
+
+**Root cause pattern:** this codebase accumulated schema drift because `prisma db push` was used at several points instead of `prisma migrate dev`, leaving schema changes with no corresponding migration file. The migration history was regenerated once as a single clean baseline to resolve this. **Never use `prisma db push` on this project** — always `prisma migrate dev` so every schema change has a migration file.
 
 ### Enum-to-string migration gotcha
 When converting an enum column to `String` (as done for `PledgeItem.itemType`), the generated migration SQL must use `ALTER COLUMN ... TYPE TEXT USING "col"::text` — NOT a drop/recreate, which destroys data. Always inspect the generated SQL before running `prisma migrate dev` on a column type change. After the type change, run a one-time data fix to convert uppercase legacy enum values to their new title-case label equivalents, keeping them consistent with the seeded `PledgeItemType` labels.
@@ -295,7 +322,9 @@ Cascade caveat: `PledgeAudit`/`Transaction` are financial records but currently 
 
 - Path alias `@/*` maps to repo root. Import Prisma types from `@prisma/client` — NOT from `@/src/generated/prisma` (divergent generated client; must be gitignored, not committed).
 - Singleton Prisma client from [lib/prisma.ts](lib/prisma.ts) — never `new PrismaClient()`.
-- API errors: generic `{ error: "..." }` with optional stable code, logged server-side. NEVER return `err.message`/`err.stack` to the client.
+- API errors: client-facing error bodies are ALWAYS generic (`{ error: "Server Error" }` or a similar generic string), with an optional stable code, logged server-side. NEVER return `err.message`, `err.stack`, the raw error object, or a Prisma error's `.meta` (which can carry table/column/constraint names) in a response body.
+  - `err.message` MAY be used **server-side only** — for control flow via sentinel comparison (e.g. `err.message === "ALREADY_RELEASED"` → 409) and in bounded `console.error` logs. Never in a response body.
+  - **Server logs must not contain customer PII, full request bodies, secrets, or unbounded error dumps** (no `console.dir(err, { depth: null })`). Logs persist to disk on a VPS.
 - Image uploads: Cloudinary via `lib/upload.ts`. No server-side MIME/size validation yet (known gap).
 - PDF: `pdfkit` ([lib/generatePDF.ts](lib/generatePDF.ts)), four exports. In `serverExternalPackages`.
 - UI: shadcn primitives under `components/ui/` (Radix + `class-variance-authority` + `tailwind-merge`, Tailwind v4). Hindi terms in `lib/defaultTerms.ts`.
@@ -306,7 +335,7 @@ Cascade caveat: `PledgeAudit`/`Transaction` are financial records but currently 
 
 ## Required environment variables
 
-`DATABASE_URL` (pooled), `DIRECT_URL` (migrations only), Clerk (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `WEBHOOK_SECRET`, `NEXT_PUBLIC_CLERK_*` redirect URLs), `NEXT_PUBLIC_BASE_URL`, Cloudinary (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`), Razorpay (`NEXT_PUBLIC_RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_PLAN_YEARLY`, `RAZORPAY_PLAN_HALF_YEARLY`), `ALPHA_VANTAGE_API_KEY`, `CRON_SECRET` (32+ chars).
+`DATABASE_URL` (pooled — used by BOTH the app runtime and the Prisma CLI; see Prisma datasource gotcha), `DIRECT_URL` (currently read by nothing — retained as convention for direct/unpooled migrations; optional as wired today), Clerk (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `WEBHOOK_SECRET`, `NEXT_PUBLIC_CLERK_*` redirect URLs), `NEXT_PUBLIC_BASE_URL`, Cloudinary (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`), Razorpay (`NEXT_PUBLIC_RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_PLAN_YEARLY`, `RAZORPAY_PLAN_HALF_YEARLY`), `ALPHA_VANTAGE_API_KEY`, `CRON_SECRET` (32+ chars).
 
 **Production checklist:**
 - `CRON_SECRET` and `RAZORPAY_WEBHOOK_SECRET` must be non-empty (Invariant 6).
@@ -333,7 +362,29 @@ Deliberately tracked so reviews focus on real bugs rather than re-discovering th
 - **Cloudinary uploads have no server-side MIME/size validation** — applies to pledge item photos AND inventory direct-purchase photos.
 - **Part-payment flow has no UI.** `Transaction` model exists and is rendered read-only on the release page, but there is no form to record a part-payment.
 - **Inventory reports not built.** Future: a Reports tab reading `action: "SOLD"` audits + `InventoryItem` rows.
-- **No error monitoring** (no Sentry; `console.*` only). **No structured logging.** **Security headers** — four basic headers (X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, HSTS) should be in `next.config.ts`; CSP deferred. **No test runner.** **Backup/DR: Neon defaults only.** **Cron: no retry/dead-letter/alerting on missed runs.**
-- **Sign-up hooks violation (fix before production).** [app/(auth)/sign-up/page.tsx](app/(auth)/sign-up/page.tsx) has a `useEffect` after a conditional early return — Rules of Hooks violation. Fix: move ALL hooks above the early return, gate on `isLoaded`.
-- **`src/generated/prisma/` must be gitignored.** Committed generated Prisma client diverges from `node_modules/@prisma/client` and inflates lint output with ~100 false errors. Add `src/generated/` to `.gitignore` and delete the committed copy.
-- **`test-db.js` must be deleted** from repo root (committed dev artifact; picked up by ESLint).
+- **No error monitoring** (no Sentry; `console.*` only). **No structured logging.** **Security headers** — the four base headers (X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, HSTS) ARE implemented in `next.config.ts`, plus `Permissions-Policy` and a `Content-Security-Policy-Report-Only` header. Enforcing CSP is still deferred: Next.js App Router, Clerk, and Razorpay all inject inline scripts, so a strict nonce-based policy needs nonce plumbing first — the Report-Only header collects violations in the meantime. **Before switching Report-Only → enforcing (`Content-Security-Policy`), violations must be collected across a real Clerk sign-in flow AND a real Razorpay checkout, and the Clerk origin must change from `*.clerk.accounts.dev` to the production Clerk Frontend API host.** **No test runner.** **Backup/DR: Neon defaults only.** **Cron: no retry/dead-letter/alerting on missed runs.**
+- **Dev/ops scripts tracked in git.** Three one-off scripts ship in a clone: [scripts/check-db-state.ts](scripts/check-db-state.ts), [scripts/migrate-item-types.ts](scripts/migrate-item-types.ts), [scripts/reconcile-subscriptions.ts](scripts/reconcile-subscriptions.ts). They contain no secrets and no injection surface, but they are DB-mutating tooling. **Accepted for now** given a private repo with few collaborators — documented here so it is a decision, not an oversight.
+- **No `.env.example`.** Onboarding a new developer means reconstructing the env-var list from the checklist below. Optional: add a `.env.example` with placeholder values only (no real secrets) for developer onboarding.
+
+## Security posture (audited)
+
+Summary of what a security audit verified, so future reviews don't re-litigate settled ground. Do not reintroduce anything in "Fixed during audit."
+
+### Verified clean (as of this audit)
+- **Tenant scoping is universal.** Every authenticated API route resolves identity via `auth()` → `prisma.user.findUnique({ where: { clerkUserId } })` → internal `user.id`, and scopes all domain queries by that id — directly or through the owner relation (see Invariant 1).
+- **All five public surfaces use their correct mechanism:** Razorpay HMAC (`/api/webhook/razorpay`), Svix signature (`/api/webhook/register`), and **two distinct cron secret schemes** — `Authorization: Bearer <CRON_SECRET>` for `update-prices`, `x-cron-secret: <CRON_SECRET>` for `evaluate-risk` — plus token + `isPortalBlocked` for the customer portal (`/view/[token]`, `/api/portal-status/[token]`).
+- **All secret comparisons use `constantTimeEqual` and fail closed** on empty/missing env values (Invariant 6).
+- **All raw SQL is parameterized.** No `$queryRawUnsafe` / `$executeRawUnsafe` exists anywhere (grep returns zero). The only raw SQL touching user input is [app/api/dashboard/region-search/route.ts](app/api/dashboard/region-search/route.ts), which parameterizes both `${user.id}` and the search term `${q}` in a Prisma tagged template.
+- **No env file is tracked in git or present in git history.** `.gitignore` covers `.env*`.
+- **No hardcoded secrets.** The only `NEXT_PUBLIC_` vars referenced in application code are `NEXT_PUBLIC_BASE_URL` and `NEXT_PUBLIC_RAZORPAY_KEY_ID`, both genuinely public by design. (Clerk's `NEXT_PUBLIC_CLERK_*` vars are read by the Clerk SDK, not app code, and are also public by design.)
+- **Every UI-gated state transition is independently re-enforced server-side**, with atomic `updateMany` + `count === 0` guards (release, bulk-release, sell-to-inventory, inventory sell).
+- **No portal enumeration oracle.** Portal denial responses do not distinguish "token not found" from "token blocked."
+
+### Fixed during audit (do not reintroduce)
+- **Cross-tenant PII leak in the pledge receipt route.** It queried `{ id: pledgeId, customerId }` with **no `userId` relation**, letting any authenticated tenant fetch another tenant's receipt PDF. This is the exact incident Invariant 1 documents — it has been reintroduced once already. Every pledge lookup by URL id MUST include `customer: { userId: user.id }`.
+- **Raw `err.message` returned to clients** from the onboarding route.
+- **Unbounded `console.dir(err, { depth: null })`** writing Prisma query context and form PII to disk logs.
+- **Debug `console.log` statements** writing customer names and full item details to server logs from the receipt route.
+
+### Known accepted risk (not a blocker)
+- **Subscription status is NOT enforced on any data-mutating API route.** `SubscriptionGuard` is a client component; `proxy.ts` enforces sign-in only. A lapsed user holding a valid Clerk session can still call mutating endpoints. Because every route remains correctly tenant-scoped, this is **revenue leakage, not a data-exposure risk**. If enforcement becomes a product requirement, it belongs in a shared server-side guard, not per-route.
