@@ -91,13 +91,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, user });
 
   } catch (err) {
-    console.error(err);
-    console.error("🔥 ONBOARDING ERROR FULL:");
-console.dir(err, { depth: null });
+    console.error("Onboarding failed:", err instanceof Error ? err.message : err);
 
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Internal Server Error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }

@@ -57,9 +57,6 @@ export async function GET(req: Request) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error(`❌ Cron update-prices failed at ${calledAt}:`, message);
 
-    return Response.json(
-      { success: false, error: message, calledAt },
-      { status: 500 }
-    );
+    return Response.json({ error: "Server Error" }, { status: 500 });
   }
 }

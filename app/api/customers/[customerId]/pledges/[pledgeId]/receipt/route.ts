@@ -51,9 +51,6 @@ export async function GET(
     if (!pledge)
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
 
-    console.log("RECEIPT pledge:", pledge.id, pledge.customer.name);
-    console.log("items:", pledge.items);
-
     const pdfBuffer = await generateReceiptPDF({
       transactionId: pledge.id.slice(-6).toUpperCase(),
       pledgeDate: new Date(pledge.pledgeDate).toLocaleDateString("en-IN", {
