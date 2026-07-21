@@ -567,8 +567,27 @@ type ReceiptData = {
 };
 
 async function fetchImageBuffer(url: string): Promise<Buffer | null> {
+  // Defense-in-depth: only fetch images from Cloudinary over HTTPS. The only
+  // caller passes a server-generated Cloudinary secure_url, but this guards
+  // against SSRF if any future path lets a client influence the value.
   try {
-    const res = await fetch(url, { cache: "no-store" });
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") return null;
+    if (!parsed.hostname.endsWith("res.cloudinary.com")) return null;
+  } catch {
+    return null; // malformed URL
+  }
+
+  // Node's fetch has no default timeout — bound it so a hung Cloudinary
+  // response can't hang the receipt route. On timeout/failure fall back to
+  // null so the PDF still generates without the image.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch(url, {
+      cache: "no-store",
+      signal: controller.signal,
+    });
     if (!res.ok) {
       console.error("Image fetch HTTP error:", res.status);
       return null;
@@ -578,6 +597,8 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
   } catch (e) {
     console.error("fetchImageBuffer error:", e);
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

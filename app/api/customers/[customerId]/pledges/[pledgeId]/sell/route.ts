@@ -68,6 +68,10 @@ export async function POST(req: Request, context: RouteContext) {
       return NextResponse.json({ error: "saleDate must be after pledgeDate" }, { status: 400 });
     }
 
+    if (notes !== undefined && notes !== null && typeof notes === "string" && notes.length > 2000) {
+      return NextResponse.json({ error: "VALIDATION", message: "Notes must be at most 2000 characters" }, { status: 400 });
+    }
+
     // ── Compute amount owed at time of sale ───────────────────────────
     const calc = calculateHybridInterest(
       Number(pledge.loanAmount),

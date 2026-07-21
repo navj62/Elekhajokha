@@ -14,6 +14,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ taskId
     const { taskId } = await params;
     const body = await req.json();
 
+    if (body.title !== undefined && (typeof body.title !== "string" || body.title.length > 500)) {
+      return NextResponse.json({ error: "VALIDATION", message: "Title must be at most 500 characters" }, { status: 400 });
+    }
+
     const task = await prisma.task.findFirst({ where: { id: taskId, userId: user.id } });
     if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
 

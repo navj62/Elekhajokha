@@ -137,15 +137,56 @@ export async function PATCH(req: Request, context: RouteContext) {
     const body = await req.json();
     const { name, address, region, mobile, aadharNo, remark } = body;
 
+    // Partial update — undefined means "leave unchanged". Validate any field
+    // that IS provided, mirroring add-customer's rules for the overlapping fields.
+    for (const [field, value] of [
+      ["name", name],
+      ["address", address],
+      ["region", region],
+    ] as const) {
+      if (value !== undefined) {
+        if (typeof value !== "string" || !value.trim())
+          return NextResponse.json(
+            { error: "VALIDATION", message: `${field} is required and cannot be empty` },
+            { status: 400 }
+          );
+        if (value.trim().length > 200)
+          return NextResponse.json(
+            { error: "VALIDATION", message: `${field} must be at most 200 characters` },
+            { status: 400 }
+          );
+      }
+    }
+
+    if (mobile !== undefined && mobile !== null && String(mobile).trim() !== "") {
+      if (typeof mobile !== "string" || !/^\d{10}$/.test(mobile.trim()))
+        return NextResponse.json(
+          { error: "VALIDATION", message: "Mobile number must be exactly 10 digits" },
+          { status: 400 }
+        );
+    }
+
+    if (aadharNo !== undefined && aadharNo !== null && typeof aadharNo === "string" && aadharNo.trim().length > 20)
+      return NextResponse.json(
+        { error: "VALIDATION", message: "Aadhaar number must be at most 20 characters" },
+        { status: 400 }
+      );
+
+    if (remark !== undefined && remark !== null && typeof remark === "string" && remark.length > 2000)
+      return NextResponse.json(
+        { error: "VALIDATION", message: "Remark must be at most 2000 characters" },
+        { status: 400 }
+      );
+
     const updated = await prisma.customer.updateMany({
       where: { id: customerId, userId: user.id, deletedAt: null },
       data: {
-        ...(name     !== undefined && { name }),
-        ...(address  !== undefined && { address }),
-        ...(region   !== undefined && { region }),
-        ...(mobile   !== undefined && { mobile }),
-        ...(aadharNo !== undefined && { aadharNo }),
-        ...(remark   !== undefined && { remark }),
+        ...(name     !== undefined && { name:     typeof name === "string" ? name.trim() : name }),
+        ...(address  !== undefined && { address:  typeof address === "string" ? address.trim() : address }),
+        ...(region   !== undefined && { region:   typeof region === "string" ? region.trim() : region }),
+        ...(mobile   !== undefined && { mobile:   typeof mobile === "string" ? (mobile.trim() || null) : mobile }),
+        ...(aadharNo !== undefined && { aadharNo: typeof aadharNo === "string" ? (aadharNo.trim() || null) : aadharNo }),
+        ...(remark   !== undefined && { remark:   typeof remark === "string" ? (remark.trim() || null) : remark }),
       },
     });
 

@@ -117,6 +117,24 @@ export async function PATCH(req: Request) {
       );
     }
 
+    /* Length caps on free-text fields (flow into PDFs / portal) */
+    const lengthChecks: [string, string | undefined, number][] = [
+      ["firstName", firstName, 100],
+      ["lastName", lastName, 100],
+      ["shopName", shopName, 200],
+      ["address", address, 500],
+      ["shopownerTerms", shopownerTerms, 5000],
+      ["customerTerms", customerTerms, 5000],
+    ];
+    for (const [field, value, max] of lengthChecks) {
+      if (value !== undefined && value.length > max) {
+        return NextResponse.json(
+          { error: "VALIDATION", message: `${field} must be at most ${max} characters` },
+          { status: 400 }
+        );
+      }
+    }
+
     /* ☁️ Upload image if present */
     let profileImageUrl: string | undefined;
 
@@ -142,9 +160,6 @@ export async function PATCH(req: Request) {
         ...(customerTerms  !== undefined && { customerTerms: customerTerms }),
       },
     });
-    // app/api/profile/route.ts — in PATCH, after prisma.user.update:
-console.log("UPDATED shopownerTerms:", updated.shopownerTerms);
-console.log("UPDATED customerTerms:", updated.customerTerms);
 
     return NextResponse.json(updated);
 

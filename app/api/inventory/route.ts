@@ -129,8 +129,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "VALIDATION", message: "Purity must be between 0 and 100." }, { status: 400 });
     }
 
-    if (isNaN(grossWeight) || grossWeight <= 0)
-      return NextResponse.json({ error: "grossWeight must be > 0" }, { status: 400 });
+    if (isNaN(grossWeight) || !isFinite(grossWeight) || grossWeight <= 0 || grossWeight > 100000)
+      return NextResponse.json({ error: "grossWeight must be > 0 and at most 100000 grams" }, { status: 400 });
 
     // A GOLD/SILVER item needs a purity to derive its pure-metal net weight.
     if ((normalizedMetal === "GOLD" || normalizedMetal === "SILVER") && (purity === null))
@@ -165,6 +165,12 @@ export async function POST(req: NextRequest) {
 
     if (!sellerName)
       return NextResponse.json({ error: "VALIDATION", message: "Seller name is required." }, { status: 400 });
+    if (sellerName.length > 200)
+      return NextResponse.json({ error: "VALIDATION", message: "Seller name must be at most 200 characters." }, { status: 400 });
+    if (sellerIdNum !== null && sellerIdNum.length > 100)
+      return NextResponse.json({ error: "VALIDATION", message: "Seller ID must be at most 100 characters." }, { status: 400 });
+    if (notes !== null && notes.length > 2000)
+      return NextResponse.json({ error: "VALIDATION", message: "Notes must be at most 2000 characters." }, { status: 400 });
 
     const validType = await prisma.pledgeItemType.findFirst({
       where: {

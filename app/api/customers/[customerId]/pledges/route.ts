@@ -9,6 +9,7 @@ type RouteContext = {
 };
 
 const VALID_METAL_TYPES = Object.values(MetalType) as string[];
+const VALID_COMPOUNDING = ["MONTHLY", "HALFYEARLY", "YEARLY"] as const;
 
 function toDecimal(value: unknown): Prisma.Decimal {
   const str = String(value ?? "").trim();
@@ -52,6 +53,19 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     if (!loanAmount || !interestRate || !compoundingDuration || !pledgeDate)
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+
+    // Validate compounding against the allowlist (mirrors the release paths).
+    if (!VALID_COMPOUNDING.includes(compoundingDuration as (typeof VALID_COMPOUNDING)[number]))
+      return NextResponse.json(
+        { error: "VALIDATION", message: "Invalid compounding duration" },
+        { status: 400 }
+      );
+
+    if (remark !== null && remark.length > 2000)
+      return NextResponse.json(
+        { error: "VALIDATION", message: "Remark must be at most 2000 characters" },
+        { status: 400 }
+      );
 
     // ── Bounds: keep money inputs sane before they reach interest/LTV math ──
     // Compare on Number(), but keep the original strings for Decimal storage.
@@ -120,13 +134,19 @@ export async function POST(req: NextRequest, context: RouteContext) {
         const v = Number(item[f]);
         if (item[f] === undefined || item[f] === "" || isNaN(v))
           itemErrors.push(`Item[${i}]: missing or invalid "${f}"`);
+        else if (!isFinite(v))
+          itemErrors.push(`Item[${i}]: "${f}" must be a finite number`);
         else if (v <= 0)
           itemErrors.push(`Item[${i}]: "${f}" must be greater than 0`);
         else if (f === "purity" && v > 100)
           itemErrors.push(`Item[${i}]: "purity" must be at most 100`);
+        else if ((f === "grossWeight" || f === "netWeight") && v > 100000)
+          itemErrors.push(`Item[${i}]: "${f}" must be at most 100000 grams`);
       }
       if (Number(item.netWeight) > Number(item.grossWeight))
         itemErrors.push(`Item[${i}]: "netWeight" must not exceed "grossWeight"`);
+      if (item.itemName !== undefined && item.itemName !== null && String(item.itemName).length > 200)
+        itemErrors.push(`Item[${i}]: "itemName" must be at most 200 characters`);
     });
 
     if (itemErrors.length)

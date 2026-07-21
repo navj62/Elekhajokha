@@ -71,6 +71,12 @@ export async function POST(req: Request, context: RouteContext) {
         { status: 400 }
       );
 
+    if (note !== undefined && note !== null && typeof note === "string" && note.length > 1000)
+      return NextResponse.json(
+        { error: "VALIDATION", message: "Note must be at most 1000 characters" },
+        { status: 400 }
+      );
+
     let createdAt = new Date();
     if (transactionDate) {
       const parsed = new Date(transactionDate);

@@ -43,6 +43,9 @@ export async function POST(req: Request) {
     if (!title?.trim()) {
       return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
+    if (title.trim().length > 500) {
+      return NextResponse.json({ error: "VALIDATION", message: "Title must be at most 500 characters" }, { status: 400 });
+    }
 
     const task = await prisma.task.create({
       data: {
