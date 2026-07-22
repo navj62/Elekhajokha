@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed-defaults.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.5.9",

@@ -99,11 +99,7 @@ export default function SignInPage() {
     // totp / backup_code: no send step
     return true;
   }
-  // TEMP-DEBUG — remove after diagnosing
-console.log('[DEBUG needs_client_trust]', JSON.stringify({
-  status: signIn.status,
-  supportedSecondFactors: signIn.supportedSecondFactors,
-}))
+
   // ── Enter MFA mode: pick strategy, send code if needed ────────────────
   async function enterMfa() {
     const factors = signIn.supportedSecondFactors ?? [];

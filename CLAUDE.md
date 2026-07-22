@@ -41,16 +41,17 @@ npm run dev       # Next dev server on http://localhost:3000
 npm run build     # prisma generate && next build
 npm run start     # production server
 npm run lint      # eslint (flat config, eslint-config-next)
-npx tsc --noEmit  # typecheck — the PRIMARY verification gate (no test runner exists)
+npx tsc --noEmit  # typecheck — the PRIMARY verification gate
+npm test          # vitest — unit tests for interest / LTV / customer-risk pure logic
 
 npx prisma generate          # regenerate the Prisma client
 npx prisma migrate dev       # apply/create migrations (dev)
 npx prisma migrate deploy    # apply migrations in production (never migrate dev on prod)
 npx prisma studio            # inspect the DB
-npx prisma db seed           # runs tsx prisma/seed.ts (seeds default PledgeItemType rows)
+npx prisma db seed           # runs tsx prisma/seed-defaults.ts (idempotently seeds the 10 default PledgeItemType rows)
 ```
 
-There is no test runner configured in this repo. After any change, run `npx tsc --noEmit` and `npm run lint`; for build-time issues (dynamic imports, server/client boundaries) run `npm run build`. For flows that touch payment or the DB, verify manually in `prisma studio` — typecheck passing is necessary but not sufficient.
+A test runner IS configured: `npm test` runs **vitest** (`vitest run`) over three unit-test files in `tests/` — `interest.test.ts`, `calculateLTV.test.ts`, `customerRiskScore.test.ts` — covering the pure financial/risk logic. There is no integration/E2E coverage for API routes or DB flows. After any change, run `npx tsc --noEmit` (the PRIMARY gate), `npm run lint`, and `npm test`; for build-time issues (dynamic imports, server/client boundaries) run `npm run build`. For flows that touch payment or the DB, verify manually in `prisma studio` — typecheck + unit tests passing is necessary but not sufficient.
 
 ### Prisma datasource gotcha
 The runtime client and the CLI read their connection string from **different files**, but both currently point at `DATABASE_URL`:
@@ -149,7 +150,7 @@ Plans: `halfyearly` / `yearly`, mapped via `RAZORPAY_PLAN_HALF_YEARLY` / `RAZORP
 `PledgeItem.itemType` is a plain `String` storing the human-readable label directly (e.g. `"Ring"`, `"Kamarbandh"`). The old `ItemType` Prisma enum has been **fully removed**. Do not reference `ItemType` anywhere — the grep result for it must be zero.
 
 Valid types live in the `PledgeItemType` table (`pledge_item_types`):
-- **System defaults** (`isDefault: true`, `userId: null`) — 10 rows seeded by `prisma/seed.ts`: Ring, Necklace, Bangles, Chain, Earrings, Bracelet, Anklet, Pendant, Bangle Set, Other. Shared across all users, not deletable via API.
+- **System defaults** (`isDefault: true`, `userId: null`) — 10 rows seeded by `prisma/seed-defaults.ts`: Ring, Necklace, Bangles, Chain, Earrings, Bracelet, Anklet, Pendant, Bangle Set, Other. Shared across all users, not deletable via API.
 - **Custom types** (`isDefault: false`, `userId` set) — user-created, private, deletable.
 
 API: `GET /api/item-types` returns `{ defaults, custom }`; `POST /api/item-types` creates a custom type (50-char max, case-insensitive duplicate check against both defaults and user's own); `DELETE /api/item-types/[id]` is ownership-checked, blocks default deletion. The pledge-create API validates the submitted label against `PledgeItemType` (`isDefault: true OR userId === user.id`) — does not accept arbitrary strings. **`PledgeItem.itemType` stores the label string, NOT a FK** — deleting a custom type never corrupts existing pledges. Display renders the string directly (no conversion wrapper). Search uses `{ itemType: { contains, mode: "insensitive" } }`. Profile page manages custom types. Pledge-create form and inventory direct-purchase page both use a grouped dropdown (Standard / Custom) fed from `GET /api/item-types`.
@@ -340,7 +341,7 @@ Cascade caveat: `PledgeAudit`/`Transaction` are financial records but currently 
 **Production checklist:**
 - `CRON_SECRET` and `RAZORPAY_WEBHOOK_SECRET` must be non-empty (Invariant 6).
 - Use a new Clerk **production instance** — fresh keys, recreate JWT template.
-- New clean Neon production database. Run `npx prisma migrate deploy` then `npx prisma db seed` (seeds 10 default `PledgeItemType` rows — seed will also attempt demo-data seeding for a hardcoded dev USER_ID, fail with "User not found", and exit 1; the item types are already committed before the crash, so this is harmless — verify in prisma studio).
+- New clean Neon production database. Run `npx prisma migrate deploy` then `npx prisma db seed`. The seed command runs `prisma/seed-defaults.ts`, which idempotently creates the 10 system-default `PledgeItemType` rows (`isDefault: true`, `userId: null`) and exits 0 whether it created rows or skipped existing ones. It contains no PII and no hardcoded user IDs, and is safe to run repeatedly. Verify in prisma studio that 10 default rows exist.
 - Set `NEXT_PUBLIC_BASE_URL` to the production domain.
 - Configure Razorpay webhook URL → `https://yourdomain.com/api/webhook/razorpay` (live mode + KYC).
 - Configure Clerk webhook → `https://yourdomain.com/api/webhook/register` (events: `user.created`, `user.deleted`).
@@ -360,10 +361,11 @@ Deliberately tracked so reviews focus on real bugs rather than re-discovering th
 - **Cascade-delete of `PledgeAudit`/`Transaction`** destroys financial history on hard delete.
 - **`pledgeDate` bounds not enforced** on create (future/far-past dates allowed).
 - **Cloudinary uploads have no server-side MIME/size validation** — applies to pledge item photos AND inventory direct-purchase photos.
-- **Part-payment flow has no UI.** `Transaction` model exists and is rendered read-only on the release page, but there is no form to record a part-payment.
+- ~~Part-payment flow has no UI.~~ **Implemented.** `POST /api/customers/[customerId]/pledges/[pledgeId]/transactions` records a `Transaction` (standard auth + ownership scoping; validates positive amount, type ∈ {REPAYMENT_PRINCIPAL, REPAYMENT_INTEREST, TOPUP}, optional note ≤1000 chars, optional transactionDate). The pledge detail page (`app/(CustomersDetails)/customers/[customerId]/pledges/[pledgeId]/page.tsx`) has the form — type dropdown, amount, date, submit — plus read-only history. Note: the route stores `amount` as `new Prisma.Decimal(Number(amount))`; it does not adjust the pledge balance (Transactions are a ledger, not applied to accrual).
 - **Inventory reports not built.** Future: a Reports tab reading `action: "SOLD"` audits + `InventoryItem` rows.
-- **No error monitoring** (no Sentry; `console.*` only). **No structured logging.** **Security headers** — the four base headers (X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, HSTS) ARE implemented in `next.config.ts`, plus `Permissions-Policy` and a `Content-Security-Policy-Report-Only` header. Enforcing CSP is still deferred: Next.js App Router, Clerk, and Razorpay all inject inline scripts, so a strict nonce-based policy needs nonce plumbing first — the Report-Only header collects violations in the meantime. **Before switching Report-Only → enforcing (`Content-Security-Policy`), violations must be collected across a real Clerk sign-in flow AND a real Razorpay checkout, and the Clerk origin must change from `*.clerk.accounts.dev` to the production Clerk Frontend API host.** **No test runner.** **Backup/DR: Neon defaults only.** **Cron: no retry/dead-letter/alerting on missed runs.**
+- **No error monitoring** (no Sentry; `console.*` only). **No structured logging.** **Security headers** — the four base headers (X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, HSTS) ARE implemented in `next.config.ts`, plus `Permissions-Policy` and a `Content-Security-Policy-Report-Only` header. Enforcing CSP is still deferred: Next.js App Router, Clerk, and Razorpay all inject inline scripts, so a strict nonce-based policy needs nonce plumbing first — the Report-Only header collects violations in the meantime. **Before switching Report-Only → enforcing (`Content-Security-Policy`), violations must be collected across a real Clerk sign-in flow AND a real Razorpay checkout, and the Clerk origin must change from `*.clerk.accounts.dev` to the production Clerk Frontend API host.** **Backup/DR: Neon defaults only.** **Cron: no retry/dead-letter/alerting on missed runs.**
 - **Dev/ops scripts tracked in git.** Three one-off scripts ship in a clone: [scripts/check-db-state.ts](scripts/check-db-state.ts), [scripts/migrate-item-types.ts](scripts/migrate-item-types.ts), [scripts/reconcile-subscriptions.ts](scripts/reconcile-subscriptions.ts). They contain no secrets and no injection surface, but they are DB-mutating tooling. **Accepted for now** given a private repo with few collaborators — documented here so it is a decision, not an oversight.
+- **Customer PII in git history.** Two ledger-import scripts (`prisma/seed.ts`, `prisma/seed-ledger-entries-batch2.ts`) contained real customer PII (names, regions, loan amounts transcribed from a physical ledger) and used `new PrismaClient()` in violation of Invariant 9. They were **removed from the working tree** so they no longer ship to future clones, but they **remain in git history** — a history purge (`git filter-repo`/BFG + force-push) was **deliberately not performed**. The repo must stay private. `prisma db seed` now runs the PII-free `prisma/seed-defaults.ts`.
 - **No `.env.example`.** Onboarding a new developer means reconstructing the env-var list from the checklist below. Optional: add a `.env.example` with placeholder values only (no real secrets) for developer onboarding.
 
 ## Security posture (audited)
