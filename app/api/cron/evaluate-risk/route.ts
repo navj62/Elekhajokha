@@ -92,14 +92,27 @@ const PLEDGE_SELECT = {
 type PledgeRow = Prisma.PledgeGetPayload<{ select: typeof PLEDGE_SELECT }>;
 
 // ─────────────────────────────────────────────
-// AUTH GUARD  (unchanged)
+// AUTH GUARD
 // ─────────────────────────────────────────────
+// Accepts EITHER scheme, both constant-time and fail-closed (Invariant 6):
+//   • `Authorization: Bearer <CRON_SECRET>` — what Vercel Cron sends (GET only)
+//   • `x-cron-secret: <CRON_SECRET>`        — existing manual-curl scheme
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false; // fail closed when the secret is unset/empty
-  const provided = req.headers.get("x-cron-secret");
-  if (!provided) return false;
-  return constantTimeEqual(provided, secret);
+
+  // Scheme 1: x-cron-secret header
+  const headerSecret = req.headers.get("x-cron-secret");
+  if (headerSecret && constantTimeEqual(headerSecret, secret)) return true;
+
+  // Scheme 2: Authorization: Bearer <secret>
+  const authHeader = req.headers.get("authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    const bearer = authHeader.slice("Bearer ".length);
+    if (bearer && constantTimeEqual(bearer, secret)) return true;
+  }
+
+  return false;
 }
 
 // Tiers that warrant a notification when a pledge moves INTO them.
@@ -176,20 +189,37 @@ async function flushPledgeMetrics(rows: PledgeUpdate[]): Promise<void> {
 // ─────────────────────────────────────────────
 // MAIN HANDLER
 // ─────────────────────────────────────────────
-export async function POST(req: NextRequest) {
+// Vercel Cron issues GET with `Authorization: Bearer <CRON_SECRET>`; manual
+// curl / existing triggers use POST with `x-cron-secret`. Both verbs run the
+// exact same logic via this shared handler.
+async function handle(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const dryRun = req.nextUrl.searchParams.get("dryRun") === "true";
   const runStart = Date.now();
+  const elapsed = () => Date.now() - runStart;
+
+  // Observability threshold: warn once past this so a kill under Vercel Hobby's
+  // 10s hard cap is VISIBLE in the logs. Purely a signal — never breaks the loop.
+  const TIMEOUT_WARN_MS = 7000;
 
   // Progress markers so the catch block can report what was committed.
+  // (declared outside the try so both the success summary and the catch can read them)
+  let totalPledges = 0;
   let batchNumber = 0;
   let pledgesProcessed = 0;
   let alertsCreated = 0;
 
   try {
+    // ── Total active pledges up front, so per-batch progress is meaningful ──
+    // Same status filter as the batch loop below — do not diverge.
+    totalPledges = await prisma.pledge.count({ where: { status: "ACTIVE" } });
+    console.log(
+      `[evaluate-risk] START — ${totalPledges} active pledges to process` +
+      (dryRun ? " [dryRun]" : "")
+    );
     // ── Latest metal prices — fetched ONCE (hoisted), never per pledge ──
     const [latestGold, latestSilver] = await Promise.all([
       prisma.metalPrice.findFirst({ where: { metal: "GOLD" }, orderBy: { createdAt: "desc" } }),
@@ -338,11 +368,25 @@ export async function POST(req: NextRequest) {
       pledgesProcessed += items.length;
       alertsCreated += batchAlerts.length;
 
+      // One line per committed batch. If the function is killed mid-run, the
+      // LAST line already in Vercel's logs tells you exactly how far it got.
       console.log(
-        `[evaluate-risk] batch ${batchNumber} — ${items.length} pledges ` +
-        `(${pledgesProcessed} total) in ${Date.now() - batchStart}ms` +
+        `[evaluate-risk] batch ${batchNumber} done — ` +
+        `${pledgesProcessed}/${totalPledges} pledges — ` +
+        `${elapsed()}ms elapsed (batch took ${Date.now() - batchStart}ms)` +
         (dryRun ? " [dryRun]" : "")
       );
+
+      // Warn — but do NOT break — when we cross the headroom threshold under the
+      // Hobby 10s cap. Breaking early would change behaviour; the warning is the
+      // signal that remaining pledges likely won't be processed this run.
+      if (elapsed() > TIMEOUT_WARN_MS) {
+        console.warn(
+          `[evaluate-risk] ⚠️ APPROACHING TIMEOUT — ${elapsed()}ms elapsed, ` +
+          `${pledgesProcessed}/${totalPledges} done. Remaining pledges will ` +
+          `NOT be processed this run.`
+        );
+      }
 
       if (!hasNext) break;
       cursor = items[items.length - 1].id;
@@ -418,12 +462,24 @@ export async function POST(req: NextRequest) {
         snapshotsWouldCreate: snapshotData.length,
         elapsedMs,
         alerts: alertsPreview, // capped preview
+        run: {
+          totalPledges,
+          processed: pledgesProcessed,
+          batches: batchNumber,
+          durationMs: elapsed(),
+          complete: pledgesProcessed >= totalPledges,
+          nearTimeout: elapsed() > TIMEOUT_WARN_MS,
+        },
       });
     }
 
     console.log(
       `[evaluate-risk] complete — ${pledgesProcessed} pledges, ${accByUser.size} users, ` +
       `${alertsCreated} alerts, ${snapshotData.length} snapshots, ${batchNumber} batches in ${elapsedMs}ms`
+    );
+    console.log(
+      `[evaluate-risk] COMPLETE — ${pledgesProcessed}/${totalPledges} pledges ` +
+      `in ${batchNumber} batches, ${elapsed()}ms total`
     );
 
     return NextResponse.json({
@@ -434,14 +490,23 @@ export async function POST(req: NextRequest) {
       alertsCreated,
       snapshotsCreated: snapshotData.length,
       elapsedMs,
+      run: {
+        totalPledges,
+        processed: pledgesProcessed,
+        batches: batchNumber,
+        durationMs: elapsed(),
+        complete: pledgesProcessed >= totalPledges,
+        nearTimeout: elapsed() > TIMEOUT_WARN_MS,
+      },
     });
   } catch (error) {
     // Pages already flushed are committed; this run just stops here.
     console.error(
-      `[evaluate-risk] FAILED on batch ${batchNumber + 1} — ` +
+      `[evaluate-risk] FAILED after ${elapsed()}ms — ` +
+      `${pledgesProcessed}/${totalPledges} processed on batch ${batchNumber + 1}; ` +
       `${pledgesProcessed} pledges across ${batchNumber} batch(es) were already committed; ` +
-      `snapshots for this run were NOT written. Elapsed ${Date.now() - runStart}ms.`,
-      error
+      `snapshots for this run were NOT written.`,
+      error instanceof Error ? error.message : error
     );
     return NextResponse.json(
       {
@@ -455,3 +520,8 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+// GET — Vercel Cron entrypoint (Authorization: Bearer <CRON_SECRET>).
+export const GET = handle;
+// POST — existing manual-curl / trigger entrypoint (x-cron-secret header).
+export const POST = handle;
