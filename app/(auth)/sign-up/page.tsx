@@ -351,6 +351,8 @@ export default function SignUpPage() {
 
                   {error && <ErrorBox msg={error} />}
 
+                  <div id="clerk-captcha" />
+
                   <button
                     type="submit" disabled={loading}
                     className="w-full bg-[#5A6043] hover:bg-[#4E5438] text-white rounded-[20px] h-[56px] font-semibold text-[15px] flex items-center justify-center gap-2 transition-all mt-4 active:scale-[0.98]"
