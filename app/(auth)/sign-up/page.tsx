@@ -93,6 +93,11 @@ export default function SignUpPage() {
 
   setLoading(true);
   try {
+    // signUp.password() PATCHes instead of POSTing when a sign-up already exists
+    // on the Client, and the PATCH does not persist the password. Discard any
+    // abandoned attempt so this always takes the create path.
+    if (signUp.id) await signUp.reset();
+
     const createRes = await signUp.password({
       firstName:    form.firstName,
       lastName:     form.lastName,
@@ -100,25 +105,33 @@ export default function SignUpPage() {
       emailAddress: form.email,
       password:     form.password,
     });
-    if (createRes?.error) throw { errors: [createRes.error] };
+    if (createRes?.error) throw createRes.error;
+
+    // Don't advance to the OTP step on a sign-up Clerk still considers incomplete.
+    if (signUp.missingFields.length > 0) {
+      setError(`Sign up incomplete — still required: ${signUp.missingFields.join(", ")}`);
+      return;
+    }
 
     const prepRes = await signUp.verifications.sendEmailCode();
-    if (prepRes?.error) throw { errors: [prepRes.error] };
+    if (prepRes?.error) throw prepRes.error;
 
     setPendingVerification(true);
     setOtp(Array(6).fill(""));
 
   } catch (err: unknown) {
-    const e = err as { errors?: { message?: string; longMessage?: string; code?: string }[] };
+    // Core 3: API failures are a ClerkAPIResponseError whose top-level `code` is
+    // always "api_response_error" — the per-field code lives in `.errors[0]`.
+    type FieldError = { code?: string; message?: string; longMessage?: string };
+    const clerkError = err as FieldError & { errors?: FieldError[] };
+    const fieldError: FieldError | undefined = clerkError?.errors?.[0] ?? clerkError;
 
-    // ✅ Catch Clerk's username-taken error specifically
-    const clerkError = e.errors?.[0];
-    if (clerkError?.code === "form_identifier_exists" || clerkError?.message?.toLowerCase().includes("username")) {
+    if (fieldError?.code === "form_identifier_exists") {
       setError("That username is already taken. Please choose a different one.");
     } else {
       setError(
-        clerkError?.longMessage ||
-        clerkError?.message ||
+        fieldError?.longMessage ||
+        fieldError?.message ||
         "Sign up failed. Please try again."
       );
     }
