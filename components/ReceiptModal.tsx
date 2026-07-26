@@ -1,6 +1,7 @@
 // components/ReceiptModal.tsx
 "use client";
 import { useState } from "react";
+import { ReceiptText } from "lucide-react";
 
 type Props = {
   customerId: string;
@@ -50,9 +51,9 @@ export default function ReceiptModal({ customerId, pledgeId }: Props) {
     <>
       <button
         onClick={openReceipt}
-        className="bg-[#E5E3D9] hover:bg-[#D5D3C9] text-[#2C2C2C] text-[13px] font-semibold px-4 py-2 rounded-[10px] transition-colors"
+        className="flex items-center gap-1.5 bg-[#E5E3D9] hover:bg-[#D5D3C9] text-[#2C2C2C] text-[13px] font-semibold px-4 py-2 rounded-[10px] transition-colors"
       >
-        View Receipt
+        <ReceiptText size={15} /> View Receipt
       </button>
 
       {open && (

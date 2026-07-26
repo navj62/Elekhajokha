@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   Loader2, ArrowLeft, User, Phone, MapPin, Percent,
-  Calendar, Clock, ChevronUp, Plus, FileText, X,
+  Calendar, Clock, ChevronUp, Plus, FileText, X, Archive,
   TrendingUp, Package, RefreshCw, Receipt as ReceiptIcon,
 } from "lucide-react";
 
@@ -160,6 +160,7 @@ function MetalBadge({ metal }: { metal: string }) {
 /* ========================================================================== */
 export default function PledgeDetailPage() {
   const params = useParams<{ customerId: string; pledgeId: string }>();
+  const customerId = params?.customerId;
 
   const [pledge, setPledge] = useState<PledgeDetail | null>(null);
   const [market, setMarket] = useState<MarketRates | null>(null);
@@ -355,7 +356,17 @@ export default function PledgeDetailPage() {
         </div>
 
         {/* Action buttons */}
+
         <div className="flex items-center gap-2.5 mt-1">
+          <Link href={`/customers/${customerId}/pledges/${pledge.id}/sell`}>
+            <button
+              disabled={pledge.status === "RELEASED" || pledge.status === "SOLD"}
+              className="flex items-center gap-1.5 bg-[#E5E3D9] hover:bg-[#D5D3C9] text-[#2C2C2C] text-[13px] font-semibold px-4 py-2 rounded-[10px] transition-colors cursor-pointer"
+              title="Add to Inventory"
+            >
+              <Archive size={15} /> Add to Inventory
+            </button>
+          </Link>
           <ReceiptModal customerId={params.customerId} pledgeId={pledge.id} />
           {pledge.status === "ACTIVE" && (
             <Link href={`/customers/${params.customerId}/pledges/${params.pledgeId}/release`}>

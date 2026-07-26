@@ -84,15 +84,15 @@ export default function SellPledgePage() {
 
   const today = new Date().toISOString().split("T")[0];
 
-  const [saleDate, setSaleDate]   = useState(today);
-  const [buyPrice, setBuyPrice]   = useState("");
-  const [notes, setNotes]         = useState("");
-  const [pledge, setPledge]       = useState<Pledge | null>(null);
-  const [fetching, setFetching]   = useState(true);
-  const [fetchErr, setFetchErr]   = useState("");
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState("");
-  const [sold, setSold]           = useState(false);
+  const [saleDate, setSaleDate] = useState(today);
+  const [buyPrice, setBuyPrice] = useState("");
+  const [notes, setNotes] = useState("");
+  const [pledge, setPledge] = useState<Pledge | null>(null);
+  const [fetching, setFetching] = useState(true);
+  const [fetchErr, setFetchErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [sold, setSold] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
   /* ── Fetch pledge ── */
@@ -100,7 +100,7 @@ export default function SellPledgePage() {
     setFetching(true);
     setFetchErr("");
     try {
-      const res  = await fetch(`/api/customers/${params.customerId}/pledges/${params.pledgeId}`);
+      const res = await fetch(`/api/customers/${params.customerId}/pledges/${params.pledgeId}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load pledge");
       const p = data?.pledge ?? data;
@@ -134,10 +134,10 @@ export default function SellPledgePage() {
     );
   }, [pledge, saleDate, isBeforeSale]);
 
-  const amountOwed        = calc?.receivableAmount ?? 0;
-  const buyPriceNum       = buyPrice === "" ? 0 : Math.max(0, Number(buyPrice));
+  const amountOwed = calc?.receivableAmount ?? 0;
+  const buyPriceNum = buyPrice === "" ? 0 : Math.max(0, Number(buyPrice));
   const cashToPayCustomer = Math.max(buyPriceNum - amountOwed, 0);
-  const uncoveredLoss     = Math.max(amountOwed - buyPriceNum, 0);
+  const uncoveredLoss = Math.max(amountOwed - buyPriceNum, 0);
 
   const canSell =
     pledge !== null &&
@@ -155,9 +155,9 @@ export default function SellPledgePage() {
       const res = await fetch(
         `/api/customers/${params.customerId}/pledges/${params.pledgeId}/sell`,
         {
-          method:  "POST",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ buyPrice: buyPriceNum, notes: notes.trim() || null, saleDate }),
+          body: JSON.stringify({ buyPrice: buyPriceNum, notes: notes.trim() || null, saleDate }),
         }
       );
       const data = await res.json();
@@ -282,10 +282,10 @@ export default function SellPledgePage() {
   }
 
   if (pledge.status === "SOLD") {
-    const salePriceNum        = Number(pledge.salePrice ?? 0);
-    const inv                 = pledge.inventoryItem;
-    const storedAmountOwed    = Number(pledge.receivableAmount ?? inv?.amountOwedAt ?? 0);
-    const storedCashToPay     = Math.max(salePriceNum - storedAmountOwed, 0);
+    const salePriceNum = Number(pledge.salePrice ?? 0);
+    const inv = pledge.inventoryItem;
+    const storedAmountOwed = Number(pledge.receivableAmount ?? inv?.amountOwedAt ?? 0);
+    const storedCashToPay = Math.max(salePriceNum - storedAmountOwed, 0);
     const storedUncoveredLoss = Math.max(storedAmountOwed - salePriceNum, 0);
     return (
       <div className="max-w-2xl mx-auto p-6 flex flex-col items-center justify-center min-h-[60vh] text-center gap-5">
@@ -363,16 +363,14 @@ export default function SellPledgePage() {
             </p>
           </div>
         </div>
-        <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase px-3 py-1.5 rounded-full ${
-          pledge.status === "ACTIVE"
-            ? "bg-[#E8EBD8] text-[#555B3F]"
-            : pledge.status === "OVERDUE"
+        <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold tracking-wider uppercase px-3 py-1.5 rounded-full ${pledge.status === "ACTIVE"
+          ? "bg-[#E8EBD8] text-[#555B3F]"
+          : pledge.status === "OVERDUE"
             ? "bg-[#F8D7DA] text-[#C94A4A]"
             : "bg-[#ECEAE4] text-[#6F6F6F]"
-        }`}>
-          <div className={`w-1.5 h-1.5 rounded-full ${
-            pledge.status === "ACTIVE" ? "bg-[#555B3F]" : pledge.status === "OVERDUE" ? "bg-[#C94A4A]" : "bg-[#9E9E9E]"
-          }`} />
+          }`}>
+          <div className={`w-1.5 h-1.5 rounded-full ${pledge.status === "ACTIVE" ? "bg-[#555B3F]" : pledge.status === "OVERDUE" ? "bg-[#C94A4A]" : "bg-[#9E9E9E]"
+            }`} />
           {titleCase(pledge.status)}
         </span>
       </div>
@@ -462,11 +460,10 @@ export default function SellPledgePage() {
                         {item.itemName || item.itemType}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${
-                          item.metalType === "GOLD"
-                            ? "bg-[#FDF4DC] text-[#8B6914]"
-                            : "bg-[#F0EFEC] text-[#6F6F6F]"
-                        }`}>
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${item.metalType === "GOLD"
+                          ? "bg-[#FDF4DC] text-[#8B6914]"
+                          : "bg-[#F0EFEC] text-[#6F6F6F]"
+                          }`}>
                           {item.metalType}
                         </span>
                       </td>
@@ -670,7 +667,7 @@ export default function SellPledgePage() {
                 type="button"
                 onClick={() => setShowModal(true)}
                 disabled={loading || !canSell}
-                className="flex-1 flex items-center justify-center gap-2 bg-[#92400E] hover:bg-[#78350F] text-white text-[14px] font-semibold py-3.5 rounded-[12px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                className="flex-1 flex items-center justify-center gap-2 bg-[#6B7150] hover:bg-[#5A5F45] text-white text-[14px] font-semibold py-3.5 rounded-[12px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 {loading ? (
                   <Loader2 className="animate-spin w-4 h-4" />
