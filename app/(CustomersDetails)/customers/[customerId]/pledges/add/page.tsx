@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -13,6 +13,7 @@ import {
   ChevronRight,
   Loader2,
   Check,
+  X,
 } from "lucide-react";
 
 import SubscriptionGuard from "@/components/SubscriptionGuard";
@@ -68,11 +69,10 @@ function ItemTypeSelect({
             key={opt}
             type="button"
             onClick={() => { onChange(opt); setOpen(false); }}
-            className={`w-full text-left px-4 py-2.5 text-[14px] transition-colors ${
-              opt === value
+            className={`w-full text-left px-4 py-2.5 text-[14px] transition-colors ${opt === value
                 ? "bg-[#555B3F] text-white font-bold"
                 : "text-[#2C2C2C] font-medium hover:bg-[#ECEAE4]"
-            }`}
+              }`}
           >
             {opt}
           </button>
@@ -290,6 +290,22 @@ export default function AddPledgePage() {
   const [interestRate, setInterestRate] = useState("");
   const [compounding, setCompounding] = useState<"Monthly" | "Half-Yearly" | "Yearly">("Monthly");
   const [remarks, setRemarks] = useState("");
+  const [pledgePhotoPreview, setPledgePhotoPreview] = useState<string | null>(null);
+  const pledgePhotoInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePledgePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setPledgePhotoPreview(URL.createObjectURL(file));
+    }
+  };
+
+  const clearPledgePhoto = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setPledgePhotoPreview(null);
+    if (pledgePhotoInputRef.current) pledgePhotoInputRef.current.value = "";
+  };
 
   const [items, setItems] = useState<Item[]>([
     {
@@ -349,7 +365,7 @@ export default function AddPledgePage() {
           custom: (data.custom ?? []).map((t: { label: string }) => t.label),
         });
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [customerId]);
 
   /* ---- Helpers -------------------------------------------------- */
@@ -750,12 +766,36 @@ export default function AddPledgePage() {
               <div className="bg-white rounded-[24px] p-6 lg:p-8 border border-[#ECEAE4]">
                 <h3 className="text-[18px] font-bold text-[#2C2C2C] mb-6">Pledge Photo</h3>
 
-                <div className="w-full h-[200px] bg-[#EBE9E0] rounded-[16px] flex flex-col items-center justify-center border border-[#D8D6CD] cursor-pointer hover:bg-[#E4E2D8] transition-colors group">
-                  <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-3 shadow-sm group-hover:scale-105 transition-transform">
-                    <Camera size={20} className="text-[#555B3F]" />
-                  </div>
-                  <p className="text-[13px] font-bold text-[#2C2C2C] mb-1">Upload or drag photo</p>
-                  <p className="text-[11px] text-[#6F6F6F]">JPG, PNG up to 5MB</p>
+                <div className="relative w-full h-[200px] bg-[#EBE9E0] rounded-[16px] flex flex-col items-center justify-center border border-[#D8D6CD] transition-colors hover:bg-[#E4E2D8] overflow-hidden group">
+                  {pledgePhotoPreview ? (
+                    <>
+                      <img src={pledgePhotoPreview} alt="Pledge" className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none" />
+                      <button
+                        type="button"
+                        onClick={clearPledgePhoto}
+                        className="absolute top-2 right-2 z-20 p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-3 shadow-sm group-hover:scale-105 transition-transform z-0 pointer-events-none">
+                        <Camera size={20} className="text-[#555B3F]" />
+                      </div>
+                      <p className="text-[13px] font-bold text-[#2C2C2C] mb-1 z-0 pointer-events-none">Upload or drag photo</p>
+                      <p className="text-[11px] text-[#6F6F6F] z-0 pointer-events-none">JPG, PNG up to 5MB</p>
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    name="pledgePhoto"
+                    accept="image/*"
+                    ref={pledgePhotoInputRef}
+                    onChange={handlePledgePhotoChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    title={pledgePhotoPreview ? "Change photo" : "Upload photo"}
+                  />
                 </div>
               </div>
 
