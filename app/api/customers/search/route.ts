@@ -5,8 +5,11 @@ import { auth }                      from "@clerk/nextjs/server";
 import { prisma }                    from "@/lib/prisma";
 import { PledgeStatus, Prisma } from "@prisma/client";
 
-const MAX_RESULTS  = 50; 
-const DEFAULT_TAKE = 20;
+// Safety cap only — far above any realistic shop size, but bounded so a
+// pathological account can never hang the page. The customer list page has no
+// pagination UI, so the default must return the full list, not a first page.
+const MAX_RESULTS  = 5000;
+const DEFAULT_TAKE = MAX_RESULTS;
 
 function titleCase(str: string) {
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -111,6 +114,7 @@ export async function GET(req: NextRequest) {
     const customers = await prisma.customer.findMany({
       where,
       orderBy,
+      take: MAX_RESULTS, // hard safety bound on the DB query itself
       select: {
         id:     true,
         name:   true,
