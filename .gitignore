@@ -44,3 +44,8 @@ next-env.d.ts
 /.clerk/
 src/generated/prisma.claude/
 src/generated/
+
+# One-time local ledger migrations — contain real customer PII, never commit
+*_migration.xlsx
+prisma/seed-*-migration.ts
+seed-migration-log.json
