@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { SignOutButton, UserButton } from "@clerk/nextjs";
 import { useLanguage } from "@/components/providers/LanguageProvider";
+import Breadcrumb from "@/components/ui/Breadcrumb";
 import { useTheme } from "@/components/providers/ThemeProvider";
 import {
   LayoutDashboard,
@@ -134,22 +135,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <button className="mr-4 lg:hidden" onClick={() => setSidebarOpen(true)}>
             <Menu size={22} style={{ color: "var(--text-primary)" }} />
           </button>
-
-          {/* Left: Search Box */}
-          <div className="hidden md:flex flex-1 items-center max-w-[280px]">
-            <div
-              className="flex items-center w-full gap-2 px-3 py-[7px] rounded-full transition-all focus-within:ring-2 focus-within:ring-[#A2AB89]"
-              style={{ backgroundColor: "var(--sidebar-bg)" }}
-            >
-              <Search size={13} style={{ color: "var(--text-muted)" }} />
-              <input
-                type="text"
-                placeholder={t("search_placeholder")}
-                className="w-full bg-transparent outline-none text-[12.5px] font-medium text-[var(--text-primary)] placeholder-[var(--text-muted)]"
-              />
-            </div>
-          </div>
-
+          {/* Breadcrumb */}
+          <Breadcrumb />
           {/* Center: Title */}
           <div className="flex-1 flex justify-center text-center">
           </div>
