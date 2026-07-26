@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { SignOutButton, UserButton } from "@clerk/nextjs";
+import { SignOutButton, UserButton, useUser } from "@clerk/nextjs";
 import { useLanguage } from "@/components/providers/LanguageProvider";
 import Breadcrumb from "@/components/ui/Breadcrumb";
 import { useTheme } from "@/components/providers/ThemeProvider";
@@ -19,6 +19,7 @@ import {
   Sun,
   Moon,
   X,
+  User,
   Search,
   HelpCircle,
   Globe,
@@ -42,6 +43,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { language, setLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const { isLoaded, isSignedIn, user } = useUser();
 
   return (
     <div className="flex h-screen font-sans overflow-hidden" style={{ backgroundColor: "var(--main-bg)" }}>
@@ -149,8 +151,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <Link href="/help" className="transition-colors hover:opacity-70" style={{ color: "var(--text-secondary)" }}>
               <HelpCircle size={17} strokeWidth={2} />
             </Link>
-            <Link href="/profile">
-              <UserButton />
+            <Link href="/profile" className="w-[32px] h-[32px] rounded-full overflow-hidden border border-[var(--border-light)] shadow-sm flex items-center justify-center bg-[var(--sidebar-bg)] transition-transform hover:scale-105 active:scale-95">
+              {isLoaded && isSignedIn && user?.imageUrl ? (
+                <img src={user.imageUrl} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <User size={18} style={{ color: "var(--text-secondary)" }} />
+              )}
             </Link>
           </div>
         </header>

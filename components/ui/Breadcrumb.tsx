@@ -25,24 +25,28 @@ export default function Breadcrumb() {
     const trail = segments.map((segment, index) => {
         const isUuid = uuidRegex.test(segment);
         const isPrevCustomers = index > 0 && segments[index - 1] === "customers";
+        const isPrevPledges = index > 0 && segments[index - 1] === "pledges";
 
         // Keep track of the original segment value for the link path
         const originalSegment = segment;
 
-        const label = (isUuid || isPrevCustomers) ? "customerid" : (
-            routeLabels[segment] ?? segment
-                .replace(/-/g, " ")
-                .replace(/\b\w/g, (c) => c.toUpperCase())
-        );
+        let label = routeLabels[segment] ?? segment
+            .replace(/-/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase());
+
+        if (isUuid || isPrevCustomers || isPrevPledges) {
+            label = isPrevPledges ? "pledgeid" : "customerid";
+        }
 
         // Generate the URL path up to the current segment
         const url = "/" + segments.slice(0, index + 1).join("/");
+        const clickable = segment !== "pledges";
 
-        return { label, url };
+        return { label, url, clickable };
     });
 
     // If on the root/dashboard without segments, default to Dashboard
-    const displayTrail = trail.length === 0 ? [{ label: "Dashboard", url: "/dashboard" }] : trail;
+    const displayTrail = trail.length === 0 ? [{ label: "Dashboard", url: "/dashboard", clickable: true }] : trail;
 
     return (
         <div className="flex items-center gap-2 text-sm">
@@ -53,15 +57,12 @@ export default function Breadcrumb() {
 
             {displayTrail.map((item, index) => {
                 const isLast = index === displayTrail.length - 1;
+                const isClickable = item.clickable && !isLast;
+
                 return (
                     <div key={index} className="flex items-center gap-2">
                         <span className="text-gray-300">/</span>
-                        {isLast ? (
-                            // Last segment is not clickable (active page)
-                            <span className="text-gray-800 font-semibold">
-                                {item.label}
-                            </span>
-                        ) : (
+                        {isClickable ? (
                             // Clickable parent segments
                             <Link
                                 href={item.url}
@@ -69,6 +70,11 @@ export default function Breadcrumb() {
                             >
                                 {item.label}
                             </Link>
+                        ) : (
+                            // Non-clickable segments or last segment
+                            <span className={isLast ? "text-gray-800 font-semibold" : "text-gray-500 font-medium"}>
+                                {item.label}
+                            </span>
                         )}
                     </div>
                 );
