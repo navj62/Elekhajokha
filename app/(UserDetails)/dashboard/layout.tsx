@@ -18,6 +18,7 @@ import {
   Menu,
   Sun,
   Moon,
+  ShoppingBag,
   X,
   User,
   Search,
@@ -34,6 +35,7 @@ const navItems = [
   { labelKey: "nav_reports", href: "/reports", icon: BarChart3 },
   { labelKey: "nav_inventory", href: "/inventory", icon: Archive },
   { labelKey: "nav_settings", href: "/profile", icon: Settings },
+  { labelKey: "Buy Inventory", href: "/inventory/buy", icon: ShoppingBag },
   { labelKey: "ltv", href: "/ltv", icon: BarChart3 },
   { labelKey: "pledges", href: "/pledgeList", icon: BarChart3 },
 ];
