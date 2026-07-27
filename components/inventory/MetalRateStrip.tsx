@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, Clock, RefreshCw } from "lucide-react";
 
 interface Rate {
   inrPerGram: string | null;
@@ -29,7 +29,9 @@ export default function MetalRateStrip({ variant }: { variant: "full" | "compact
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
+  const loadRates = () => {
+    setLoading(true);
+    setError(false);
     fetch("/api/market-rates")
       .then((r) => r.json())
       .then((d: MarketRates) => {
@@ -40,6 +42,10 @@ export default function MetalRateStrip({ variant }: { variant: "full" | "compact
         setError(true);
         setLoading(false);
       });
+  };
+
+  useEffect(() => {
+    loadRates();
   }, []);
 
   const goldPrice =
@@ -87,29 +93,59 @@ export default function MetalRateStrip({ variant }: { variant: "full" | "compact
   }
 
   // full variant
-  if (loading) {
+  if (loading && !rates) {
     return (
-      <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
-        Loading rates...
-      </p>
+      <div className="rounded-[14px] bg-[#F4F3EA] border border-[#EAE9DF] px-5 py-3 w-full flex items-center justify-between">
+        <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+          Loading market rates...
+        </p>
+      </div>
     );
   }
-  if (error || noData) {
+  if ((error || noData) && !rates) {
     return (
-      <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
-        Rates unavailable
-      </p>
+      <div className="rounded-[14px] bg-[#F4F3EA] border border-[#EAE9DF] px-5 py-3 w-full flex items-center justify-between">
+        <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+          Rates unavailable
+        </p>
+      </div>
     );
   }
   return (
-    <div className="flex items-center gap-1.5">
-      <TrendingUp size={13} style={{ color: "var(--text-muted)" }} />
-      <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
-        {goldPrice !== null && `Gold ₹${goldPrice.toLocaleString("en-IN")}/g`}
-        {goldPrice !== null && silverPrice !== null && " · "}
-        {silverPrice !== null && `Silver ₹${silverPrice.toLocaleString("en-IN")}/g`}
-        {updatedAt && ` · Updated ${relativeTime(updatedAt)}`}
-      </p>
+    <div className="rounded-[14px] bg-[#F4F3EA] border border-[#EAE9DF] px-5 py-3 w-full flex items-center justify-between flex-wrap gap-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+      <div className="flex items-center gap-6 flex-wrap text-[13px] text-[var(--text-secondary)] font-normal">
+        <div className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
+          <TrendingUp size={16} className="text-[#5E6442]" />
+          <span>Market Rates:</span>
+        </div>
+        {goldPrice !== null && (
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#EAB308] shrink-0" />
+            <span>Gold: <span className="font-medium text-[var(--text-primary)]">₹{goldPrice.toLocaleString("en-IN")}/g</span></span>
+          </div>
+        )}
+        {silverPrice !== null && (
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#94A3B8] shrink-0" />
+            <span>Silver: <span className="font-medium text-[var(--text-primary)]">₹{silverPrice.toLocaleString("en-IN")}/g</span></span>
+          </div>
+        )}
+        {updatedAt && (
+          <div className="flex items-center gap-1.5">
+            <Clock size={14} />
+            <span>{relativeTime(updatedAt)}</span>
+          </div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={loadRates}
+        disabled={loading}
+        className="flex items-center gap-1.5 text-[12px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer ml-auto disabled:opacity-50"
+      >
+        <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+        <span>REFRESH</span>
+      </button>
     </div>
   );
 }

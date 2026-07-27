@@ -7,10 +7,13 @@ import {
   ArrowLeft,
   ChevronDown,
   Loader2,
-  Package,
+  UploadCloud,
   X,
+  AlertCircle,
 } from "lucide-react";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
+import { ThemedDatePicker } from "@/components/ui/ThemedDatePicker";
+import { ThemedSelect } from "@/components/ui/ThemedSelect";
 import MetalRateStrip from "@/components/inventory/MetalRateStrip";
 
 interface ItemType {
@@ -23,15 +26,11 @@ function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Styling tokens matching prompt specs exactly: height 48px, 15px regular, focus ring
 const inputCls =
-  "w-full px-3 py-2 rounded-[10px] text-[13px] outline-none focus:ring-2 focus:ring-[#A2AB89]";
-const inputStyle = {
-  backgroundColor: "var(--main-bg)",
-  border: "1px solid var(--border-light)",
-  color: "var(--text-primary)",
-} as React.CSSProperties;
+  "w-full h-[48px] px-3.5 rounded-[12px] text-[15px] font-normal text-[var(--text-primary)] bg-[#FAFAF7] border border-[#EAE9DF] outline-none focus:ring-2 focus:ring-[#A2AB89] focus:bg-white transition-all";
 
-const labelCls = "block text-[12px] font-semibold mb-1";
+const labelCls = "block text-[14px] font-medium text-[var(--text-secondary)] mb-1.5";
 
 export default function BuyItemPage() {
   const router = useRouter();
@@ -42,22 +41,23 @@ export default function BuyItemPage() {
   });
 
   const [form, setForm] = useState({
-    description:  "",
-    itemType:     "",
-    metalType:    "Gold",
-    purity:       "",
-    grossWeight:  "",
+    description: "",
+    itemType: "",
+    metalType: "Gold",
+    purity: "",
+    weightGrams: "",
     acquiredCost: "",
-    acquiredAt:   todayISO(),
-    sellerName:   "",
-    sellerIdNum:  "",
-    notes:        "",
+    acquiredAt: todayISO(),
+    sellerName: "",
+    sellerIdNum: "",
+    notes: "",
   });
 
-  const [photoFile, setPhotoFile]     = useState<File | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
-  const [submitting, setSubmitting]   = useState(false);
-  const [errors, setErrors]           = useState<Record<string, string>>({});
+  const [isDragging, setIsDragging] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -65,27 +65,22 @@ export default function BuyItemPage() {
   useEffect(() => {
     fetch("/api/item-types")
       .then((r) => r.json())
-      .then((d) => { if (d.defaults) setItemTypes(d); })
-      .catch(() => {});
+      .then((d) => {
+        if (d.defaults) setItemTypes(d);
+      })
+      .catch(() => { });
   }, []);
-
-  const isMetalItem = form.metalType === "Gold" || form.metalType === "Silver";
-  // Live preview only — the server re-derives and stores the authoritative value.
-  const derivedNetWeight = (() => {
-    const g = Number(form.grossWeight);
-    const p = Number(form.purity);
-    if (!isMetalItem || !form.grossWeight || !form.purity || isNaN(g) || isNaN(p) || g <= 0 || p <= 0)
-      return null;
-    return Math.round(g * (p / 100) * 1000) / 1000;
-  })();
 
   function set(key: string, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
-    setErrors((e) => { const n = { ...e }; delete n[key]; return n; });
+    setErrors((e) => {
+      const n = { ...e };
+      delete n[key];
+      return n;
+    });
   }
 
-  function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
+  function handleFileSelection(file: File | null) {
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
       setErrors((e) => ({ ...e, photo: "Photo must be under 5 MB." }));
@@ -93,27 +88,53 @@ export default function BuyItemPage() {
     }
     setPhotoFile(file);
     setPhotoPreview(URL.createObjectURL(file));
-    setErrors((e) => { const n = { ...e }; delete n.photo; return n; });
+    setErrors((e) => {
+      const n = { ...e };
+      delete n.photo;
+      return n;
+    });
+  }
+
+  function handlePhotoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    handleFileSelection(e.target.files?.[0] ?? null);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0] ?? null;
+    if (file && file.type.startsWith("image/")) {
+      handleFileSelection(file);
+    }
   }
 
   function validate(): boolean {
     const next: Record<string, string> = {};
-    if (!form.description.trim())          next.description  = "Description is required.";
-    if (!form.itemType)                    next.itemType     = "Item type is required.";
-    if (!form.metalType)                   next.metalType    = "Metal type is required.";
-    const wg = Number(form.grossWeight);
-    if (!form.grossWeight || isNaN(wg) || wg <= 0)
-                                           next.grossWeight  = "Gross weight must be > 0.";
-    const isMetal = form.metalType === "Gold" || form.metalType === "Silver";
-    const pv = Number(form.purity);
-    if (isMetal && (form.purity === "" || isNaN(pv) || pv <= 0 || pv > 100))
-                                           next.purity       = "Purity (0–100) is required for gold/silver.";
+    if (!form.description.trim()) next.description = "Description is required.";
+    if (!form.itemType) next.itemType = "Item type is required.";
+    if (!form.metalType) next.metalType = "Metal type is required.";
+    const wg = Number(form.weightGrams);
+    if (!form.weightGrams || isNaN(wg) || wg <= 0)
+      next.weightGrams = "Weight must be greater than 0.";
     const ac = Number(form.acquiredCost);
     if (form.acquiredCost === "" || isNaN(ac) || ac < 0)
-                                           next.acquiredCost = "Purchase price must be ≥ 0.";
-    if (!form.acquiredAt)                  next.acquiredAt   = "Date acquired is required.";
-    if (form.acquiredAt > todayISO())      next.acquiredAt   = "Date cannot be in the future.";
-    if (!form.sellerName.trim())           next.sellerName   = "Seller name is required.";
+      next.acquiredCost = "Purchase price must be ≥ 0.";
+    if (!form.acquiredAt) next.acquiredAt = "Date acquired is required.";
+    if (form.acquiredAt > todayISO()) next.acquiredAt = "Date cannot be in the future.";
+    if (!form.sellerName.trim()) next.sellerName = "Seller name is required.";
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -126,19 +147,19 @@ export default function BuyItemPage() {
     setSubmitting(true);
     try {
       const fd = new FormData();
-      fd.append("description",  form.description.trim());
-      fd.append("itemType",     form.itemType);
-      fd.append("metalType",    form.metalType);
+      fd.append("description", form.description.trim());
+      fd.append("itemType", form.itemType);
+      fd.append("metalType", form.metalType);
       if (form.purity) fd.append("purity", form.purity);
-      fd.append("grossWeight",  form.grossWeight);
+      fd.append("grossWeight", form.weightGrams);
       fd.append("acquiredCost", form.acquiredCost);
-      fd.append("acquiredAt",   form.acquiredAt);
-      fd.append("sellerName",   form.sellerName.trim());
+      fd.append("acquiredAt", form.acquiredAt);
+      fd.append("sellerName", form.sellerName.trim());
       if (form.sellerIdNum.trim()) fd.append("sellerIdNum", form.sellerIdNum.trim());
-      if (form.notes.trim())       fd.append("notes",       form.notes.trim());
-      if (photoFile)               fd.append("photo",       photoFile);
+      if (form.notes.trim()) fd.append("notes", form.notes.trim());
+      if (photoFile) fd.append("photo", photoFile);
 
-      const res  = await fetch("/api/inventory", { method: "POST", body: fd });
+      const res = await fetch("/api/inventory", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) {
         setGlobalError(data?.message ?? data?.error ?? "Failed to record purchase.");
@@ -154,319 +175,307 @@ export default function BuyItemPage() {
 
   return (
     <SubscriptionGuard>
-      <div className="py-6 max-w-[680px] mx-auto space-y-6">
+      <div className="min-h-screen bg-[#F7F5EF] py-8 px-4 sm:px-6">
+        <div className="max-w-[1140px] mx-auto space-y-7">
 
-        {/* Back + title */}
-        <div>
-          <Link
-            href="/inventory"
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium mb-4 hover:opacity-70 transition-opacity"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            <ArrowLeft size={15} />
-            Back to Inventory
-          </Link>
-          <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>
-            Buy New Item
-          </h1>
-          <p className="text-[13px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
-            Record a direct purchase, no pledge involved.
-          </p>
-          <div className="mt-2">
-            <MetalRateStrip variant="full" />
+          {/* Header Section */}
+          <div>
+            <div className="flex items-center gap-3 mb-4">
+              <Link
+                href="/inventory"
+                className="flex items-center justify-center w-9 h-9 bg-[#E3E5C3] border border-[#ECEAE4] rounded-full shadow-sm text-[#2C2C2C] hover:bg-[#F5F4EF] transition-colors shrink-0 cursor-pointer"
+                title="Back to Inventory"
+              >
+                <ArrowLeft size={18} className="text-[#5E6442]" strokeWidth={2.2} />
+              </Link>
+              <span className="text-[14px] font-medium text-[var(--text-secondary)]">Back to Inventory</span>
+            </div>
+
+            <h1 className="text-[36px] font-semibold leading-tight text-[var(--text-primary)]">
+              Buy New Item
+            </h1>
+            <p className="text-[15px] text-[var(--text-muted)] mt-1">
+              Record a direct purchase and add it into your live inventory.
+            </p>
+
+            <div className="mt-4">
+              <MetalRateStrip variant="full" />
+            </div>
           </div>
-        </div>
 
-        {/* Form card */}
-        <div
-          className="rounded-[18px] p-7 space-y-5"
-          style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
-        >
-          <form onSubmit={handleSubmit} className="space-y-5">
+          {/* 2-Column Minimalist Layout (35% Left / 65% Right) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-[24px] items-stretch">
 
-            {/* Description */}
-            <div>
-              <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                Description *
-              </label>
-              <input
-                type="text"
-                maxLength={200}
-                value={form.description}
-                onChange={(e) => set("description", e.target.value)}
-                placeholder="e.g. Gold necklace with pendant"
-                className={inputCls}
-                style={inputStyle}
-              />
-              {errors.description && <p className="text-[11.5px] mt-1 text-red-600">{errors.description}</p>}
-            </div>
+            {/* LEFT COLUMN (35% -> col-span-4): Single Vertical Card */}
+            <div className="lg:col-span-4 flex">
+              <div className="rounded-[20px] p-[24px] bg-[#FFFFFF] border border-[#EAE9DF] shadow-xs w-full flex flex-col justify-between space-y-[24px]">
 
-            {/* Item Type + Metal Type */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                  Item Type *
-                </label>
-                <div className="relative">
-                  <select
-                    value={form.itemType}
-                    onChange={(e) => set("itemType", e.target.value)}
-                    className={`${inputCls} appearance-none`}
-                    style={inputStyle}
-                  >
-                    <option value="">Select type</option>
-                    {itemTypes.defaults.length > 0 && (
-                      <optgroup label="Standard Types">
-                        {itemTypes.defaults.map((t) => (
-                          <option key={t.id} value={t.label}>{t.label}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {itemTypes.custom.length > 0 && (
-                      <optgroup label="Custom Types">
-                        {itemTypes.custom.map((t) => (
-                          <option key={t.id} value={t.label}>{t.label}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {itemTypes.defaults.length === 0 && itemTypes.custom.length === 0 && (
-                      <option value="Other">Other</option>
-                    )}
-                  </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-muted)" }} />
-                </div>
-                {errors.itemType && <p className="text-[11.5px] mt-1 text-red-600">{errors.itemType}</p>}
-              </div>
-
-              <div>
-                <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                  Metal Type *
-                </label>
-                <div className="relative">
-                  <select
-                    value={form.metalType}
-                    onChange={(e) => set("metalType", e.target.value)}
-                    className={`${inputCls} appearance-none`}
-                    style={inputStyle}
-                  >
-                    <option value="Gold">Gold</option>
-                    <option value="Silver">Silver</option>
-                    <option value="Other">Other</option>
-                  </select>
-                  <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-muted)" }} />
-                </div>
-                {errors.metalType && <p className="text-[11.5px] mt-1 text-red-600">{errors.metalType}</p>}
-              </div>
-            </div>
-
-            {/* Purity + Gross Weight */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                  Purity {isMetalItem ? "*" : "(optional)"}
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="any"
-                  value={form.purity}
-                  onChange={(e) => set("purity", e.target.value)}
-                  placeholder="e.g. 91.67"
-                  className={inputCls}
-                  style={inputStyle}
-                />
-                {errors.purity && <p className="text-[11.5px] mt-1 text-red-600">{errors.purity}</p>}
-              </div>
-
-              <div>
-                <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                  Gross Weight (grams) *
-                </label>
-                <input
-                  type="number"
-                  min="0.001"
-                  step="any"
-                  value={form.grossWeight}
-                  onChange={(e) => set("grossWeight", e.target.value)}
-                  placeholder="e.g. 12.5"
-                  className={inputCls}
-                  style={inputStyle}
-                />
-                {errors.grossWeight && <p className="text-[11.5px] mt-1 text-red-600">{errors.grossWeight}</p>}
-              </div>
-            </div>
-
-            {/* Live-derived net weight (convenience only — server is source of truth) */}
-            <div
-              className="px-3 py-2 rounded-[10px] text-[12px] font-medium"
-              style={{ backgroundColor: "var(--main-bg)", border: "1px solid var(--border-light)", color: "var(--text-secondary)" }}
-            >
-              {isMetalItem ? (
-                <>
-                  Net {form.metalType.toLowerCase()} weight:{" "}
-                  <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
-                    {derivedNetWeight !== null ? `${derivedNetWeight.toFixed(3)} g` : "—"}
-                  </span>
-                </>
-              ) : (
-                <>Net weight: n/a (non gold/silver item)</>
-              )}
-            </div>
-
-            {/* Purchase Price + Date */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                  Purchase Price (₹) *
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={form.acquiredCost}
-                  onChange={(e) => set("acquiredCost", e.target.value)}
-                  placeholder="e.g. 45000"
-                  className={inputCls}
-                  style={inputStyle}
-                />
-                {errors.acquiredCost && <p className="text-[11.5px] mt-1 text-red-600">{errors.acquiredCost}</p>}
-              </div>
-
-              <div>
-                <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                  Date Acquired *
-                </label>
-                <input
-                  type="date"
-                  max={todayISO()}
-                  value={form.acquiredAt}
-                  onChange={(e) => set("acquiredAt", e.target.value)}
-                  className={inputCls}
-                  style={inputStyle}
-                />
-                {errors.acquiredAt && <p className="text-[11.5px] mt-1 text-red-600">{errors.acquiredAt}</p>}
-              </div>
-            </div>
-
-            {/* Seller Name + ID */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                  Seller Name *
-                </label>
-                <input
-                  type="text"
-                  value={form.sellerName}
-                  onChange={(e) => set("sellerName", e.target.value)}
-                  placeholder="e.g. Ramesh Kumar"
-                  className={inputCls}
-                  style={inputStyle}
-                />
-                {errors.sellerName && <p className="text-[11.5px] mt-1 text-red-600">{errors.sellerName}</p>}
-              </div>
-
-              <div>
-                <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                  Seller ID Number (optional)
-                </label>
-                <input
-                  type="text"
-                  value={form.sellerIdNum}
-                  onChange={(e) => set("sellerIdNum", e.target.value)}
-                  placeholder="PAN / Aadhaar"
-                  className={inputCls}
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-
-            {/* Photo */}
-            <div>
-              <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                Photo (optional, max 5 MB)
-              </label>
-              <div
-                className="flex items-center gap-3 px-3 py-2.5 rounded-[10px] cursor-pointer"
-                style={{
-                  backgroundColor: "var(--main-bg)",
-                  border: "1px dashed var(--border-light)",
-                }}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {photoPreview ? (
-                  <img src={photoPreview} alt="preview" className="w-10 h-10 rounded-lg object-cover shrink-0" />
-                ) : (
+                {/* Photo Upload Box (Large Square, Height 280px) */}
+                <div className="shrink-0">
+                  <label className={labelCls}>Photo Upload (optional)</label>
                   <div
-                    className="w-10 h-10 rounded-lg shrink-0 flex items-center justify-center"
-                    style={{ backgroundColor: "var(--border-light)" }}
+                    onClick={() => !photoPreview && fileInputRef.current?.click()}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    className={`h-[280px] w-full rounded-[16px] border-2 border-dashed transition-all relative overflow-hidden flex flex-col items-center justify-center text-center p-4 ${isDragging
+                      ? "border-[#5E6442] bg-[#EAE9DF]/50"
+                      : photoPreview
+                        ? "border-[#5E6442] bg-[#FAFAF7]"
+                        : "border-[#A2AB89] hover:border-[#5E6442] bg-[#FAFAF7] hover:bg-[#F5F4E7]/40 cursor-pointer"
+                      }`}
                   >
-                    <Package size={16} style={{ color: "var(--text-muted)" }} />
+                    {photoPreview ? (
+                      <div className="relative w-full h-full flex items-center justify-center group">
+                        <img
+                          src={photoPreview}
+                          alt="preview"
+                          className="w-full h-full object-contain rounded-[12px]"
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPhotoFile(null);
+                            setPhotoPreview(null);
+                            if (fileInputRef.current) fileInputRef.current.value = "";
+                          }}
+                          className="absolute top-3 right-3 p-2 rounded-full bg-white/90 hover:bg-white text-red-600 shadow-md transition-all cursor-pointer"
+                          title="Remove image"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 pointer-events-none">
+                        <div className="w-14 h-14 rounded-full bg-[#EAE9DF]/70 mx-auto flex items-center justify-center">
+                          <UploadCloud size={28} className="text-[#5E6442]" />
+                        </div>
+                        <p className="text-[15px] font-medium text-[var(--text-primary)]">
+                          Click or drag photo here
+                        </p>
+                        <p className="text-[13px] text-[var(--text-muted)]">
+                          Supports JPEG, PNG, WEBP up to 5 MB
+                        </p>
+                      </div>
+                    )}
                   </div>
-                )}
-                <span className="text-[12.5px]" style={{ color: "var(--text-secondary)" }}>
-                  {photoFile ? photoFile.name : "Click to upload JPEG / PNG / WEBP"}
-                </span>
-                {photoFile && (
-                  <button
-                    type="button"
-                    className="ml-auto p-1 rounded-full hover:bg-[#EAE9DF]"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPhotoFile(null);
-                      setPhotoPreview(null);
-                      if (fileInputRef.current) fileInputRef.current.value = "";
-                    }}
-                  >
-                    <X size={13} style={{ color: "var(--text-muted)" }} />
-                  </button>
-                )}
+                  {errors.photo && <p className="text-[13px] mt-1.5 text-red-600 font-medium">{errors.photo}</p>}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handlePhotoChange}
+                  />
+                </div>
+
+                {/* Notes Textarea (Height 140px, expands to fill remaining card height) */}
+                <div className="flex-1 flex flex-col">
+                  <label className={labelCls}>Notes (optional)</label>
+                  <textarea
+                    maxLength={500}
+                    value={form.notes}
+                    onChange={(e) => set("notes", e.target.value)}
+                    placeholder="Add any additional details or provenance..."
+                    className="w-full flex-1 min-h-[140px] px-3.5 py-3 rounded-[12px] text-[15px] font-normal text-[var(--text-primary)] bg-[#FAFAF7] border border-[#A2AB89] outline-none focus:ring-2 focus:ring-[#A2AB89] focus:bg-white transition-all resize-none placeholder:text-[var(--text-muted)]"
+                  />
+                </div>
+
               </div>
-              {errors.photo && <p className="text-[11.5px] mt-1 text-red-600">{errors.photo}</p>}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                onChange={handlePhotoChange}
-              />
             </div>
 
-            {/* Notes */}
-            <div>
-              <label className={labelCls} style={{ color: "var(--text-secondary)" }}>
-                Notes (optional)
-              </label>
-              <textarea
-                maxLength={500}
-                rows={3}
-                value={form.notes}
-                onChange={(e) => set("notes", e.target.value)}
-                placeholder="Any additional details"
-                className="w-full px-3 py-2 rounded-[10px] text-[13px] outline-none resize-none focus:ring-2 focus:ring-[#A2AB89]"
-                style={inputStyle}
-              />
+            {/* RIGHT COLUMN (65% -> col-span-8): Single Form Card */}
+            <div className="lg:col-span-8 flex">
+              <div className="rounded-[20px] p-[24px] bg-[#FFFFFF] border border-[#EAE9DF] shadow-xs w-full">
+                <form onSubmit={handleSubmit} className="space-y-6">
+
+                  {/* Order 1: Description (full width) */}
+                  <div>
+                    <label className={labelCls}>Description *</label>
+                    <input
+                      type="text"
+                      maxLength={200}
+                      value={form.description}
+                      onChange={(e) => set("description", e.target.value)}
+                      placeholder="e.g. Gold necklace with temple pendant"
+                      className={inputCls}
+                    />
+                    {errors.description && <p className="text-[13px] mt-1.5 text-red-600 font-medium">{errors.description}</p>}
+                  </div>
+
+                  {/* Order 2: Row -> Item Type | Metal Type */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div>
+                      <label className={labelCls}>Item Type *</label>
+                      <ThemedSelect
+                        value={form.itemType}
+                        onChange={(val) => set("itemType", val)}
+                        options={[
+                          ...["Ring", "Pendant", "Chain", "Bracelet", "Coin", "Necklace", "Earrings", "Bangle"].map((t) => ({
+                            value: t,
+                            label: t,
+                            group: "Standard Types",
+                          })),
+                          ...itemTypes.defaults.map((t) => ({
+                            value: t.label,
+                            label: t.label,
+                            group: "Default Types",
+                          })),
+                          ...itemTypes.custom.map((t) => ({
+                            value: t.label,
+                            label: t.label,
+                            group: "Custom Types",
+                          })),
+                          { value: "Other", label: "Other" },
+                        ]}
+                        placeholder="Select type"
+                      />
+                      {errors.itemType && <p className="text-[13px] mt-1.5 text-red-600 font-medium">{errors.itemType}</p>}
+                    </div>
+
+                    <div>
+                      <label className={labelCls}>Metal Type *</label>
+                      <ThemedSelect
+                        value={form.metalType}
+                        onChange={(val) => set("metalType", val)}
+                        options={["Gold", "Silver", "Platinum", "Other"]}
+                        placeholder="Select metal"
+                      />
+                      {errors.metalType && <p className="text-[13px] mt-1.5 text-red-600 font-medium">{errors.metalType}</p>}
+                    </div>
+                  </div>
+
+                  {/* Order 3: Row -> Purity (optional) | Weight (grams) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div>
+                      <label className={labelCls}>Purity (optional)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="any"
+                        value={form.purity}
+                        onChange={(e) => set("purity", e.target.value)}
+                        placeholder="e.g. 91.67 or 22"
+                        className={inputCls}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={labelCls}>Weight (grams) *</label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min="0.001"
+                          step="any"
+                          value={form.weightGrams}
+                          onChange={(e) => set("weightGrams", e.target.value)}
+                          placeholder="e.g. 12.500"
+                          className={`${inputCls} pr-10`}
+                        />
+                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[14px] font-medium text-[var(--text-muted)] pointer-events-none">
+                          g
+                        </span>
+                      </div>
+                      {errors.weightGrams && <p className="text-[13px] mt-1.5 text-red-600 font-medium">{errors.weightGrams}</p>}
+                    </div>
+                  </div>
+
+                  {/* Order 4: Row -> Purchase Price | Date Acquired (using ThemedDatePicker) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div>
+                      <label className={labelCls}>Purchase Price (₹) *</label>
+                      <div className="relative">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px] font-medium text-[var(--text-muted)] pointer-events-none">
+                          ₹
+                        </span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={form.acquiredCost}
+                          onChange={(e) => set("acquiredCost", e.target.value)}
+                          placeholder="45000"
+                          className={`${inputCls} pl-8`}
+                        />
+                      </div>
+                      {errors.acquiredCost && <p className="text-[13px] mt-1.5 text-red-600 font-medium">{errors.acquiredCost}</p>}
+                    </div>
+
+                    <div>
+                      <label className={labelCls}>Date Acquired *</label>
+                      <div className="w-full">
+                        <ThemedDatePicker
+                          value={form.acquiredAt}
+                          onChange={(val) => set("acquiredAt", val)}
+                          placeholder="Select date"
+                          className="h-[48px] px-3.5 rounded-[12px] bg-[#FAFAF7] border border-[#EAE9DF] text-[15px] font-normal text-[var(--text-primary)] hover:border-[#8C8F7A] transition-all w-full"
+                        />
+                      </div>
+                      {errors.acquiredAt && <p className="text-[13px] mt-1.5 text-red-600 font-medium">{errors.acquiredAt}</p>}
+                    </div>
+                  </div>
+
+                  {/* Order 5: Row -> Seller Name | Seller ID Number */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div>
+                      <label className={labelCls}>Seller Name *</label>
+                      <input
+                        type="text"
+                        value={form.sellerName}
+                        onChange={(e) => set("sellerName", e.target.value)}
+                        placeholder="e.g. Ramesh Kumar"
+                        className={inputCls}
+                      />
+                      {errors.sellerName && <p className="text-[13px] mt-1.5 text-red-600 font-medium">{errors.sellerName}</p>}
+                    </div>
+
+                    <div>
+                      <label className={labelCls}>Seller ID Number (optional)</label>
+                      <input
+                        type="text"
+                        value={form.sellerIdNum}
+                        onChange={(e) => set("sellerIdNum", e.target.value)}
+                        placeholder="PAN / Aadhaar / Bill No."
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+
+                  {globalError && (
+                    <div className="p-3.5 rounded-[12px] bg-red-50 border border-red-200 text-red-700 text-[14px] flex items-center gap-2">
+                      <AlertCircle size={18} className="shrink-0" />
+                      <span>{globalError}</span>
+                    </div>
+                  )}
+
+                  {/* Order 6: Bottom action row -> Cancel | Record Purchase */}
+                  <div className="pt-4 mt-6 border-t border-[#EAE9DF] sticky bottom-0 sm:static sm:border-t-0 sm:pt-0 sm:mt-8 bg-white py-3 sm:py-0 flex flex-col-reverse sm:flex-row sm:justify-end gap-3 z-10">
+                    <Link href="/inventory" className="w-full sm:w-auto">
+                      <button
+                        type="button"
+                        className="w-full sm:w-auto h-[48px] px-6 rounded-[12px] text-[15px] font-medium text-[var(--text-primary)] bg-[#EAE9DF] hover:bg-[#dcdbd0] transition-all cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </Link>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full sm:w-auto h-[48px] px-7 rounded-[12px] text-[15px] font-medium text-white bg-[#5E6442] hover:bg-[#4d5236] shadow-sm hover:shadow transition-all disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {submitting && <Loader2 size={18} className="animate-spin" />}
+                      {submitting ? "Recording…" : "Record Purchase"}
+                    </button>
+                  </div>
+
+                </form>
+              </div>
             </div>
 
-            {globalError && (
-              <div
-                className="px-3 py-2 rounded-[10px] text-[12.5px]"
-                style={{ backgroundColor: "#FEE2E2", color: "#B91C1C" }}
-              >
-                {globalError}
-              </div>
-            )}
+          </div>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full py-3 rounded-[10px] text-[14px] font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-60"
-              style={{ backgroundColor: "#565C3F" }}
-            >
-              {submitting && <Loader2 size={15} className="animate-spin" />}
-              {submitting ? "Recording…" : "Record Purchase"}
-            </button>
-          </form>
         </div>
       </div>
     </SubscriptionGuard>
