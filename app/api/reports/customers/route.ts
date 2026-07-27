@@ -44,6 +44,9 @@ export async function GET(req: NextRequest) {
     const format = sp.get("format");
     const startDateStr = sp.get("startDate");
     const endDateStr = sp.get("endDate");
+    // Opt-in: restrict the list to customers holding at least one open pledge.
+    // Absent/anything-but-"true" preserves the unfiltered default.
+    const activeOnly = sp.get("activeOnly") === "true";
 
     let startBoundary: Date | undefined;
     let endBoundary: Date | undefined;
@@ -81,6 +84,9 @@ export async function GET(req: NextRequest) {
       where: {
         userId: user.id,
         deletedAt: null,
+        ...(activeOnly
+          ? { pledges: { some: { status: { in: ["ACTIVE", "OVERDUE"] } } } }
+          : {}),
         ...(startBoundary || endBoundary
           ? {
               createdAt: {
@@ -117,8 +123,11 @@ export async function GET(req: NextRequest) {
       d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
     const result = customers.map((c) => {
-      // Only active pledges — count and current loan outstanding
-      const activePledges = c.pledges.filter((p) => p.status === "ACTIVE");
+      // Only open pledges — count and current loan outstanding.
+      // OVERDUE is open (non-terminal) like ACTIVE; RELEASED and SOLD are terminal.
+      const activePledges = c.pledges.filter(
+        (p) => p.status === "ACTIVE" || p.status === "OVERDUE"
+      );
       const pledgeCount = activePledges.length;
       const totalLoan = activePledges.reduce((s, p) => s + Number(p.loanAmount), 0);
 

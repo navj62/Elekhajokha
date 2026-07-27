@@ -115,6 +115,8 @@ export default function ReportsPage() {
   const [loadingTable, setLoadingTable] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  // Customer Report only — restrict to customers holding an open (ACTIVE/OVERDUE) pledge.
+  const [activeOnly, setActiveOnly] = useState(false);
 
   // Loading states
   const [loadingData, setLoadingData] = useState(true);
@@ -164,6 +166,7 @@ export default function ReportsPage() {
       const params = new URLSearchParams();
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
+      if (activeOnly) params.set("activeOnly", "true");
       const res = await fetch(`/api/reports/customers?${params}`);
       if (res.ok) setCustomers(await res.json());
     } catch (err) {
@@ -171,7 +174,7 @@ export default function ReportsPage() {
     } finally {
       setLoadingCustomers(false);
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, activeOnly]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -269,6 +272,7 @@ export default function ReportsPage() {
         const params = new URLSearchParams({ format: "pdf" });
         if (startDate) params.set("startDate", startDate);
         if (endDate) params.set("endDate", endDate);
+        if (activeOnly) params.set("activeOnly", "true");
         const res = await fetch(`/api/reports/customers?${params}`);
         if (!res.ok) throw new Error("PDF generation failed");
         const blob = await res.blob();
@@ -416,6 +420,25 @@ export default function ReportsPage() {
               >
                 <X size={13} /> Clear
               </button>
+            )}
+
+            {/* Customer Report only — the pledge variants filter by status via their own tab. */}
+            {!isPledge && (
+              <>
+                <span className="w-px h-5 bg-[#ECEAE4]" aria-hidden="true" />
+                <button
+                  onClick={() => setActiveOnly((v) => !v)}
+                  aria-pressed={activeOnly}
+                  title="Show only customers with at least one active or overdue pledge"
+                  className={`h-9 px-3 rounded-full text-[12px] font-semibold transition-colors ${
+                    activeOnly
+                      ? "bg-[#555B3F] text-white shadow-sm border border-[#555B3F]"
+                      : "text-[#6F6F6F] border border-[#ECEAE4] hover:text-[#2C2C2C] hover:border-[#D8D6C8]"
+                  }`}
+                >
+                  Active Only
+                </button>
+              </>
             )}
           </div>
         </div>
