@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
 import {
   Edit3, Plus, Upload, MapPin, Phone,
-  CheckCircle2, Eye, Unlock, Archive, Loader2, CheckSquare, Search, X,
+  CheckCircle2, Eye, Unlock, Archive, Loader2, CheckSquare, Search, X, Trash,
 } from "lucide-react";
 
 import { QRCodeCanvas } from "qrcode.react";
@@ -68,9 +68,9 @@ function getInitials(name: string) {
 function renderStatusBadge(status?: string | null) {
   if (!status) return null;
   let bg = "#EAEAEA", color = "#6D6D6D", dot = "#A0A0A0";
-  if (status === "ACTIVE")  { bg = "#E6E8DA"; color = "#5C633F"; dot = "#838C58"; }
+  if (status === "ACTIVE") { bg = "#E6E8DA"; color = "#5C633F"; dot = "#838C58"; }
   if (status === "OVERDUE") { bg = "#F8D7DA"; color = "#C94A4A"; dot = "#D66666"; }
-  if (status === "SOLD")    { bg = "#FEE2E2"; color = "#B91C1C"; dot = "#DC2626"; }
+  if (status === "SOLD") { bg = "#FEE2E2"; color = "#B91C1C"; dot = "#DC2626"; }
   const label = status === "SOLD" ? "Sold to Shop" : status.charAt(0) + status.slice(1).toLowerCase();
   return (
     <span style={{ backgroundColor: bg, color, borderRadius: "20px", padding: "4px 10px", fontSize: "10px", fontWeight: 700, letterSpacing: "0.5px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
@@ -105,6 +105,7 @@ export default function CustomerDetailPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [metalFilter, setMetalFilter] = useState<"ALL" | "GOLD" | "SILVER">("ALL");
   const [sortBy, setSortBy] = useState("date_desc");
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; step: "INITIAL" | "PAYMENT_WARNING"; count?: number } | null>(null);
   const toastRef = useRef<NodeJS.Timeout | null>(null);
 
   /* ---- Client-side search / filter / sort (no API calls) ------ */
@@ -192,29 +193,21 @@ export default function CustomerDetailPage() {
   }, [customerId]);
 
   /* ---- Delete pledge ------------------------------------------ */
-  async function handleDelete(pledgeId: string, confirmDelete = false) {
+  async function executeDelete(pledgeId: string, forceDelete = false) {
     if (!customer) return;
-    // Skip the first prompt on the confirmed retry.
-    if (!confirmDelete && !window.confirm("Delete this pledge? This cannot be undone.")) return;
     setDeletingId(pledgeId);
+    setDeleteConfirm(null);
     try {
       const url =
         `/api/customers/${customerId}/pledges/${pledgeId}` +
-        (confirmDelete ? "?confirmDelete=true" : "");
-      const res  = await fetch(url, { method: "DELETE" });
+        (forceDelete ? "?confirmDelete=true" : "");
+      const res = await fetch(url, { method: "DELETE" });
       const data = await res.json();
 
-      // Server guards against erasing part-payment history — confirm, then retry.
+      // Server guards against erasing part-payment history
       if (res.status === 409 && data?.error === "PENDING_TRANSACTIONS") {
         const n = data.transactionCount ?? 0;
-        if (
-          window.confirm(
-            `This pledge has ${n} part-payment(s) recorded. Deleting it will ` +
-            `permanently erase that history. Delete anyway?`
-          )
-        ) {
-          await handleDelete(pledgeId, true);
-        }
+        setDeleteConfirm({ id: pledgeId, step: "PAYMENT_WARNING", count: n });
         return;
       }
 
@@ -769,10 +762,10 @@ export default function CustomerDetailPage() {
                                 active
                                   ? { backgroundColor: "#565C3F", color: "#FFFFFF" }
                                   : {
-                                      backgroundColor: "transparent",
-                                      color: "var(--text-muted, #9E9E9E)",
-                                      border: "1px solid var(--border-light, #ECEAE4)",
-                                    }
+                                    backgroundColor: "transparent",
+                                    color: "var(--text-muted, #9E9E9E)",
+                                    border: "1px solid var(--border-light, #ECEAE4)",
+                                  }
                               }
                             >
                               {label}
@@ -908,11 +901,7 @@ export default function CustomerDetailPage() {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <div className="flex items-center justify-end gap-1">
-                              <Link href={`/customers/${customerId}/pledges/${pledge.id}`}>
-                                <button className="p-2 rounded-full hover:bg-[#EAE9DF] text-[#9E9E9E] hover:text-[#2C2C2C] transition-colors">
-                                  <Eye size={15} />
-                                </button>
-                              </Link>
+
                               <Link href={`/customers/${customerId}/pledges/${pledge.id}/release`}>
                                 <button
                                   disabled={pledge.status === "RELEASED" || pledge.status === "SOLD"}
@@ -922,15 +911,18 @@ export default function CustomerDetailPage() {
                                   <Unlock size={15} />
                                 </button>
                               </Link>
-                              <Link href={`/customers/${customerId}/pledges/${pledge.id}/sell`}>
-                                <button
-                                  disabled={pledge.status === "RELEASED" || pledge.status === "SOLD"}
-                                  className="p-2 rounded-full hover:bg-[#EAE9DF] text-[#9E9E9E] hover:text-[#92400E] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                  title="Add to Inventory"
-                                >
-                                  <Archive size={15} />
-                                </button>
-                              </Link>
+                              <button
+                                disabled={deletingId === pledge.id}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setDeleteConfirm({ id: pledge.id, step: "INITIAL" });
+                                }}
+                                className="p-2 rounded-full hover:bg-[#EAE9DF] text-[#9E9E9E] hover:text-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                title="Delete Pledge"
+                              >
+                                {deletingId === pledge.id ? <Loader2 size={15} className="animate-spin text-red-600" /> : <Trash size={15} />}
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1035,6 +1027,41 @@ export default function CustomerDetailPage() {
         >
           <CheckCircle2 size={16} className="text-[#A9B37E]" />
           {toastMsg}
+        </div>
+      )}
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setDeleteConfirm(null)}>
+          <div
+            className="bg-white rounded-[24px] p-8 w-full max-w-[400px] shadow-2xl text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-5">
+              <Trash size={28} className="text-red-500" />
+            </div>
+            <h3 className="text-[20px] font-bold text-[#2C2C2C] mb-2">
+              {deleteConfirm.step === "INITIAL" ? "Delete Pledge?" : "Delete Anyway?"}
+            </h3>
+            <p className="text-[14px] text-[#6F6F6F] mb-8 leading-relaxed">
+              {deleteConfirm.step === "INITIAL"
+                ? "Are you sure you want to delete this pledge? This action cannot be undone."
+                : `This pledge has ${deleteConfirm.count} part-payment(s) recorded. Deleting it will permanently erase that history.`}
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 py-3 rounded-[20px] text-[13px] font-bold bg-[#F0EEE8] text-[#6F6F6F] hover:bg-[#E6E4DC] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => executeDelete(deleteConfirm.id, deleteConfirm.step === "PAYMENT_WARNING")}
+                className="flex-1 py-3 rounded-[20px] text-[13px] font-bold bg-red-600 text-white hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </SubscriptionGuard>
