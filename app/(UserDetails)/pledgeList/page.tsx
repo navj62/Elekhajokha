@@ -43,7 +43,18 @@ interface Filters {
   metalType: MetalTypeValue | "";
   itemType:  string;
   status:    StatusValue    | "";
+  minLoan:   string;
+  maxLoan:   string;
 }
+
+const EMPTY_FILTERS: Filters = {
+  search:    "",
+  metalType: "",
+  itemType:  "",
+  status:    "",
+  minLoan:   "",
+  maxLoan:   "",
+};
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -192,20 +203,13 @@ export default function PledgesPage() {
   const [nextCursor,  setNextCursor]  = useState<string | null>(null);
   const [itemTypeOptions, setItemTypeOptions] = useState<string[]>([]);
 
-  const [filters, setFilters] = useState<Filters>({
-    search:    "",
-    metalType: "",
-    itemType:  "",
-    status:    "",
-  });
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
 
   // Staged filters — applied only on "Apply Filters"
-  const [staged, setStaged] = useState<Filters>({
-    search:    "",
-    metalType: "",
-    itemType:  "",
-    status:    "",
-  });
+  const [staged, setStaged] = useState<Filters>(EMPTY_FILTERS);
+
+  // Inline validation message for the loan-range inputs
+  const [loanRangeError, setLoanRangeError] = useState<string | null>(null);
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const abortRef    = useRef<AbortController | null>(null);
@@ -216,6 +220,8 @@ export default function PledgesPage() {
     if (f.metalType) p.set("metalType", f.metalType);
     if (f.itemType)  p.set("itemType",  f.itemType);
     if (f.status)    p.set("status",    f.status);
+    if (f.minLoan)   p.set("minLoan",   f.minLoan);
+    if (f.maxLoan)   p.set("maxLoan",   f.maxLoan);
     if (cursor)      p.set("cursor",    cursor);
     return p;
   }
@@ -289,12 +295,21 @@ export default function PledgesPage() {
 
   /* ── Handlers ──────────────────────────────────────────────────── */
   function applyFilters() {
+    // Guard the one range case the server can't distinguish from a genuine
+    // empty result: min > max returns zero rows, which would read as
+    // "no pledges" rather than "impossible range". Block the apply instead.
+    if (staged.minLoan && staged.maxLoan &&
+        Number(staged.minLoan) > Number(staged.maxLoan)) {
+      setLoanRangeError("Min must be ≤ Max");
+      return;
+    }
+    setLoanRangeError(null);
     setFilters({ ...staged });
   }
   function resetFilters() {
-    const empty: Filters = { search: "", metalType: "", itemType: "", status: "" };
-    setStaged(empty);
-    setFilters(empty);
+    setLoanRangeError(null);
+    setStaged(EMPTY_FILTERS);
+    setFilters(EMPTY_FILTERS);
   }
 
   // Client-side search filter applied on top of server results
@@ -306,7 +321,10 @@ export default function PledgesPage() {
       )
     : pledges;
 
-  const hasActiveFilters = !!(staged.metalType || staged.itemType || staged.status);
+  const hasActiveFilters = !!(
+    staged.metalType || staged.itemType || staged.status ||
+    staged.minLoan   || staged.maxLoan
+  );
 
   /* ================================================================ */
   return (
@@ -386,6 +404,40 @@ export default function PledgesPage() {
               options={STATUS_TYPES.map(s => ({ label: titleCase(s), value: s }))}
             />
 
+            {/* Loan Amount range — either side may be left blank */}
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] font-medium text-[#6F6F6F] shrink-0">Loan ₹</span>
+              <input
+                type="number"
+                min="0"
+                inputMode="decimal"
+                value={staged.minLoan}
+                onChange={e => {
+                  setLoanRangeError(null);
+                  setStaged(s => ({ ...s, minLoan: e.target.value }));
+                }}
+                placeholder="Min"
+                aria-label="Minimum loan amount"
+                aria-invalid={!!loanRangeError}
+                className="w-24 px-3 py-2.5 text-[13px] bg-white border border-[#E8E6DF] rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#C5C7B8] text-[#2C2C2C] placeholder-[#8C8F7A]"
+              />
+              <span className="text-[13px] text-[#C5C7B8]">–</span>
+              <input
+                type="number"
+                min="0"
+                inputMode="decimal"
+                value={staged.maxLoan}
+                onChange={e => {
+                  setLoanRangeError(null);
+                  setStaged(s => ({ ...s, maxLoan: e.target.value }));
+                }}
+                placeholder="Max"
+                aria-label="Maximum loan amount"
+                aria-invalid={!!loanRangeError}
+                className="w-24 px-3 py-2.5 text-[13px] bg-white border border-[#E8E6DF] rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#C5C7B8] text-[#2C2C2C] placeholder-[#8C8F7A]"
+              />
+            </div>
+
             {/* Reset */}
             {hasActiveFilters && (
               <button
@@ -404,6 +456,14 @@ export default function PledgesPage() {
               Apply Filters
             </button>
           </div>
+
+          {/* Loan-range validation hint — sits below the row so it can't
+              disturb the wrap layout of the controls above. */}
+          {loanRangeError && (
+            <p role="alert" className="mt-2 text-[12px] text-red-700">
+              {loanRangeError}
+            </p>
+          )}
         </div>
 
         {/* ── PLEDGE CARDS ── */}
