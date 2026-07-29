@@ -1,3 +1,3 @@
-import DashboardLayout from "@/app/(UserDetails)/dashboard/layout";
+import AppShell from "@/components/layout/AppShell";
 
-export default DashboardLayout;
+export default AppShell;
