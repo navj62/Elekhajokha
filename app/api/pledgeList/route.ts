@@ -60,6 +60,7 @@ function parseLoanBound(raw: string | null): string | undefined {
 /*    metalType  — GOLD | SILVER                                       */
 /*    itemType   — NECKLACE | RING | BANGLE | …                       */
 /*    status     — ACTIVE | RELEASED | OVERDUE                        */
+/*    search     — free text over customer name / item type / name    */
 /*    minLoan    — inclusive lower bound on loanAmount (optional)     */
 /*    maxLoan    — inclusive upper bound on loanAmount (optional)     */
 /*    take       — page size (default 30, max 100)                    */
@@ -87,6 +88,7 @@ export async function GET(req: NextRequest) {
     const metalType  = parseEnum(searchParams.get("metalType"),  Object.values(MetalType));
     const itemType   = searchParams.get("itemType")?.trim() || undefined;
     const status     = parseEnum(searchParams.get("status"),     Object.values(PledgeStatus));
+    const search     = searchParams.get("search")?.trim() || undefined;
     const minLoan    = parseLoanBound(searchParams.get("minLoan"));
     const maxLoan    = parseLoanBound(searchParams.get("maxLoan"));
     const cursor     = searchParams.get("cursor") ?? undefined;
@@ -123,49 +125,73 @@ export async function GET(req: NextRequest) {
           },
         },
       }),
+
+      // Free-text search. A sibling key, so the OR is ANDed with the tenant
+      // scope and every filter above — the userId scope is NEVER a member of
+      // this OR. Mirrors the sibling-OR semantics of customers/search.
+      //
+      // The two `items.some` clauses stay separate (rather than one `some`
+      // with an inner OR), matching how the metal/item filter above already
+      // composes: each `some` may be satisfied by a different item in the
+      // same pledge. Pledge id is deliberately not searched — it is a UUID.
+      ...(search && {
+        OR: [
+          { customer: { name:     { contains: search, mode: "insensitive" } } },
+          { items: { some: { itemType: { contains: search, mode: "insensitive" } } } },
+          { items: { some: { itemName: { contains: search, mode: "insensitive" } } } },
+        ],
+      }),
     };
 
     /* ---- Query --------------------------------------------------- */
-    const pledges = await prisma.pledge.findMany({
-      where,
-      take:    take + 1,
-      orderBy: { createdAt: "desc" },
+    // The count uses the SAME `where` object as the findMany, so it respects
+    // the search OR and every active filter. It is deliberately NOT
+    // cursor-bounded: it is the total across all pages, which is what the
+    // Results card reports — hasMore/nextCursor below are unaffected.
+    // Run in parallel so the total costs no extra round-trip.
+    const [pledges, total] = await Promise.all([
+      prisma.pledge.findMany({
+        where,
+        take:    take + 1,
+        orderBy: { createdAt: "desc" },
 
-      // Cursor pagination — efficient for large datasets
-      ...(cursor && {
-        cursor: { id: cursor },
-        skip:   1,
-      }),
+        // Cursor pagination — efficient for large datasets
+        ...(cursor && {
+          cursor: { id: cursor },
+          skip:   1,
+        }),
 
-      select: {
-        id:               true,
-        pledgeDate:       true,
-        status:           true,
-        loanAmount:       true,
-        netWeightOfGold:  true,
-        netWeightOfSilver:true,
-        remark:           true,
+        select: {
+          id:               true,
+          pledgeDate:       true,
+          status:           true,
+          loanAmount:       true,
+          netWeightOfGold:  true,
+          netWeightOfSilver:true,
+          remark:           true,
 
-        // Customer name as pledge "title"
-        customer: {
-          select: { id: true, name: true },
-        },
+          // Customer name as pledge "title"
+          customer: {
+            select: { id: true, name: true },
+          },
 
-        // Items — used for:
-        //   1. item count
-        //   2. unique item types shown in the card
-        //   3. unique metal types shown in the card
-        items: {
-          select: {
-            id:       true,
-            itemType: true,
-            metalType:true,
-            itemName: true,
-            quantity: true,
+          // Items — used for:
+          //   1. item count
+          //   2. unique item types shown in the card
+          //   3. unique metal types shown in the card
+          items: {
+            select: {
+              id:       true,
+              itemType: true,
+              metalType:true,
+              itemName: true,
+              quantity: true,
+            },
           },
         },
-      },
-    });
+      }),
+      prisma.pledge.count({ where }),
+    ]);
 
     /* ---- Pagination ---------------------------------------------- */
     const hasMore   = pledges.length > take;
@@ -198,7 +224,7 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ pledges: result, hasMore, nextCursor });
+    return NextResponse.json({ pledges: result, hasMore, nextCursor, total });
 
   } catch (err) {
     console.error("GET /api/pledges failed:", err);

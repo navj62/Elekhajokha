@@ -14,7 +14,9 @@ import SubscriptionGuard from "@/components/SubscriptionGuard";
 const METAL_TYPES  = ["GOLD", "SILVER"] as const;
 const STATUS_TYPES = ["ACTIVE", "RELEASED", "OVERDUE"] as const;
 
-const DEBOUNCE_MS = 300;
+// Mirrors customers/page.tsx, which debounces its search + sort + filter
+// fetches on a single 400ms timer.
+const DEBOUNCE_MS = 400;
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -203,6 +205,10 @@ export default function PledgesPage() {
   const [nextCursor,  setNextCursor]  = useState<string | null>(null);
   const [itemTypeOptions, setItemTypeOptions] = useState<string[]>([]);
 
+  // Server-reported count of ALL rows matching the active filters + search,
+  // across every page — not the number of rows currently loaded.
+  const [total, setTotal] = useState(0);
+
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
 
   // Staged filters — applied only on "Apply Filters"
@@ -220,6 +226,7 @@ export default function PledgesPage() {
     if (f.metalType) p.set("metalType", f.metalType);
     if (f.itemType)  p.set("itemType",  f.itemType);
     if (f.status)    p.set("status",    f.status);
+    if (f.search)    p.set("search",    f.search);
     if (f.minLoan)   p.set("minLoan",   f.minLoan);
     if (f.maxLoan)   p.set("maxLoan",   f.maxLoan);
     if (cursor)      p.set("cursor",    cursor);
@@ -237,6 +244,7 @@ export default function PledgesPage() {
       setPledges(data.pledges ?? []);
       setHasMore(data.hasMore ?? false);
       setNextCursor(data.nextCursor ?? null);
+      setTotal(data.total ?? 0);
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return;
       setError(err instanceof Error ? err.message : "Unexpected error");
@@ -312,14 +320,9 @@ export default function PledgesPage() {
     setFilters(EMPTY_FILTERS);
   }
 
-  // Client-side search filter applied on top of server results
-  const displayed = filters.search
-    ? pledges.filter(p =>
-        p.customerName.toLowerCase().includes(filters.search.toLowerCase()) ||
-        p.id.toLowerCase().includes(filters.search.toLowerCase()) ||
-        p.itemTypes.some(t => t.toLowerCase().includes(filters.search.toLowerCase()))
-      )
-    : pledges;
+  // Search is applied SERVER-side (see buildParams → /api/pledgeList), so
+  // `pledges` already holds only matching rows. No in-memory filtering here —
+  // filtering client-side would only ever search the currently loaded page.
 
   const hasActiveFilters = !!(
     staged.metalType || staged.itemType || staged.status ||
@@ -346,7 +349,7 @@ export default function PledgesPage() {
               Results
             </div>
             <div className="text-[32px] font-semibold text-[#51553A] leading-none mb-0.5">
-              {loading ? "—" : displayed.length}
+              {loading ? "—" : total}
             </div>
             <div className="text-[9px] font-bold text-[#51553A] uppercase tracking-widest mt-1">
               Pledges
@@ -367,7 +370,7 @@ export default function PledgesPage() {
                   setStaged(s => ({ ...s, search: e.target.value }));
                   setFilters(f => ({ ...f, search: e.target.value }));
                 }}
-                placeholder="Search by customer name, ID, or item..."
+                placeholder="Search by customer name or item..."
                 className="w-full pl-9 pr-8 py-2.5 text-[13px] bg-white border border-[#E8E6DF] rounded-[10px] focus:outline-none focus:ring-2 focus:ring-[#C5C7B8] text-[#2C2C2C] placeholder-[#8C8F7A]"
               />
               {staged.search && (
@@ -475,7 +478,7 @@ export default function PledgesPage() {
           <div className="rounded-[16px] border border-red-200 bg-red-50 px-5 py-4 text-[13px] text-red-700">
             {error}
           </div>
-        ) : displayed.length === 0 ? (
+        ) : pledges.length === 0 ? (
           <div className="text-center py-20 space-y-2">
             <p className="text-[14px] text-[#8C8F7A]">No pledges found.</p>
             {hasActiveFilters && (
@@ -487,7 +490,7 @@ export default function PledgesPage() {
         ) : (
           <>
             <div className="space-y-4">
-              {displayed.map(p => (
+              {pledges.map(p => (
                 <PledgeCard
                   key={p.id}
                   pledge={p}
