@@ -1,5 +1,29 @@
 # MOBILE_AUDIT.md
 
+## STATUS (as of 2026-07-29)
+
+- **Last updated:** 2026-07-29
+- **Phase 1 (foundation): COMPLETE** — token consolidation, nav shell, Sheet primitive. Commits `8218e29` (refactor(tokens): consolidate two design-token systems into one) + `5296fb0` (feat(nav): mobile bottom nav + FAB, one shell for both breakpoints).
+- **Phase 2 screen redesigns: NOT STARTED** — none of the per-screen restyling in the tackle-order list below has begun.
+- **Blocker on resuming:** the mobile view has been reported as "way off" after Phase 1 landed. This needs screenshots + diagnosis (see the Verification methodology section in CLAUDE.md's "Mobile-First Redesign" section) before Phase 2 screen work begins — don't start screen-by-screen redesign on top of an unverified foundation.
+
+## CORRECTIONS TO ORIGINAL AUDIT
+
+Findings below were discovered to be wrong or incomplete while executing Steps 1–2
+of Phase 1 (token consolidation + nav shell). The original recon below (sections
+1–9, Summary Table) is left intact as historical baseline — read it alongside these
+corrections, not in place of them.
+
+- **The `.dashboard-*` framing (§7, "Legacy desktop-only CSS") was prefix-inaccurate.** The real dead-CSS region was ~640 lines across ~58 selector families — not all `dashboard`-prefixed as the original audit implied. It also included 3 *live* rules (`.skeleton`, `.dash-animate`, `.lang-hi`) that would have broken the app if deleted by a naive prefix match. Deletion had to be done rule-by-rule against live usage, not by pattern.
+- **`.dark` was dead code, not a second live dark-mode system.** §7 described "two dark-mode systems coexist (conflict risk)" (`.dark` vs `.dark-mode`) as if both were in play. In reality, nothing in the app ever added the `.dark` class — only `.dark-mode` (via the custom `ThemeProvider`) was live. Separately, the two token sets were **not** two notations for the same palette: shadcn's tokens were pure achromatic grays, while the Olive system was warm olive-tinted. Consolidation ported the Olive *values* into the shadcn token *names* (not a merge of equivalent palettes) — see the "Single design system" decision in CLAUDE.md.
+- **`navItems` has 9 entries, not 8** (§6). "Buy Inventory" was missed in the original count.
+- **Shell colours were hardcoded and pointed at stale values** from the legacy CSS that has since been deleted (e.g. `--sidebar-w:240px` vs the actual `w-[260px]` §7 already flagged as inconsistent) — during consolidation, the live *rendered* values were treated as authoritative over any value found in CSS custom properties or legacy stylesheets, since the legacy stylesheet was demonstrably out of sync with what actually rendered.
+- **Step 1's first-pass grep for CSS var usage missed the `var(--x, fallback)` form** (only matched bare `var(--x)`). Four files needed a follow-up sweep once this was noticed, or their fallback-form references would have been silently skipped during token migration.
+- **The nav consolidation question posed in §"Suggested order to tackle" item 0 ("8 sidebar items vs ≤5 bottom-nav") was resolved differently than framed.** The original audit assumed trimming the nav list to ≤5 items. The actual resolution was architectural, not a content cut: one `navConfig.ts` source of truth tagged per-item with `surfaces: ["sidebar","bottom","more"]`, rendering as a 4-item bottom nav + FAB + "More" sheet on mobile and the full list on the sidebar for desktop. No nav items were dropped.
+- **Item 0's "shared Dialog" scope narrowed to a single Sheet primitive.** The original audit called for "a shared responsive table→card primitive and a shared Dialog" as foundational work. Phase 1 delivered the Sheet primitive (`components/ui/Sheet.tsx`) as the one modal/sheet abstraction; the table→card primitive was **not** built in Phase 1 and remains open for Phase 2.
+
+## Original recon (as written, retained for historical baseline)
+
 Read-only recon inventory of E-Lekha-Jokha (Next.js 16 App Router) screens, layout
 patterns, and current responsiveness. **Inventory only — no solutions proposed.**
 Prepared to seed a mobile-first redesign in later sessions.
@@ -276,17 +300,21 @@ These screens are tightly coupled to money/interest/LTV correctness (see CLAUDE.
 
 ## Suggested order to tackle (importance first, then lowest risk)
 
-**Foundational (do before any screen):**
-0. Resolve the **shell + token gap**: the `DashboardLayout` drawer already works at `lg:`, but (a) `/notifications` & `/tasks` sit outside it, (b) two dark-mode systems (`.dark` vs `.dark-mode`) and two token sets coexist, (c) legacy `.dashboard-*` CSS + 768px media queries are dead/misaligned. Decide the nav model (8 sidebar items vs ≤5 bottom-nav) and consolidate tokens first — everything else depends on it. Also build a shared responsive **table→card** primitive and a shared **Dialog**, since ~10 raw tables and 9 inline modals are the main breakage sources and shared-ui adoption is currently near-zero (won't cascade otherwise).
+**Status legend:** ✅ DONE · ⏳ NOT STARTED
 
-**Then, by traffic × low-risk:**
-1. **`/dashboard`** — first thing every owner sees; mostly read-only (safe), just needs responsive grids + `ResponsiveContainer` charts.
-2. **`/customers` (list)** — high traffic, pure presentation, no financial logic — fastest safe win.
-3. **`/customers/:id/pledges/add`** — core daily action (create pledge); shell-only restyle, keep weight derivation untouched.
-4. **`/customers/:id` (detail)** — hub for per-customer work; already uses shared ui, so it also validates the shared-component approach.
-5. **`/inventory`** (list) then **`/inventory/buy`** — second module, wide table + big form.
-6. **`/pledges/:pid` detail → release → sell → bulk-release** — do as a cluster (shared table/card patterns), **shell-only, logic frozen** (critical writes).
-7. **`/ltv`, `/financial-summary`, `/reports`** — analytics/read tables; medium traffic.
-8. **`/notifications`, `/tasks`, `/profile`, `/pledgeList`** — lower traffic, low risk; good place to finalize the no-shell decision.
-9. **`/view/:token`** (public portal) — re-theme to brand + verify trust boundary; customer-facing so worth polishing, but isolate from owner components.
-10. **Auth/onboarding/subscription/report-print** — largely Clerk/server-driven; light touch last.
+**Foundational (do before any screen):** ✅ DONE
+0. Resolve the **shell + token gap**: the `DashboardLayout` drawer already works at `lg:`, but (a) `/notifications` & `/tasks` sit outside it, (b) two dark-mode systems (`.dark` vs `.dark-mode`) and two token sets coexist, (c) legacy `.dashboard-*` CSS + 768px media queries are dead/misaligned. Decide the nav model (8 sidebar items vs ≤5 bottom-nav) and consolidate tokens first — everything else depends on it. Also build a shared responsive **table→card** primitive and a shared **Dialog**, since ~10 raw tables and 9 inline modals are the main breakage sources and shared-ui adoption is currently near-zero (won't cascade otherwise).
+   - Delivered in commits `8218e29` + `5296fb0`: token consolidation (single design system, Olive values under shadcn names), one `navConfig.ts` with `surfaces` tagging, bottom nav + FAB + More sheet, Sheet primitive. See CORRECTIONS above for where the delivered shape diverged from this original framing (nav resolution, Dialog→Sheet narrowing).
+   - **Not** delivered as part of Phase 1, still open: the shared table→card primitive.
+
+**Then, by traffic × low-risk — all ⏳ NOT STARTED (Phase 2), blocked pending mobile-view diagnosis (see STATUS above):**
+1. ⏳ **`/dashboard`** — first thing every owner sees; mostly read-only (safe), just needs responsive grids + `ResponsiveContainer` charts.
+2. ⏳ **`/customers` (list)** — high traffic, pure presentation, no financial logic — fastest safe win.
+3. ⏳ **`/customers/:id/pledges/add`** — core daily action (create pledge); shell-only restyle, keep weight derivation untouched.
+4. ⏳ **`/customers/:id` (detail)** — hub for per-customer work; already uses shared ui, so it also validates the shared-component approach.
+5. ⏳ **`/inventory`** (list) then **`/inventory/buy`** — second module, wide table + big form.
+6. ⏳ **`/pledges/:pid` detail → release → sell → bulk-release** — do as a cluster (shared table/card patterns), **shell-only, logic frozen** (critical writes).
+7. ⏳ **`/ltv`, `/financial-summary`, `/reports`** — analytics/read tables; medium traffic.
+8. ⏳ **`/notifications`, `/tasks`, `/profile`, `/pledgeList`** — lower traffic, low risk; good place to finalize the no-shell decision.
+9. ⏳ **`/view/:token`** (public portal) — re-theme to brand + verify trust boundary; customer-facing so worth polishing, but isolate from owner components.
+10. ⏳ **Auth/onboarding/subscription/report-print** — largely Clerk/server-driven; light touch last.

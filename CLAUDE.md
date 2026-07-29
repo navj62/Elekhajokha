@@ -368,6 +368,45 @@ Deliberately tracked so reviews focus on real bugs rather than re-discovering th
 - **Customer PII in git history.** Two ledger-import scripts (`prisma/seed.ts`, `prisma/seed-ledger-entries-batch2.ts`) contained real customer PII (names, regions, loan amounts transcribed from a physical ledger) and used `new PrismaClient()` in violation of Invariant 9. They were **removed from the working tree** so they no longer ship to future clones, but they **remain in git history** — a history purge (`git filter-repo`/BFG + force-push) was **deliberately not performed**. The repo must stay private. `prisma db seed` now runs the PII-free `prisma/seed-defaults.ts`.
 - **No `.env.example`.** Onboarding a new developer means reconstructing the env-var list from the checklist below. Optional: add a `.env.example` with placeholder values only (no real secrets) for developer onboarding.
 
+## Mobile-First Redesign — In Progress
+
+Full recon and running notes live in [MOBILE_AUDIT.md](MOBILE_AUDIT.md) — check its STATUS block before picking up this work.
+
+### Current status
+- **Foundation complete**: token consolidation, nav shell, Sheet primitive (commits `8218e29`, `5296fb0`).
+- **Screen-by-screen redesign not yet started.**
+- **Known open issue:** the mobile view has been reported as "looks way off" — unresolved. Diagnose with screenshots (see Verification methodology below) before starting screen work.
+
+### Architectural decisions locked in
+These were deliberately decided during Phase 1. Future sessions must respect them — don't rediscover or silently overturn; if one seems wrong, ask before changing it.
+
+- **Single design system:** shadcn's semantic token *names* now carry the Olive brand's *values* (not shadcn's default achromatic palette). Don't revert to shadcn defaults or reintroduce a second token system.
+- **`.dark` is the live dark-mode class; `.dark-mode` has been removed.** `ThemeProvider` toggles `.dark`. (Prior to this, `.dark-mode` was the only live class and `.dark` was dead — see MOBILE_AUDIT.md corrections.)
+- **Nav has one source of truth: `navConfig.ts`**, with each item tagged `surfaces: ["sidebar","bottom","more"]`. Do not fork the nav list for mobile vs. desktop — extend the `surfaces` tagging instead of duplicating entries.
+- **Mobile shell:** bottom nav (4 items) + FAB (opens a Customer Picker → routes to `/customers/[customerId]/pledges/add`) + More sheet (5 route items + 3 account controls). No hamburger drawer on mobile.
+- **Desktop shell:** existing sidebar retained, using prefix-match active state (not exact-match).
+- **Sheet primitive (`components/ui/Sheet.tsx`) is the ONLY modal/sheet component.** Do not hand-roll new `fixed inset-0` modals — the codebase already has 9 of those from before this redesign; route new work through Sheet instead of adding a 10th ad hoc modal.
+- **Z-scale contract:** content `z-0`, sticky action bar `z-30`, bottom nav `z-40`, FAB `z-45`, sheet backdrop `z-50`, sheet content `z-51`. Documented in `navConfig.ts` — don't diverge from it.
+- **`--bottom-nav-h` CSS var is 56px.** Any sticky-bottom UI on mobile must anchor at `bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom))`.
+- **Use `h-[100dvh]`, not `h-screen`, at the shell root** — and for any future full-viewport container.
+- **`--muted-foreground-subtle` is a 3rd text level** (`#6F6F6F` light, `#908D81` dark). It preserves a 3-level text hierarchy — don't collapse it back to 2 levels.
+
+### Deferred work / greppable TODO markers
+- `TODO(i18n)` markers in `navConfig.ts` and `MoreSheet.tsx` for English-only nav labels: "Buy Inventory", "Notifications", "Tasks", "More", plus theme/language toggle strings. Handle as a batch i18n pass, not piecemeal.
+- ~2,434 hardcoded hex colours across 34 screen files (~988 are exact re-hardcodes of existing tokens). Planned as a screen-by-screen mechanical migration during Phase 2 screen redesigns — hex→token mapping table is in MOBILE_AUDIT.md's Step 1e report.
+- Three routes share the `BarChart3` icon (`/reports`, `/ltv`, `/pledgeList`) — assign distinct icons in Phase 4 polish.
+- Logout SVG uses hardcoded `fill="#e3e3e3"` — tokenize in Phase 4 polish alongside the untokenized-hex sweep.
+
+### Risk-flagged screens (restated from MOBILE_AUDIT.md §9)
+`pledge create/release/sell/bulk-release`, `inventory buy/sell` — UI shell changes only. Same props in, same handlers out, same validation. Do not touch interest calculation, LTV, risk scoring, weight splits, or transaction/audit creation on these screens (see Invariants 2, 3, 8, 11, 12).
+
+### Verification methodology for future sessions
+- Use CDP `Emulation.setDeviceMetricsOverride` for viewport sizing — `--window-size` clamps at ~500px minimum and is unreliable for phone-width testing.
+- Read `window.innerWidth` on-page to confirm the actual viewport rather than trusting the requested size.
+- `Emulation.setFocusEmulationEnabled` is required for `focusin` events to fire during automated testing.
+- Pin theme explicitly when taking screenshots — `prefers-color-scheme` fallback yields byte-identical light/dark captures otherwise.
+- Verify token migrations against both the `var(--x)` and `var(--x, fallback)` forms — a first-pass grep for the bare form alone will miss fallback usages (see MOBILE_AUDIT.md corrections).
+
 ## Security posture (audited)
 
 Summary of what a security audit verified, so future reviews don't re-litigate settled ground. Do not reintroduce anything in "Fixed during audit."
