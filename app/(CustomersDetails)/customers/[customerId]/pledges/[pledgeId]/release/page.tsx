@@ -396,7 +396,7 @@ export default function ReleasePledgePage() {
         </p>
 
         {transactions.length === 0 ? (
-          <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+          <p className="text-[13px]" style={{ color: "var(--muted-foreground-subtle)" }}>
             No payments recorded for this pledge.
           </p>
         ) : (

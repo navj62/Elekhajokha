@@ -61,7 +61,7 @@ export default function MetalRateStrip({ variant }: { variant: "full" | "compact
     if (loading) {
       return (
         <div className="px-8 pb-3">
-          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+          <p className="text-[11px]" style={{ color: "var(--muted-foreground-subtle)" }}>
             Loading rates...
           </p>
         </div>
@@ -70,7 +70,7 @@ export default function MetalRateStrip({ variant }: { variant: "full" | "compact
     if (error || noData) {
       return (
         <div className="px-8 pb-3">
-          <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+          <p className="text-[11px]" style={{ color: "var(--muted-foreground-subtle)" }}>
             Rates unavailable
           </p>
         </div>
@@ -79,12 +79,12 @@ export default function MetalRateStrip({ variant }: { variant: "full" | "compact
     return (
       <div className="px-8 pb-3 flex flex-col gap-0.5">
         {goldPrice !== null && (
-          <p className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>
+          <p className="text-[11px] font-medium" style={{ color: "var(--muted-foreground-subtle)" }}>
             Gold ₹{goldPrice.toLocaleString("en-IN")}/g
           </p>
         )}
         {silverPrice !== null && (
-          <p className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>
+          <p className="text-[11px] font-medium" style={{ color: "var(--muted-foreground-subtle)" }}>
             Silver ₹{silverPrice.toLocaleString("en-IN")}/g
           </p>
         )}
@@ -96,7 +96,7 @@ export default function MetalRateStrip({ variant }: { variant: "full" | "compact
   if (loading && !rates) {
     return (
       <div className="rounded-[14px] bg-[#F4F3EA] border border-[#EAE9DF] px-5 py-3 w-full flex items-center justify-between">
-        <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+        <p className="text-[13px]" style={{ color: "var(--muted-foreground-subtle)" }}>
           Loading market rates...
         </p>
       </div>
@@ -105,7 +105,7 @@ export default function MetalRateStrip({ variant }: { variant: "full" | "compact
   if ((error || noData) && !rates) {
     return (
       <div className="rounded-[14px] bg-[#F4F3EA] border border-[#EAE9DF] px-5 py-3 w-full flex items-center justify-between">
-        <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+        <p className="text-[13px]" style={{ color: "var(--muted-foreground-subtle)" }}>
           Rates unavailable
         </p>
       </div>
@@ -113,21 +113,21 @@ export default function MetalRateStrip({ variant }: { variant: "full" | "compact
   }
   return (
     <div className="rounded-[14px] bg-[#F4F3EA] border border-[#EAE9DF] px-5 py-3 w-full flex items-center justify-between flex-wrap gap-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
-      <div className="flex items-center gap-6 flex-wrap text-[13px] text-[var(--text-secondary)] font-normal">
-        <div className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
+      <div className="flex items-center gap-6 flex-wrap text-[13px] text-[var(--muted-foreground)] font-normal">
+        <div className="flex items-center gap-2 font-medium text-[var(--foreground)]">
           <TrendingUp size={16} className="text-[#5E6442]" />
           <span>Market Rates:</span>
         </div>
         {goldPrice !== null && (
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#EAB308] shrink-0" />
-            <span>Gold: <span className="font-medium text-[var(--text-primary)]">₹{goldPrice.toLocaleString("en-IN")}/g</span></span>
+            <span>Gold: <span className="font-medium text-[var(--foreground)]">₹{goldPrice.toLocaleString("en-IN")}/g</span></span>
           </div>
         )}
         {silverPrice !== null && (
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#94A3B8] shrink-0" />
-            <span>Silver: <span className="font-medium text-[var(--text-primary)]">₹{silverPrice.toLocaleString("en-IN")}/g</span></span>
+            <span>Silver: <span className="font-medium text-[var(--foreground)]">₹{silverPrice.toLocaleString("en-IN")}/g</span></span>
           </div>
         )}
         {updatedAt && (
@@ -141,7 +141,7 @@ export default function MetalRateStrip({ variant }: { variant: "full" | "compact
         type="button"
         onClick={loadRates}
         disabled={loading}
-        className="flex items-center gap-1.5 text-[12px] font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer ml-auto disabled:opacity-50"
+        className="flex items-center gap-1.5 text-[12px] font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors cursor-pointer ml-auto disabled:opacity-50"
       >
         <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
         <span>REFRESH</span>

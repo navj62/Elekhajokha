@@ -64,14 +64,14 @@ export function ThemedSelect({
                     } ${className || "h-[48px]"}`}
             >
                 <span
-                    className={`truncate pr-2 ${value ? "text-[var(--text-primary)] font-normal" : "text-[var(--text-muted)] font-normal"
+                    className={`truncate pr-2 ${value ? "text-[var(--foreground)] font-normal" : "text-[var(--muted-foreground-subtle)] font-normal"
                         }`}
                 >
                     {displayLabel}
                 </span>
                 <ChevronDown
                     size={16}
-                    className={`shrink-0 text-[var(--text-muted)] transition-transform duration-200 ${isOpen ? "rotate-180 text-[#5E6442]" : ""
+                    className={`shrink-0 text-[var(--muted-foreground-subtle)] transition-transform duration-200 ${isOpen ? "rotate-180 text-[#5E6442]" : ""
                         }`}
                 />
             </div>
@@ -82,7 +82,7 @@ export function ThemedSelect({
                     {groups.map((group, groupIdx) => (
                         <div key={group.name || groupIdx} className="py-1 first:pt-0 last:pb-0">
                             {group.name && (
-                                <div className="px-3.5 py-1.5 text-[11px] font-semibold tracking-wider text-[var(--text-muted)] uppercase bg-[#FAFAF7]/80">
+                                <div className="px-3.5 py-1.5 text-[11px] font-semibold tracking-wider text-[var(--muted-foreground-subtle)] uppercase bg-[#FAFAF7]/80">
                                     {group.name}
                                 </div>
                             )}
@@ -97,7 +97,7 @@ export function ThemedSelect({
                                         }}
                                         className={`px-3.5 py-2.5 text-[14.5px] flex items-center justify-between cursor-pointer transition-colors ${isSelected
                                                 ? "bg-[#5E6442] text-white font-medium"
-                                                : "text-[var(--text-primary)] hover:bg-[#F5F4EF] hover:text-[#5E6442]"
+                                                : "text-[var(--foreground)] hover:bg-[#F5F4EF] hover:text-[#5E6442]"
                                             }`}
                                     >
                                         <span className="truncate pr-2">{opt.label}</span>

@@ -140,14 +140,14 @@ export default function TasksPage() {
   return (
     <div
       className="min-h-screen"
-      style={{ backgroundColor: "var(--main-bg)", fontFamily: "'DM Sans', sans-serif" }}
+      style={{ backgroundColor: "var(--background)", fontFamily: "'DM Sans', sans-serif" }}
     >
       {/* Header */}
       <div className="mb-8">
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-1.5 text-[12px] font-bold mb-4 transition-opacity hover:opacity-70"
-          style={{ color: "var(--text-secondary)" }}
+          style={{ color: "var(--muted-foreground)" }}
         >
           <ChevronLeft size={14} />
           Back to Dashboard
@@ -164,12 +164,12 @@ export default function TasksPage() {
               </div>
               <h1
                 className="text-[28px] font-bold tracking-tight"
-                style={{ color: "var(--text-primary)" }}
+                style={{ color: "var(--foreground)" }}
               >
                 All Tasks
               </h1>
             </div>
-            <p className="text-[13px] font-medium ml-[52px]" style={{ color: "var(--text-secondary)" }}>
+            <p className="text-[13px] font-medium ml-[52px]" style={{ color: "var(--muted-foreground)" }}>
               Manage and track your workspace tasks
             </p>
           </div>
@@ -187,7 +187,7 @@ export default function TasksPage() {
       {/* Stats strip */}
       <div
         className="rounded-[18px] p-0 flex items-center mb-6"
-        style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
+        style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
       >
         {[
           { label: "Total Tasks", value: tasks.length },
@@ -198,14 +198,14 @@ export default function TasksPage() {
             key={s.label}
             className="flex-1 p-5 flex flex-col items-center relative"
           >
-            <span className="text-[10px] font-bold tracking-wider uppercase mb-1" style={{ color: "var(--text-muted)" }}>
+            <span className="text-[10px] font-bold tracking-wider uppercase mb-1" style={{ color: "var(--muted-foreground-subtle)" }}>
               {s.label}
             </span>
-            <span className="text-[22px] font-bold" style={{ color: "var(--text-primary)" }}>
+            <span className="text-[22px] font-bold" style={{ color: "var(--foreground)" }}>
               {s.value}
             </span>
             {i < 2 && (
-              <div className="absolute right-0 top-4 bottom-4 w-px bg-[var(--border-light)]" />
+              <div className="absolute right-0 top-4 bottom-4 w-px bg-[var(--border)]" />
             )}
           </div>
         ))}
@@ -215,9 +215,9 @@ export default function TasksPage() {
       {showAdd && (
         <div
           className="rounded-[18px] p-6 mb-6"
-          style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
+          style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
         >
-          <h3 className="text-[14px] font-bold mb-4" style={{ color: "var(--text-primary)" }}>
+          <h3 className="text-[14px] font-bold mb-4" style={{ color: "var(--foreground)" }}>
             New Task
           </h3>
           <div className="space-y-3">
@@ -232,29 +232,29 @@ export default function TasksPage() {
               placeholder="What needs to be done?"
               className="w-full rounded-[10px] px-4 py-2.5 text-[13px] font-medium outline-none transition-all"
               style={{
-                backgroundColor: "var(--main-bg)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
+                backgroundColor: "var(--background)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
               }}
             />
             <div className="flex items-center gap-3">
               <div
                 className="flex items-center gap-2 flex-1 rounded-[10px] px-4 py-2.5"
-                style={{ backgroundColor: "var(--main-bg)", border: "1px solid var(--border-light)" }}
+                style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)" }}
               >
-                <CalendarDays size={14} style={{ color: "var(--text-muted)" }} />
+                <CalendarDays size={14} style={{ color: "var(--muted-foreground-subtle)" }} />
                 <input
                   type="date"
                   value={newDueDate}
                   onChange={(e) => setNewDueDate(e.target.value)}
                   className="bg-transparent text-[12px] font-medium outline-none flex-1"
-                  style={{ color: "var(--text-secondary)" }}
+                  style={{ color: "var(--muted-foreground)" }}
                 />
               </div>
               <button
                 onClick={() => { setShowAdd(false); setNewTitle(""); setNewDueDate(""); }}
                 className="px-4 py-2.5 rounded-[10px] text-[12px] font-bold transition-opacity hover:opacity-70"
-                style={{ color: "var(--text-muted)", border: "1px solid var(--border-light)" }}
+                style={{ color: "var(--muted-foreground-subtle)", border: "1px solid var(--border)" }}
               >
                 Cancel
               </button>
@@ -274,7 +274,7 @@ export default function TasksPage() {
       {/* Filter Tabs + Tasks */}
       <div
         className="rounded-[18px] p-6"
-        style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
+        style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
       >
         {/* Filter Tabs */}
         <div className="flex items-center gap-2 mb-6">
@@ -284,16 +284,16 @@ export default function TasksPage() {
               onClick={() => setFilter(tab.key)}
               className="px-4 py-1.5 rounded-full text-[11px] font-bold transition-all duration-150"
               style={{
-                backgroundColor: filter === tab.key ? "#565C3F" : "var(--main-bg)",
-                color: filter === tab.key ? "#fff" : "var(--text-muted)",
+                backgroundColor: filter === tab.key ? "#565C3F" : "var(--background)",
+                color: filter === tab.key ? "#fff" : "var(--muted-foreground-subtle)",
               }}
             >
               {tab.label}
               <span
                 className="ml-1.5 px-1.5 py-0.5 rounded-full text-[9px]"
                 style={{
-                  backgroundColor: filter === tab.key ? "rgba(255,255,255,0.25)" : "var(--border-light)",
-                  color: filter === tab.key ? "#fff" : "var(--text-muted)",
+                  backgroundColor: filter === tab.key ? "rgba(255,255,255,0.25)" : "var(--border)",
+                  color: filter === tab.key ? "#fff" : "var(--muted-foreground-subtle)",
                 }}
               >
                 {tab.count}
@@ -304,13 +304,13 @@ export default function TasksPage() {
 
         {/* Task list */}
         {loading ? (
-          <div className="py-16 text-center text-[13px] font-medium" style={{ color: "var(--text-muted)" }}>
+          <div className="py-16 text-center text-[13px] font-medium" style={{ color: "var(--muted-foreground-subtle)" }}>
             Loading tasks…
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center">
-            <ListChecks size={36} className="mx-auto mb-3 opacity-20" style={{ color: "var(--text-muted)" }} />
-            <p className="text-[13px] font-medium" style={{ color: "var(--text-muted)" }}>
+            <ListChecks size={36} className="mx-auto mb-3 opacity-20" style={{ color: "var(--muted-foreground-subtle)" }} />
+            <p className="text-[13px] font-medium" style={{ color: "var(--muted-foreground-subtle)" }}>
               {filter === "done" ? "No completed tasks yet." : "No tasks found. Add one above!"}
             </p>
           </div>
@@ -325,7 +325,7 @@ export default function TasksPage() {
                 <div
                   key={task.id}
                   className={`flex items-center gap-3 py-3.5 px-1 group ${!isLast ? "border-b" : ""}`}
-                  style={{ borderColor: "var(--border-light)" }}
+                  style={{ borderColor: "var(--border)" }}
                 >
                   {/* Toggle button */}
                   <button
@@ -338,7 +338,7 @@ export default function TasksPage() {
                     ) : (
                       <Circle
                         size={18}
-                        className="text-[var(--text-muted)] hover:text-[#565C3F] transition-colors"
+                        className="text-[var(--muted-foreground-subtle)] hover:text-[#565C3F] transition-colors"
                       />
                     )}
                   </button>
@@ -348,14 +348,14 @@ export default function TasksPage() {
                     <p
                       className="text-[13px] font-semibold leading-snug"
                       style={{
-                        color: task.done ? "var(--text-muted)" : "var(--text-primary)",
+                        color: task.done ? "var(--muted-foreground-subtle)" : "var(--foreground)",
                         textDecoration: task.done ? "line-through" : "none",
                       }}
                     >
                       {task.text}
                     </p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-[10px] font-medium" style={{ color: "var(--text-muted)" }}>
+                      <span className="text-[10px] font-medium" style={{ color: "var(--muted-foreground-subtle)" }}>
                         Created {formatDate(task.createdAt)}
                       </span>
                       {task.dueDate && (

@@ -40,9 +40,9 @@ function fmtDate(iso: string) {
 
 function LabelValue({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-2.5" style={{ borderBottom: "1px solid var(--border-light)" }}>
-      <span className="text-[12px] shrink-0" style={{ color: "var(--text-muted)" }}>{label}</span>
-      <span className="text-[13px] font-medium text-right" style={{ color: "var(--text-primary)" }}>{value}</span>
+    <div className="flex items-start justify-between gap-4 py-2.5" style={{ borderBottom: "1px solid var(--border)" }}>
+      <span className="text-[12px] shrink-0" style={{ color: "var(--muted-foreground-subtle)" }}>{label}</span>
+      <span className="text-[13px] font-medium text-right" style={{ color: "var(--foreground)" }}>{value}</span>
     </div>
   );
 }
@@ -88,7 +88,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
             <div
               key={i}
               className="h-12 rounded-[12px] animate-pulse"
-              style={{ backgroundColor: "var(--border-light)" }}
+              style={{ backgroundColor: "var(--border)" }}
             />
           ))}
         </div>
@@ -100,7 +100,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
     return (
       <SubscriptionGuard>
         <div className="py-6 max-w-[560px] mx-auto text-center space-y-3">
-          <p className="text-[14px]" style={{ color: "var(--text-secondary)" }}>
+          <p className="text-[14px]" style={{ color: "var(--muted-foreground)" }}>
             Could not load receipt.
           </p>
           <Link href="/inventory" className="text-[13px] font-medium underline" style={{ color: "#565C3F" }}>
@@ -127,7 +127,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
         <Link
           href="/inventory"
           className="inline-flex items-center gap-1.5 text-[13px] font-medium hover:opacity-70 transition-opacity"
-          style={{ color: "var(--text-secondary)" }}
+          style={{ color: "var(--muted-foreground)" }}
         >
           <ArrowLeft size={15} />
           Back to Inventory
@@ -142,10 +142,10 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
             <CheckCircle size={30} style={{ color: "#4D6B2A" }} />
           </div>
           <div>
-            <h1 className="text-[20px] font-semibold" style={{ color: "var(--text-primary)" }}>
+            <h1 className="text-[20px] font-semibold" style={{ color: "var(--foreground)" }}>
               Purchase Recorded
             </h1>
-            <p className="text-[13px] mt-0.5" style={{ color: "var(--text-secondary)" }}>
+            <p className="text-[13px] mt-0.5" style={{ color: "var(--muted-foreground)" }}>
               Item added to inventory.
             </p>
           </div>
@@ -154,7 +154,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
         {/* Receipt card */}
         <div
           className="rounded-[18px] overflow-hidden"
-          style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
+          style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
         >
           {/* Olive header strip */}
           <div className="px-6 py-4" style={{ backgroundColor: "#565C3F" }}>
@@ -184,9 +184,9 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
               <div className="mb-5">
                 <div
                   className="w-24 h-24 rounded-[12px] flex items-center justify-center"
-                  style={{ backgroundColor: "var(--main-bg)", border: "1px solid var(--border-light)" }}
+                  style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)" }}
                 >
-                  <Package size={28} style={{ color: "var(--text-muted)" }} />
+                  <Package size={28} style={{ color: "var(--muted-foreground-subtle)" }} />
                 </div>
               </div>
             )}
@@ -196,7 +196,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
               className="mb-5 px-5 py-4 rounded-[12px] text-center"
               style={{ backgroundColor: "#EAE9DF" }}
             >
-              <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+              <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted-foreground-subtle)" }}>
                 Purchase Price
               </p>
               <p className="text-[28px] font-bold" style={{ color: "#565C3F" }}>
@@ -227,7 +227,7 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
 
             {/* Seller */}
             <div className="mt-4 pt-1 space-y-0">
-              <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+              <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted-foreground-subtle)" }}>
                 Seller
               </p>
               <LabelValue label="Seller Name"       value={item.sellerName ?? "—"} />
@@ -237,15 +237,15 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
             {/* Notes */}
             {item.notes && (
               <div className="mt-4 pt-1">
-                <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>
+                <p className="text-[11px] font-bold uppercase tracking-wider mb-1" style={{ color: "var(--muted-foreground-subtle)" }}>
                   Notes
                 </p>
-                <p className="text-[13px]" style={{ color: "var(--text-secondary)" }}>{item.notes}</p>
+                <p className="text-[13px]" style={{ color: "var(--muted-foreground)" }}>{item.notes}</p>
               </div>
             )}
 
             {/* Ref */}
-            <p className="text-[11px] mt-4 pt-3" style={{ color: "var(--text-muted)", borderTop: "1px solid var(--border-light)" }}>
+            <p className="text-[11px] mt-4 pt-3" style={{ color: "var(--muted-foreground-subtle)", borderTop: "1px solid var(--border)" }}>
               Ref: {item.id.slice(-8).toUpperCase()}
             </p>
           </div>
@@ -265,9 +265,9 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
             <button
               className="w-full py-3 rounded-[10px] text-[13px] font-semibold transition-colors"
               style={{
-                backgroundColor: "var(--main-bg)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-secondary)",
+                backgroundColor: "var(--background)",
+                border: "1px solid var(--border)",
+                color: "var(--muted-foreground)",
               }}
             >
               Back to Inventory

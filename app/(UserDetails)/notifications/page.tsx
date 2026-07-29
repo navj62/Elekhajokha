@@ -188,7 +188,7 @@ export default function NotificationsPage() {
     : alerts.filter((a) => a.newTier === filterTier);
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--main-bg)" }}>
+    <div style={{ minHeight: "100vh", background: "var(--background)" }}>
       <div style={{ maxWidth: "760px", margin: "0 auto", padding: "28px 24px 48px" }}>
 
         {/* ── Back Button ── */}
@@ -201,9 +201,9 @@ export default function NotificationsPage() {
             marginBottom: "24px",
             padding: "7px 14px 7px 10px",
             borderRadius: "8px",
-            border: "1px solid var(--border-light)",
-            background: "var(--card-bg)",
-            color: "var(--text-secondary)",
+            border: "1px solid var(--border)",
+            background: "var(--card)",
+            color: "var(--muted-foreground)",
             fontSize: "13px",
             fontWeight: 500,
             cursor: "pointer",
@@ -211,12 +211,12 @@ export default function NotificationsPage() {
             boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "var(--sidebar-bg)";
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--text-primary)";
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--sidebar)";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--foreground)";
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "var(--card-bg)";
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--text-secondary)";
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--card)";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--muted-foreground)";
           }}
         >
           <ArrowLeft size={15} strokeWidth={2.2} />
@@ -230,18 +230,18 @@ export default function NotificationsPage() {
               width: "40px",
               height: "40px",
               borderRadius: "10px",
-              background: "var(--sidebar-active-bg)",
+              background: "var(--sidebar-accent)",
               display: "grid",
               placeItems: "center",
             }}>
-              <Bell size={18} strokeWidth={2} style={{ color: "var(--primary-brand)" }} />
+              <Bell size={18} strokeWidth={2} style={{ color: "var(--primary)" }} />
             </div>
             <div>
-              <h1 style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-primary)", margin: 0, letterSpacing: "-0.3px" }}>
+              <h1 style={{ fontSize: "20px", fontWeight: 700, color: "var(--foreground)", margin: 0, letterSpacing: "-0.3px" }}>
                 Notifications
               </h1>
               {unreadCount > 0 && (
-                <p style={{ fontSize: "12.5px", color: "var(--text-secondary)", margin: "2px 0 0" }}>
+                <p style={{ fontSize: "12.5px", color: "var(--muted-foreground)", margin: "2px 0 0" }}>
                   {unreadCount} unread alert{unreadCount !== 1 ? "s" : ""}
                 </p>
               )}
@@ -259,9 +259,9 @@ export default function NotificationsPage() {
                   gap: "6px",
                   padding: "8px 14px",
                   borderRadius: "8px",
-                  border: "1px solid var(--border-light)",
-                  background: "var(--card-bg)",
-                  color: "var(--primary-brand)",
+                  border: "1px solid var(--border)",
+                  background: "var(--card)",
+                  color: "var(--primary)",
                   fontSize: "12.5px",
                   fontWeight: 600,
                   cursor: markingRead ? "not-allowed" : "pointer",
@@ -270,10 +270,10 @@ export default function NotificationsPage() {
                   boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
                 }}
                 onMouseEnter={(e) => {
-                  if (!markingRead) (e.currentTarget as HTMLButtonElement).style.background = "var(--sidebar-bg)";
+                  if (!markingRead) (e.currentTarget as HTMLButtonElement).style.background = "var(--sidebar)";
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.background = "var(--card-bg)";
+                  (e.currentTarget as HTMLButtonElement).style.background = "var(--card)";
                 }}
               >
                 <CheckCheck size={14} strokeWidth={2.2} />
@@ -290,8 +290,8 @@ export default function NotificationsPage() {
                   gap: "6px",
                   padding: "8px 14px",
                   borderRadius: "8px",
-                  border: "1px solid var(--border-light)",
-                  background: "var(--card-bg)",
+                  border: "1px solid var(--border)",
+                  background: "var(--card)",
                   color: "#dc2626",
                   fontSize: "12.5px",
                   fontWeight: 600,
@@ -304,7 +304,7 @@ export default function NotificationsPage() {
                   if (!deletingAll) (e.currentTarget as HTMLButtonElement).style.background = "#fef2f2";
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLButtonElement).style.background = "var(--card-bg)";
+                  (e.currentTarget as HTMLButtonElement).style.background = "var(--card)";
                 }}
               >
                 <Trash2 size={14} strokeWidth={2.2} />
@@ -320,8 +320,8 @@ export default function NotificationsPage() {
           {/* Unread toggle */}
           <div style={{
             display: "flex",
-            background: "var(--card-bg)",
-            border: "1px solid var(--border-light)",
+            background: "var(--card)",
+            border: "1px solid var(--border)",
             borderRadius: "10px",
             padding: "3px",
             gap: "2px",
@@ -338,16 +338,16 @@ export default function NotificationsPage() {
                   fontWeight: 600,
                   cursor: "pointer",
                   transition: "all 0.15s ease",
-                  background: filterUnread === f ? "var(--primary-brand)" : "transparent",
-                  color: filterUnread === f ? "#fff" : "var(--text-secondary)",
+                  background: filterUnread === f ? "var(--primary)" : "transparent",
+                  color: filterUnread === f ? "#fff" : "var(--muted-foreground)",
                 }}
               >
                 {f === "all" ? "All" : "Unread"}
                 {f === "unread" && unreadCount > 0 && (
                   <span style={{
                     marginLeft: "6px",
-                    background: filterUnread === "unread" ? "rgba(255,255,255,0.25)" : "var(--notif-badge)",
-                    color: filterUnread === "unread" ? "#fff" : "var(--text-primary)",
+                    background: filterUnread === "unread" ? "rgba(255,255,255,0.25)" : "var(--warning)",
+                    color: filterUnread === "unread" ? "#fff" : "var(--foreground)",
                     fontSize: "11px",
                     fontWeight: 700,
                     borderRadius: "999px",
@@ -372,13 +372,13 @@ export default function NotificationsPage() {
                   style={{
                     padding: "6px 13px",
                     borderRadius: "8px",
-                    border: `1px solid ${isActive && config ? config.border : "var(--border-light)"}`,
+                    border: `1px solid ${isActive && config ? config.border : "var(--border)"}`,
                     fontSize: "12px",
                     fontWeight: 600,
                     cursor: "pointer",
                     transition: "all 0.15s ease",
-                    background: isActive && config ? config.bg : "var(--card-bg)",
-                    color: isActive && config ? config.color : "var(--text-secondary)",
+                    background: isActive && config ? config.bg : "var(--card)",
+                    color: isActive && config ? config.color : "var(--muted-foreground)",
                   }}
                 >
                   {tier === "all" ? "All tiers" : TIER_CONFIG[tier as RiskTier].label}
@@ -389,7 +389,7 @@ export default function NotificationsPage() {
         </div>
 
         {/* ── Divider ── */}
-        <div style={{ height: "1px", background: "var(--divider-soft)", marginBottom: "16px" }} />
+        <div style={{ height: "1px", background: "var(--border)", marginBottom: "16px" }} />
 
         {/* ── List ── */}
         {loading ? (
@@ -411,9 +411,9 @@ export default function NotificationsPage() {
                   padding: "12px",
                   marginTop: "4px",
                   borderRadius: "10px",
-                  border: "1px dashed var(--border-light)",
+                  border: "1px dashed var(--border)",
                   background: "transparent",
-                  color: "var(--text-secondary)",
+                  color: "var(--muted-foreground)",
                   fontSize: "13px",
                   fontWeight: 500,
                   cursor: loadingMore ? "not-allowed" : "pointer",
@@ -462,10 +462,10 @@ function AlertCard({ alert, onRead, onDelete, index }: { alert: Alert; onRead: (
         background: hovered
           ? "var(--card-alt)"
           : !alert.isRead
-          ? "var(--card-bg)"
-          : "var(--card-bg)",
+          ? "var(--card)"
+          : "var(--card)",
         borderRadius: "12px",
-        border: `1px solid ${hovered ? "var(--secondary-light)" : !alert.isRead ? "var(--border-light)" : "var(--divider-soft)"}`,
+        border: `1px solid ${hovered ? "var(--secondary)" : !alert.isRead ? "var(--border)" : "var(--border)"}`,
         boxShadow: !alert.isRead
           ? hovered ? "0 4px 16px rgba(86,92,63,0.10)" : "0 2px 8px rgba(0,0,0,0.05)"
           : "none",
@@ -485,7 +485,7 @@ function AlertCard({ alert, onRead, onDelete, index }: { alert: Alert; onRead: (
           bottom: "12px",
           width: "3px",
           borderRadius: "0 3px 3px 0",
-          background: "var(--primary-brand)",
+          background: "var(--primary)",
         }} />
       )}
 
@@ -513,21 +513,21 @@ function AlertCard({ alert, onRead, onDelete, index }: { alert: Alert; onRead: (
             {/* Top row: customer · item | time */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "4px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0, overflow: "hidden" }}>
-                <span style={{ fontWeight: 700, fontSize: "13.5px", color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span style={{ fontWeight: 700, fontSize: "13.5px", color: "var(--foreground)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {alert.customer.name}
                 </span>
-                <span style={{ color: "var(--text-muted)", fontSize: "11px", flexShrink: 0 }}>·</span>
-                <span style={{ fontSize: "12px", color: "var(--text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <span style={{ color: "var(--muted-foreground-subtle)", fontSize: "11px", flexShrink: 0 }}>·</span>
+                <span style={{ fontSize: "12px", color: "var(--muted-foreground)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   {itemLabel}
                 </span>
               </div>
-              <span style={{ fontSize: "11.5px", color: "var(--text-muted)", flexShrink: 0, opacity: hovered ? 0 : 1, transition: "opacity 0.15s ease" }}>
+              <span style={{ fontSize: "11.5px", color: "var(--muted-foreground-subtle)", flexShrink: 0, opacity: hovered ? 0 : 1, transition: "opacity 0.15s ease" }}>
                 {formatRelativeTime(alert.createdAt)}
               </span>
             </div>
 
             {/* Message */}
-            <p style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: "1.5", margin: "0 0 10px" }}>
+            <p style={{ fontSize: "13px", color: "var(--muted-foreground)", lineHeight: "1.5", margin: "0 0 10px" }}>
               {alert.message}
             </p>
 
@@ -554,7 +554,7 @@ function AlertCard({ alert, onRead, onDelete, index }: { alert: Alert; onRead: (
               {/* Old tier badge */}
               {alert.oldTier && alert.oldTier !== alert.newTier && (
                 <>
-                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>from</span>
+                  <span style={{ fontSize: "11px", color: "var(--muted-foreground-subtle)" }}>from</span>
                   <span style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -575,9 +575,9 @@ function AlertCard({ alert, onRead, onDelete, index }: { alert: Alert; onRead: (
               {/* LTV */}
               {alert.pledge.lastCalculatedLtv && (
                 <>
-                  <span style={{ color: "var(--divider-soft)", fontSize: "12px" }}>·</span>
-                  <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                    LTV <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                  <span style={{ color: "var(--border)", fontSize: "12px" }}>·</span>
+                  <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
+                    LTV <span style={{ fontWeight: 600, color: "var(--foreground)" }}>
                       {Number(alert.pledge.lastCalculatedLtv).toFixed(1)}%
                     </span>
                   </span>
@@ -587,9 +587,9 @@ function AlertCard({ alert, onRead, onDelete, index }: { alert: Alert; onRead: (
               {/* Owed */}
               {alert.pledge.lastAmountOwed && (
                 <>
-                  <span style={{ color: "var(--divider-soft)", fontSize: "12px" }}>·</span>
-                  <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                    Owed <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>
+                  <span style={{ color: "var(--border)", fontSize: "12px" }}>·</span>
+                  <span style={{ fontSize: "12px", color: "var(--muted-foreground)" }}>
+                    Owed <span style={{ fontWeight: 600, color: "var(--foreground)" }}>
                       {formatCurrency(alert.pledge.lastAmountOwed)}
                     </span>
                   </span>
@@ -600,7 +600,7 @@ function AlertCard({ alert, onRead, onDelete, index }: { alert: Alert; onRead: (
               <span style={{
                 marginLeft: "auto",
                 fontSize: "11.5px",
-                color: hovered ? "var(--primary-brand)" : "var(--text-muted)",
+                color: hovered ? "var(--primary)" : "var(--muted-foreground-subtle)",
                 display: "flex",
                 alignItems: "center",
                 gap: "3px",
@@ -640,8 +640,8 @@ function AlertCard({ alert, onRead, onDelete, index }: { alert: Alert; onRead: (
             width: "28px",
             height: "28px",
             borderRadius: "8px",
-            border: "1px solid var(--border-light)",
-            background: "var(--card-bg)",
+            border: "1px solid var(--border)",
+            background: "var(--card)",
             color: "#dc2626",
             cursor: "pointer",
             boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
@@ -652,7 +652,7 @@ function AlertCard({ alert, onRead, onDelete, index }: { alert: Alert; onRead: (
             (e.currentTarget as HTMLButtonElement).style.background = "#fef2f2";
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "var(--card-bg)";
+            (e.currentTarget as HTMLButtonElement).style.background = "var(--card)";
           }}
         >
           <Trash2 size={14} strokeWidth={2.2} />
@@ -671,9 +671,9 @@ function SkeletonList() {
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       {[...Array(5)].map((_, i) => (
         <div key={i} style={{
-          background: "var(--card-bg)",
+          background: "var(--card)",
           borderRadius: "12px",
-          border: "1px solid var(--divider-soft)",
+          border: "1px solid var(--border)",
           padding: "14px 16px",
         }}>
           <div style={{ display: "flex", gap: "12px" }}>
@@ -701,7 +701,7 @@ function EmptyState({ filter }: { filter: FilterUnread }) {
         width: "64px",
         height: "64px",
         borderRadius: "16px",
-        background: "var(--sidebar-bg)",
+        background: "var(--sidebar)",
         display: "grid",
         placeItems: "center",
         margin: "0 auto 16px",
@@ -709,10 +709,10 @@ function EmptyState({ filter }: { filter: FilterUnread }) {
       }}>
         {filter === "unread" ? "✅" : "🔔"}
       </div>
-      <p style={{ fontWeight: 700, fontSize: "15px", color: "var(--text-primary)", margin: "0 0 6px" }}>
+      <p style={{ fontWeight: 700, fontSize: "15px", color: "var(--foreground)", margin: "0 0 6px" }}>
         {filter === "unread" ? "All caught up!" : "No notifications yet"}
       </p>
-      <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: 0 }}>
+      <p style={{ fontSize: "13px", color: "var(--muted-foreground-subtle)", margin: 0 }}>
         {filter === "unread" ? "No unread alerts right now" : "Risk tier changes will appear here"}
       </p>
     </div>

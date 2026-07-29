@@ -29,9 +29,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     if (!mounted) return;
     localStorage.setItem("theme", theme);
     if (theme === "dark") {
-      document.documentElement.classList.add("dark-mode");
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.remove("dark-mode");
+      document.documentElement.classList.remove("dark");
     }
   }, [theme, mounted]);
 

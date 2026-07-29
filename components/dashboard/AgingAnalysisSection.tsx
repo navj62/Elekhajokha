@@ -13,11 +13,11 @@ import {
 } from "./AgingAnalysisCard";
 
 const cardStyle: CSSProperties = {
-  backgroundColor: "var(--card-bg)",
-  border: "1px solid var(--border-light)",
+  backgroundColor: "var(--card)",
+  border: "1px solid var(--border)",
 };
 
-const pulseBlock: CSSProperties = { backgroundColor: "var(--border-light)" };
+const pulseBlock: CSSProperties = { backgroundColor: "var(--border)" };
 
 /* ------------------------------------------------------------------ */
 /*  Skeleton — table-shaped, 5 rows                                    */
@@ -62,7 +62,7 @@ function ErrorState() {
     <div className="rounded-[18px] p-7" style={cardStyle}>
       <div
         className="w-full flex flex-col items-center justify-center py-16"
-        style={{ color: "var(--text-muted)" }}
+        style={{ color: "var(--muted-foreground-subtle)" }}
       >
         <AlertCircle size={32} className="mb-2 opacity-20" />
         <span className="text-[13px] font-medium">

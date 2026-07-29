@@ -711,7 +711,7 @@ export default function CustomerDetailPage() {
                     {activePledges.length > 0 && (
                       <span
                         className="flex items-center gap-1.5 text-[12px]"
-                        style={{ color: "var(--text-muted, #9E9E9E)" }}
+                        style={{ color: "var(--muted-foreground-subtle)" }}
                       >
                         <CheckSquare size={14} />
                         Select pledges to release multiple at once
@@ -736,7 +736,7 @@ export default function CustomerDetailPage() {
                           onChange={(e) => setSearchQuery(e.target.value)}
                           placeholder="Search pledges..."
                           className="w-full h-9 pl-8 pr-8 rounded-[10px] text-[13px] text-[#2C2C2C] bg-white border border-[#ECEAE4] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
-                          style={{ backgroundColor: "var(--card-bg, #FFFFFF)" }}
+                          style={{ backgroundColor: "var(--card)" }}
                         />
                         {searchQuery && (
                           <button
@@ -763,8 +763,8 @@ export default function CustomerDetailPage() {
                                   ? { backgroundColor: "#565C3F", color: "#FFFFFF" }
                                   : {
                                     backgroundColor: "transparent",
-                                    color: "var(--text-muted, #9E9E9E)",
-                                    border: "1px solid var(--border-light, #ECEAE4)",
+                                    color: "var(--muted-foreground-subtle)",
+                                    border: "1px solid var(--border)",
                                   }
                               }
                             >
@@ -783,7 +783,7 @@ export default function CustomerDetailPage() {
                           value={sortBy}
                           onChange={(e) => setSortBy(e.target.value)}
                           className="h-9 px-3 rounded-[10px] text-[13px] text-[#2C2C2C] bg-white border border-[#ECEAE4] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
-                          style={{ backgroundColor: "var(--card-bg, #FFFFFF)" }}
+                          style={{ backgroundColor: "var(--card)" }}
                         >
                           <option value="date_desc">Date (newest first)</option>
                           <option value="date_asc">Date (oldest first)</option>
@@ -803,7 +803,7 @@ export default function CustomerDetailPage() {
 
                 {/* Result count */}
                 {customer.pledges.length > 0 && (
-                  <p className="text-[12px] mt-3" style={{ color: "var(--text-muted, #9E9E9E)" }}>
+                  <p className="text-[12px] mt-3" style={{ color: "var(--muted-foreground-subtle)" }}>
                     {filtersActive
                       ? `Showing ${displayedPledges.length} of ${customer.pledges.length} pledges`
                       : `${customer.pledges.length} pledges total`}
@@ -994,8 +994,8 @@ export default function CustomerDetailPage() {
         <div
           className="fixed bottom-0 left-0 right-0 z-40 px-6 lg:px-10 py-4 flex items-center justify-between gap-4"
           style={{
-            backgroundColor: "var(--card-bg, #FFFFFF)",
-            borderTop: "1px solid var(--border-light, #ECEAE4)",
+            backgroundColor: "var(--card)",
+            borderTop: "1px solid var(--border)",
             boxShadow: "0 -4px 16px rgba(0,0,0,0.06)",
           }}
         >

@@ -465,7 +465,7 @@ export default function ReportsPage() {
       {isPledge && tableTotals && !loadingTable && !tableError && (
         <div
           className="rounded-[12px] p-4 mb-8 border"
-          style={{ background: "var(--card-bg, #FAFAF7)", borderColor: "var(--border-light, #ECEAE4)" }}
+          style={{ background: "var(--card)", borderColor: "var(--border)" }}
         >
           <div className="flex flex-col sm:flex-row">
             {(selectedReport === "active"

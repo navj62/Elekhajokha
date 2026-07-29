@@ -28,9 +28,9 @@ function todayISO() {
 
 // Styling tokens matching prompt specs exactly: height 48px, 15px regular, focus ring
 const inputCls =
-  "w-full h-[48px] px-3.5 rounded-[12px] text-[15px] font-normal text-[var(--text-primary)] bg-[#FAFAF7] border border-[#EAE9DF] outline-none focus:ring-2 focus:ring-[#A2AB89] focus:bg-white transition-all";
+  "w-full h-[48px] px-3.5 rounded-[12px] text-[15px] font-normal text-[var(--foreground)] bg-[#FAFAF7] border border-[#EAE9DF] outline-none focus:ring-2 focus:ring-[#A2AB89] focus:bg-white transition-all";
 
-const labelCls = "block text-[14px] font-medium text-[var(--text-secondary)] mb-1.5";
+const labelCls = "block text-[14px] font-medium text-[var(--muted-foreground)] mb-1.5";
 
 export default function BuyItemPage() {
   const router = useRouter();
@@ -188,13 +188,13 @@ export default function BuyItemPage() {
               >
                 <ArrowLeft size={18} className="text-[#5E6442]" strokeWidth={2.2} />
               </Link>
-              <span className="text-[14px] font-medium text-[var(--text-secondary)]">Back to Inventory</span>
+              <span className="text-[14px] font-medium text-[var(--muted-foreground)]">Back to Inventory</span>
             </div>
 
-            <h1 className="text-[36px] font-semibold leading-tight text-[var(--text-primary)]">
+            <h1 className="text-[36px] font-semibold leading-tight text-[var(--foreground)]">
               Buy New Item
             </h1>
-            <p className="text-[15px] text-[var(--text-muted)] mt-1">
+            <p className="text-[15px] text-[var(--muted-foreground-subtle)] mt-1">
               Record a direct purchase and add it into your live inventory.
             </p>
 
@@ -251,10 +251,10 @@ export default function BuyItemPage() {
                         <div className="w-14 h-14 rounded-full bg-[#EAE9DF]/70 mx-auto flex items-center justify-center">
                           <UploadCloud size={28} className="text-[#5E6442]" />
                         </div>
-                        <p className="text-[15px] font-medium text-[var(--text-primary)]">
+                        <p className="text-[15px] font-medium text-[var(--foreground)]">
                           Click or drag photo here
                         </p>
-                        <p className="text-[13px] text-[var(--text-muted)]">
+                        <p className="text-[13px] text-[var(--muted-foreground-subtle)]">
                           Supports JPEG, PNG, WEBP up to 5 MB
                         </p>
                       </div>
@@ -278,7 +278,7 @@ export default function BuyItemPage() {
                     value={form.notes}
                     onChange={(e) => set("notes", e.target.value)}
                     placeholder="Add any additional details or provenance..."
-                    className="w-full flex-1 min-h-[140px] px-3.5 py-3 rounded-[12px] text-[15px] font-normal text-[var(--text-primary)] bg-[#FAFAF7] border border-[#A2AB89] outline-none focus:ring-2 focus:ring-[#A2AB89] focus:bg-white transition-all resize-none placeholder:text-[var(--text-muted)]"
+                    className="w-full flex-1 min-h-[140px] px-3.5 py-3 rounded-[12px] text-[15px] font-normal text-[var(--foreground)] bg-[#FAFAF7] border border-[#A2AB89] outline-none focus:ring-2 focus:ring-[#A2AB89] focus:bg-white transition-all resize-none placeholder:text-[var(--muted-foreground-subtle)]"
                   />
                 </div>
 
@@ -374,7 +374,7 @@ export default function BuyItemPage() {
                           placeholder="e.g. 12.500"
                           className={`${inputCls} pr-10`}
                         />
-                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[14px] font-medium text-[var(--text-muted)] pointer-events-none">
+                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[14px] font-medium text-[var(--muted-foreground-subtle)] pointer-events-none">
                           g
                         </span>
                       </div>
@@ -387,7 +387,7 @@ export default function BuyItemPage() {
                     <div>
                       <label className={labelCls}>Purchase Price (₹) *</label>
                       <div className="relative">
-                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px] font-medium text-[var(--text-muted)] pointer-events-none">
+                        <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[15px] font-medium text-[var(--muted-foreground-subtle)] pointer-events-none">
                           ₹
                         </span>
                         <input
@@ -410,7 +410,7 @@ export default function BuyItemPage() {
                           value={form.acquiredAt}
                           onChange={(val) => set("acquiredAt", val)}
                           placeholder="Select date"
-                          className="h-[48px] px-3.5 rounded-[12px] bg-[#FAFAF7] border border-[#EAE9DF] text-[15px] font-normal text-[var(--text-primary)] hover:border-[#8C8F7A] transition-all w-full"
+                          className="h-[48px] px-3.5 rounded-[12px] bg-[#FAFAF7] border border-[#EAE9DF] text-[15px] font-normal text-[var(--foreground)] hover:border-[#8C8F7A] transition-all w-full"
                         />
                       </div>
                       {errors.acquiredAt && <p className="text-[13px] mt-1.5 text-red-600 font-medium">{errors.acquiredAt}</p>}
@@ -455,7 +455,7 @@ export default function BuyItemPage() {
                     <Link href="/inventory" className="w-full sm:w-auto">
                       <button
                         type="button"
-                        className="w-full sm:w-auto h-[48px] px-6 rounded-[12px] text-[15px] font-medium text-[var(--text-primary)] bg-[#EAE9DF] hover:bg-[#dcdbd0] transition-all cursor-pointer"
+                        className="w-full sm:w-auto h-[48px] px-6 rounded-[12px] text-[15px] font-medium text-[var(--foreground)] bg-[#EAE9DF] hover:bg-[#dcdbd0] transition-all cursor-pointer"
                       >
                         Cancel
                       </button>

@@ -259,22 +259,22 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
   return (
     <div
       className="rounded-[18px] p-7 flex flex-col h-full"
-      style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
+      style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
     >
       {/* Header */}
       <div className="flex justify-between items-start mb-1">
         <div>
-          <h2 className="text-[17px] font-bold" style={{ color: "var(--text-primary)" }}>
+          <h2 className="text-[17px] font-bold" style={{ color: "var(--foreground)" }}>
             Loan Overview
           </h2>
-          <p className="text-[12px] font-medium mt-0.5" style={{ color: "var(--text-muted)" }}>
+          <p className="text-[12px] font-medium mt-0.5" style={{ color: "var(--muted-foreground-subtle)" }}>
             Monthly disbursement vs collection performance
           </p>
         </div>
         {/* Tab switcher */}
         <div
           className="flex items-center gap-0 rounded-full p-[3px]"
-          style={{ backgroundColor: "var(--main-bg)" }}
+          style={{ backgroundColor: "var(--background)" }}
         >
           {tabs.map((tab) => (
             <button
@@ -283,7 +283,7 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
               className="px-4 py-[6px] rounded-full text-[11px] font-bold transition-all duration-200"
               style={{
                 backgroundColor: activeTab === tab.key ? "#565C3F" : "transparent",
-                color: activeTab === tab.key ? "#fff" : "var(--text-muted)",
+                color: activeTab === tab.key ? "#fff" : "var(--muted-foreground-subtle)",
               }}
             >
               {tab.label}
@@ -299,26 +299,26 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
           style={{ opacity: isTransitioning ? 0 : 1 }}
         >
           <div className="text-center">
-            <p className="text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+            <p className="text-[10px] font-bold tracking-wider text-[var(--muted-foreground-subtle)] uppercase">
               Total Disbursed
             </p>
-            <p className="text-[16px] md:text-[20px] font-bold mt-0.5" style={{ color: "var(--text-primary)" }}>
+            <p className="text-[16px] md:text-[20px] font-bold mt-0.5" style={{ color: "var(--foreground)" }}>
               ₹{totalDisbursed >= 100000 ? (totalDisbursed / 100000).toFixed(1) + "L" : totalDisbursed.toLocaleString("en-IN")}
             </p>
           </div>
-          <div className="text-center border-x" style={{ borderColor: "var(--border-light)" }}>
-            <p className="text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+          <div className="text-center border-x" style={{ borderColor: "var(--border)" }}>
+            <p className="text-[10px] font-bold tracking-wider text-[var(--muted-foreground-subtle)] uppercase">
               Recovered
             </p>
-            <p className="text-[16px] md:text-[20px] font-bold mt-0.5" style={{ color: "var(--text-primary)" }}>
+            <p className="text-[16px] md:text-[20px] font-bold mt-0.5" style={{ color: "var(--foreground)" }}>
               ₹{totalRecovered >= 100000 ? (totalRecovered / 100000).toFixed(1) + "L" : totalRecovered.toLocaleString("en-IN")}
             </p>
           </div>
           <div className="text-center">
-            <p className="text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
+            <p className="text-[10px] font-bold tracking-wider text-[var(--muted-foreground-subtle)] uppercase">
               Recovery Rate
             </p>
-            <p className="text-[16px] md:text-[20px] font-bold mt-0.5" style={{ color: "var(--text-primary)" }}>
+            <p className="text-[16px] md:text-[20px] font-bold mt-0.5" style={{ color: "var(--foreground)" }}>
               {recoveryRate.toFixed(1)}%
             </p>
           </div>
@@ -373,7 +373,7 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
                 />
               </BarChart>
             ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-muted)]">
+              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--muted-foreground-subtle)]">
                 <Archive size={32} className="mb-2 opacity-20" />
                 <span className="text-[13px] font-medium">No pledge activity available.</span>
               </div>
@@ -421,7 +421,7 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
                 />
               </BarChart>
             ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-muted)]">
+              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--muted-foreground-subtle)]">
                 <DollarSign size={32} className="mb-2 opacity-20" />
                 <span className="text-[13px] font-medium">No loan data available.</span>
               </div>
@@ -458,7 +458,7 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
                 />
               </BarChart>
             ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-muted)]">
+              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--muted-foreground-subtle)]">
                 <Users size={32} className="mb-2 opacity-20" />
                 <span className="text-[13px] font-medium">No customer growth data available.</span>
               </div>
@@ -514,11 +514,11 @@ function CalendarWidget({ tasksData = [] }: { tasksData?: { id: string; text: st
   return (
     <div
       className="rounded-[18px] p-5"
-      style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
+      style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
     >
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <span className="text-[14px] font-bold" style={{ color: "var(--text-primary)" }}>
+          <span className="text-[14px] font-bold" style={{ color: "var(--foreground)" }}>
             {monthYearStr}
           </span>
         </div>
@@ -526,14 +526,14 @@ function CalendarWidget({ tasksData = [] }: { tasksData?: { id: string; text: st
           <button
             onClick={() => setWeekOffset((p) => p - 1)}
             className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#5D6145] transition-colors"
-            style={{ color: "var(--text-muted)" }}
+            style={{ color: "var(--muted-foreground-subtle)" }}
           >
             <ChevronLeft size={14} />
           </button>
           <button
             onClick={() => setWeekOffset((p) => p + 1)}
             className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#5D6145] transition-colors"
-            style={{ color: "var(--text-muted)" }}
+            style={{ color: "var(--muted-foreground-subtle)" }}
           >
             <ChevronRight size={14} />
           </button>
@@ -545,7 +545,7 @@ function CalendarWidget({ tasksData = [] }: { tasksData?: { id: string; text: st
           <div
             key={d}
             className="text-center text-[9px] font-bold tracking-wider pb-2"
-            style={{ color: "var(--text-muted)" }}
+            style={{ color: "var(--muted-foreground-subtle)" }}
           >
             {d}
           </div>
@@ -567,7 +567,7 @@ function CalendarWidget({ tasksData = [] }: { tasksData?: { id: string; text: st
             >
               <span
                 className="text-[13px] font-semibold"
-                style={{ color: isSelected ? "#fff" : "var(--text-primary)" }}
+                style={{ color: isSelected ? "#fff" : "var(--foreground)" }}
               >
                 {dateNum}
               </span>
@@ -662,14 +662,14 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
   return (
     <div
       className="rounded-[18px] p-5"
-      style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
+      style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
     >
-      <h3 className="text-[14px] font-bold mb-4" style={{ color: "var(--text-primary)" }}>
+      <h3 className="text-[14px] font-bold mb-4" style={{ color: "var(--foreground)" }}>
         Today&apos;s Tasks
       </h3>
 
       {todayTasks.length === 0 && !showAdd ? (
-        <div className="py-6 text-center text-[12.5px] font-medium text-[var(--text-muted)]">
+        <div className="py-6 text-center text-[12.5px] font-medium text-[var(--muted-foreground-subtle)]">
           No tasks scheduled today.
         </div>
       ) : (
@@ -687,13 +687,13 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
                 <Circle
                   size={16}
                   className="mt-0.5 shrink-0 group-hover:text-[#565C3F] transition-colors"
-                  style={{ color: "var(--text-muted)" }}
+                  style={{ color: "var(--muted-foreground-subtle)" }}
                 />
               )}
               <span
                 className="text-[12.5px] font-medium leading-snug transition-all"
                 style={{
-                  color: task.done ? "var(--text-muted)" : "var(--text-secondary)",
+                  color: task.done ? "var(--muted-foreground-subtle)" : "var(--muted-foreground)",
                   textDecoration: task.done ? "line-through" : "none",
                 }}
               >
@@ -708,7 +708,7 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
       {showAdd && (
         <div
           className="mt-4 rounded-[12px] p-3 space-y-2"
-          style={{ backgroundColor: "var(--main-bg)", border: "1px solid var(--border-light)" }}
+          style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)" }}
         >
           <input
             ref={inputRef}
@@ -717,7 +717,7 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
             onKeyDown={(e) => { if (e.key === "Enter") addTask(); if (e.key === "Escape") setShowAdd(false); }}
             placeholder="Task title…"
             className="w-full bg-transparent text-[12.5px] font-medium outline-none"
-            style={{ color: "var(--text-primary)" }}
+            style={{ color: "var(--foreground)" }}
           />
           <div className="flex items-center gap-2">
             <input
@@ -725,12 +725,12 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
               value={newDueDate}
               onChange={(e) => setNewDueDate(e.target.value)}
               className="flex-1 bg-transparent text-[11px] outline-none"
-              style={{ color: "var(--text-muted)" }}
+              style={{ color: "var(--muted-foreground-subtle)" }}
             />
             <button
               onClick={() => { setShowAdd(false); setNewTitle(""); setNewDueDate(""); }}
               className="text-[10px] font-bold px-2 py-1 rounded-lg transition-opacity hover:opacity-70"
-              style={{ color: "var(--text-muted)" }}
+              style={{ color: "var(--muted-foreground-subtle)" }}
             >
               Cancel
             </button>
@@ -746,7 +746,7 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
         </div>
       )}
 
-      <div className="flex items-center justify-between mt-5 pt-3" style={{ borderTop: "1px solid var(--border-light)" }}>
+      <div className="flex items-center justify-between mt-5 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
         <button
           onClick={() => setShowAdd((s) => !s)}
           className="flex items-center gap-1.5 text-[11px] font-bold transition-opacity hover:opacity-70"
@@ -758,7 +758,7 @@ function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
         <Link
           href="/tasks"
           className="flex items-center gap-1 text-[11px] font-bold transition-opacity hover:opacity-70"
-          style={{ color: "var(--text-secondary)" }}
+          style={{ color: "var(--muted-foreground)" }}
         >
           View All Tasks
           <ArrowRight size={11} strokeWidth={2.5} />
@@ -778,14 +778,14 @@ function RegionDistribution({ regions = [] }: { regions?: { name: string; count:
   return (
     <div
       className="rounded-[18px] p-5"
-      style={{ backgroundColor: "#EFEFDF", border: "1px solid var(--border-light)" }}
+      style={{ backgroundColor: "#EFEFDF", border: "1px solid var(--border)" }}
     >
-      <h3 className="text-[14px] font-bold mb-5" style={{ color: "var(--text-primary)" }}>
+      <h3 className="text-[14px] font-bold mb-5" style={{ color: "var(--foreground)" }}>
         Customer Distribution by Region
       </h3>
 
       {regions.length === 0 ? (
-        <div className="py-6 text-center text-[12.5px] font-medium text-[var(--text-muted)]">
+        <div className="py-6 text-center text-[12.5px] font-medium text-[var(--muted-foreground-subtle)]">
           No customer regions available.
         </div>
       ) : (
@@ -793,14 +793,14 @@ function RegionDistribution({ regions = [] }: { regions?: { name: string; count:
           {regions.map((r) => (
             <div key={r.name}>
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
+                <span className="text-[12px] font-semibold" style={{ color: "var(--foreground)" }}>
                   {r.name}
                 </span>
-                <span className="text-[13px] font-bold" style={{ color: "var(--text-primary)" }}>
+                <span className="text-[13px] font-bold" style={{ color: "var(--foreground)" }}>
                   {r.count}
                 </span>
               </div>
-              <div className="h-[6px] rounded-full overflow-hidden" style={{ backgroundColor: "var(--main-bg)" }}>
+              <div className="h-[6px] rounded-full overflow-hidden" style={{ backgroundColor: "var(--background)" }}>
                 <div
                   className="h-full rounded-full transition-all duration-700"
                   style={{
@@ -816,7 +816,7 @@ function RegionDistribution({ regions = [] }: { regions?: { name: string; count:
 
       <button
         className="flex items-center justify-between w-full mt-5 pt-3 text-[11px] font-bold transition-opacity hover:opacity-70"
-        style={{ color: "#37392C", borderTop: "1px solid var(--border-light)" }}
+        style={{ color: "#37392C", borderTop: "1px solid var(--border)" }}
       >
         <span>View All Regions</span>
         <ArrowRight size={12} />
@@ -854,14 +854,14 @@ function MetalPortfolio({ portfolio }: { portfolio?: { goldItems: number; silver
   return (
     <div
       className="rounded-[18px] p-5"
-      style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
+      style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
     >
-      <h3 className="text-[14px] font-bold mb-2" style={{ color: "var(--text-primary)" }}>
+      <h3 className="text-[14px] font-bold mb-2" style={{ color: "var(--foreground)" }}>
         Metal Portfolio
       </h3>
 
       {total === 0 ? (
-        <div className="py-6 text-center text-[12.5px] font-medium text-[var(--text-muted)]">
+        <div className="py-6 text-center text-[12.5px] font-medium text-[var(--muted-foreground-subtle)]">
           No pledged items available.
         </div>
       ) : (
@@ -901,13 +901,13 @@ function MetalPortfolio({ portfolio }: { portfolio?: { goldItems: number; silver
           <div className="flex items-center justify-center gap-5 mt-1">
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#FBBF24" }} />
-              <span className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
+              <span className="text-[11px] font-semibold" style={{ color: "var(--muted-foreground)" }}>
                 Gold ({goldItems})
               </span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#E5E7EB" }} />
-              <span className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
+              <span className="text-[11px] font-semibold" style={{ color: "var(--muted-foreground)" }}>
                 Silver ({silverItems})
               </span>
             </div>
@@ -1031,17 +1031,17 @@ export default function DashboardPage() {
   /* ================================================================ */
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "var(--main-bg)", fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen" style={{ backgroundColor: "var(--background)", fontFamily: "'DM Sans', sans-serif" }}>
 
       {/* ── Greeting ── */}
       <section className="mb-6">
         <h1
           className="text-[30px] sm:text-[36px] font-bold tracking-tight mb-1"
-          style={{ color: "var(--text-primary)" }}
+          style={{ color: "var(--foreground)" }}
         >
           {getGreeting()}, Admin.
         </h1>
-        <p className="text-[13px] font-medium" style={{ color: "var(--text-secondary)" }}>
+        <p className="text-[13px] font-medium" style={{ color: "var(--muted-foreground)" }}>
           Here is your financial workspace overview for today.
         </p>
       </section>
@@ -1053,7 +1053,7 @@ export default function DashboardPage() {
         className="rounded-[14px] mx-0 mb-6 px-5 py-3 flex items-center justify-between"
         style={{
           backgroundColor: "#EFEFDF",
-          border: "1px solid var(--border-light)",
+          border: "1px solid var(--border)",
         }}
       >
         <div className="flex items-center gap-4">
@@ -1066,13 +1066,13 @@ export default function DashboardPage() {
           <div className="flex items-center gap-5">
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#FBBF24" }} />
-              <span className="text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
+              <span className="text-[12px] font-semibold" style={{ color: "var(--foreground)" }}>
                 Gold: {goldPriceDisplay}
               </span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#9CA3AF" }} />
-              <span className="text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
+              <span className="text-[12px] font-semibold" style={{ color: "var(--foreground)" }}>
                 Silver: {silverPriceDisplay}
               </span>
             </div>
@@ -1082,7 +1082,7 @@ export default function DashboardPage() {
           onClick={() => loadRates(true)}
           disabled={refreshing}
           className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-colors hover:bg-white/60 disabled:opacity-50"
-          style={{ color: "var(--text-secondary)" }}
+          style={{ color: "var(--muted-foreground)" }}
         >
           <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
           REFRESH
@@ -1097,82 +1097,82 @@ export default function DashboardPage() {
         <section>
           <div
             className="rounded-[18px] p-0 flex items-center justify-between h-full"
-            style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)" }}
+            style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
           >
             {/* Total Customers */}
             <div className="flex-1 p-6 flex flex-col items-center justify-center relative">
               <div className="flex items-center gap-2 mb-2">
                 <Users size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
-                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
+                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--muted-foreground-subtle)" }}>
                   TOTAL CUSTOMERS
                 </span>
               </div>
-              <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+              <span className="text-[24px] font-bold" style={{ color: "var(--foreground)" }}>
                 <AnimatedCounter value={statsToUse.totalCustomers} format={(v) => v.toLocaleString(locale)} />
               </span>
               {/* Right divider */}
-              <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border-light)]" />
+              <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border)]" />
             </div>
 
             {/* Active Pledges */}
             <div className="flex-1 p-6 flex flex-col items-center justify-center relative">
               <div className="flex items-center gap-2 mb-2">
                 <Archive size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
-                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
+                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--muted-foreground-subtle)" }}>
                   ACTIVE PLEDGES
                 </span>
               </div>
-              <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+              <span className="text-[24px] font-bold" style={{ color: "var(--foreground)" }}>
                 <AnimatedCounter value={statsToUse.totalActivePledges} format={(v) => v.toLocaleString(locale)} />
               </span>
               {/* Right divider */}
-              <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border-light)]" />
+              <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border)]" />
             </div>
 
             {/* Total Balance */}
             <div className="flex-1 p-6 flex flex-col items-center justify-center relative">
               <div className="flex items-center gap-2 mb-2">
                 <IndianRupee size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
-                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
+                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--muted-foreground-subtle)" }}>
                   TOTAL BALANCE
                 </span>
               </div>
-              <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+              <span className="text-[24px] font-bold" style={{ color: "var(--foreground)" }}>
                 <AnimatedCounter
                   value={statsToUse.totalBalanceAmount || 0}
                   format={formatCurrencyAbbr}
                 />
               </span>
               {/* Right divider */}
-              <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border-light)]" />
+              <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border)]" />
             </div>
 
             {/* Inventory Value (live) */}
             <div className="flex-1 p-6 flex flex-col items-center justify-center relative">
               <div className="flex items-center gap-2 mb-2">
                 <BarChart3 size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
-                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
+                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--muted-foreground-subtle)" }}>
                   INVENTORY VALUE
                 </span>
               </div>
-              <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+              <span className="text-[24px] font-bold" style={{ color: "var(--foreground)" }}>
                 {inventory && inventory.marketValue !== null
                   ? formatCurrencyAbbr(inventory.marketValue)
                   : "—"}
               </span>
               {/* Right divider */}
-              <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border-light)]" />
+              <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border)]" />
             </div>
 
             {/* Items in Stock (live) */}
             <div className="flex-1 p-6 flex flex-col items-center justify-center">
               <div className="flex items-center gap-2 mb-2">
                 <Archive size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
-                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--text-muted)" }}>
+                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--muted-foreground-subtle)" }}>
                   ITEMS IN STOCK
                 </span>
               </div>
-              <span className="text-[24px] font-bold" style={{ color: "var(--text-primary)" }}>
+              <span className="text-[24px] font-bold" style={{ color: "var(--foreground)" }}>
                 {inventory ? inventory.inStockCount.toLocaleString(locale) : "—"}
               </span>
             </div>
@@ -1252,18 +1252,18 @@ export default function DashboardPage() {
         {/* Pledge Rows */}
         <div
           className="rounded-b-[18px] overflow-hidden"
-          style={{ backgroundColor: "var(--card-bg)", border: "1px solid var(--border-light)", borderTop: "none" }}
+          style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderTop: "none" }}
         >
           {pledgesToUse.length === 0 ? (
             <div className="py-16 text-center">
               <div
                 className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
-                style={{ backgroundColor: "var(--main-bg)" }}
+                style={{ backgroundColor: "var(--background)" }}
               >
-                <Archive size={24} style={{ color: "var(--text-muted)" }} />
+                <Archive size={24} style={{ color: "var(--muted-foreground-subtle)" }} />
               </div>
-              <p className="text-[14px] font-semibold" style={{ color: "var(--text-muted)" }}>No recent pledges found.</p>
-              <p className="text-[12px] mt-1" style={{ color: "var(--text-muted)", opacity: 0.6 }}>New pledges will appear here once added.</p>
+              <p className="text-[14px] font-semibold" style={{ color: "var(--muted-foreground-subtle)" }}>No recent pledges found.</p>
+              <p className="text-[12px] mt-1" style={{ color: "var(--muted-foreground-subtle)", opacity: 0.6 }}>New pledges will appear here once added.</p>
             </div>
           ) : (
             pledgesToUse.map((p, i: number) => {
@@ -1286,10 +1286,10 @@ export default function DashboardPage() {
                   key={p.id}
                   className="grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 items-center px-6 py-4 transition-all duration-150 min-w-[600px] group"
                   style={{
-                    borderBottom: !isLast ? "1px solid var(--border-light)" : "none",
+                    borderBottom: !isLast ? "1px solid var(--border)" : "none",
                     cursor: "default",
                   }}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = "var(--main-bg)"; }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = "var(--background)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.backgroundColor = "transparent"; }}
                 >
                   {/* Customer Name */}
@@ -1306,11 +1306,11 @@ export default function DashboardPage() {
                       {initials}
                     </div>
                     <div>
-                      <p className="text-[13px] font-bold leading-tight" style={{ color: "var(--text-primary)" }}>
+                      <p className="text-[13px] font-bold leading-tight" style={{ color: "var(--foreground)" }}>
                         {p.customerName}
                       </p>
                       {p.pledgeId && (
-                        <p className="text-[10px] font-medium mt-0.5" style={{ color: "var(--text-muted)" }}>
+                        <p className="text-[10px] font-medium mt-0.5" style={{ color: "var(--muted-foreground-subtle)" }}>
                           #{p.pledgeId?.slice(-6).toUpperCase()}
                         </p>
                       )}
@@ -1319,14 +1319,14 @@ export default function DashboardPage() {
 
                   {/* Pledge Date */}
                   <div>
-                    <p className="text-[12px] font-semibold" style={{ color: "var(--text-primary)" }}>
+                    <p className="text-[12px] font-semibold" style={{ color: "var(--foreground)" }}>
                       {p.pledgeDate?.includes("-") ? formatDate(p.pledgeDate) : p.pledgeDate}
                     </p>
                   </div>
 
                   {/* Loan Amount */}
                   <div>
-                    <p className="text-[14px] font-black" style={{ color: isOverdue ? "#C62828" : "var(--text-primary)" }}>
+                    <p className="text-[14px] font-black" style={{ color: isOverdue ? "#C62828" : "var(--foreground)" }}>
                       {typeof p.loanAmount === "number"
                         ? "₹" + p.loanAmount.toLocaleString(locale)
                         : p.loanAmount || "₹0"}
@@ -1340,7 +1340,7 @@ export default function DashboardPage() {
                   <div>
                     <p
                       className="text-[12px] font-semibold"
-                      style={{ color: p.releaseDate ? "#2E7D32" : "var(--text-muted)" }}
+                      style={{ color: p.releaseDate ? "#2E7D32" : "var(--muted-foreground-subtle)" }}
                     >
                       {p.releaseDate
                         ? p.releaseDate.includes("-")
@@ -1349,7 +1349,7 @@ export default function DashboardPage() {
                         : "—"}
                     </p>
                     {!p.releaseDate && (
-                      <p className="text-[9px] font-semibold mt-0.5" style={{ color: "var(--text-muted)", opacity: 0.7 }}>Pending</p>
+                      <p className="text-[9px] font-semibold mt-0.5" style={{ color: "var(--muted-foreground-subtle)", opacity: 0.7 }}>Pending</p>
                     )}
                   </div>
 

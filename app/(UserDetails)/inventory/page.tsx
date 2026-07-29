@@ -158,24 +158,24 @@ function SellModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-150">
       <div
         className="relative w-full max-w-[480px] rounded-[22px] p-7 shadow-2xl"
-        style={{ backgroundColor: "var(--card-bg, #ffffff)", border: "1px solid var(--border-light, #EAE9DF)" }}
+        style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
       >
         <button
           onClick={onClose}
           className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-[#EAE9DF] transition-colors"
-          style={{ color: "var(--text-secondary)" }}
+          style={{ color: "var(--muted-foreground)" }}
         >
           <X size={18} />
         </button>
 
-        <h2 className="text-[18px] font-bold mb-1" style={{ color: "var(--text-primary)" }}>
+        <h2 className="text-[18px] font-bold mb-1" style={{ color: "var(--foreground)" }}>
           Record Sale
         </h2>
 
         {/* Item summary */}
         <div
           className="flex items-center gap-3 p-3.5 rounded-[14px] mb-5 mt-3"
-          style={{ backgroundColor: "var(--main-bg)", border: "1px solid var(--border-light)" }}
+          style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)" }}
         >
           {item.photoUrl ? (
             <img src={item.photoUrl} alt="" className="w-11 h-11 rounded-xl object-cover shrink-0 border border-black/5 shadow-sm" />
@@ -187,12 +187,12 @@ function SellModal({
             </div>
           )}
           <div className="min-w-0">
-            <p className="text-[14px] font-semibold truncate" style={{ color: "var(--text-primary)" }}>
+            <p className="text-[14px] font-semibold truncate" style={{ color: "var(--foreground)" }}>
               {item.description}
             </p>
-            <p className="text-[12px] mt-0.5 font-medium" style={{ color: "var(--text-secondary)" }}>
+            <p className="text-[12px] mt-0.5 font-medium" style={{ color: "var(--muted-foreground)" }}>
               {metalLabel} · {Number(item.weightGrams).toFixed(2)}g ·{" "}
-              <span style={{ color: "var(--text-muted)" }}>
+              <span style={{ color: "var(--muted-foreground-subtle)" }}>
                 Acquired for {acquiredCost === 0 ? "free (forfeited)" : fmtINR(acquiredCost)}
               </span>
             </p>
@@ -202,7 +202,7 @@ function SellModal({
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Sale Price */}
           <div>
-            <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--text-secondary)" }}>
+            <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted-foreground)" }}>
               Sale Price (₹) *
             </label>
             <input
@@ -214,9 +214,9 @@ function SellModal({
               placeholder="e.g. 55000"
               className="w-full px-3.5 py-2.5 rounded-[12px] text-[13.5px] font-medium outline-none focus:ring-2 focus:ring-[#565C3F] transition-all"
               style={{
-                backgroundColor: "var(--main-bg)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
+                backgroundColor: "var(--background)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
               }}
             />
           </div>
@@ -226,9 +226,9 @@ function SellModal({
             <div
               className="px-3.5 py-2.5 rounded-[12px] text-[13px] font-bold flex items-center justify-between"
               style={{
-                backgroundColor: profit > 0 ? "#E8F0DC" : profit < 0 ? "#FEE2E2" : "var(--main-bg)",
-                color: profit > 0 ? "#4D6B2A" : profit < 0 ? "#991B1B" : "var(--text-secondary)",
-                border: `1px solid ${profit > 0 ? "#C8D9A8" : profit < 0 ? "#FECACA" : "var(--border-light)"}`,
+                backgroundColor: profit > 0 ? "#E8F0DC" : profit < 0 ? "#FEE2E2" : "var(--background)",
+                color: profit > 0 ? "#4D6B2A" : profit < 0 ? "#991B1B" : "var(--muted-foreground)",
+                border: `1px solid ${profit > 0 ? "#C8D9A8" : profit < 0 ? "#FECACA" : "var(--border)"}`,
               }}
             >
               <span>{profit > 0 ? "Estimated Profit" : profit < 0 ? "Estimated Loss" : "Break Even"}</span>
@@ -238,7 +238,7 @@ function SellModal({
 
           {/* Sale Date */}
           <div>
-            <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--text-secondary)" }}>
+            <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted-foreground)" }}>
               Sale Date *
             </label>
             <input
@@ -248,9 +248,9 @@ function SellModal({
               onChange={(e) => setForm((f) => ({ ...f, soldAt: e.target.value }))}
               className="w-full px-3.5 py-2.5 rounded-[12px] text-[13.5px] font-medium outline-none focus:ring-2 focus:ring-[#565C3F] transition-all"
               style={{
-                backgroundColor: "var(--main-bg)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
+                backgroundColor: "var(--background)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
               }}
             />
           </div>
@@ -258,7 +258,7 @@ function SellModal({
           {/* Buyer Name + Mobile */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--text-secondary)" }}>
+              <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted-foreground)" }}>
                 Buyer Name (opt)
               </label>
               <input
@@ -268,15 +268,15 @@ function SellModal({
                 placeholder="e.g. Sunita Devi"
                 className="w-full px-3.5 py-2.5 rounded-[12px] text-[13.5px] font-medium outline-none focus:ring-2 focus:ring-[#565C3F] transition-all"
                 style={{
-                  backgroundColor: "var(--main-bg)",
-                  border: "1px solid var(--border-light)",
-                  color: "var(--text-primary)",
+                  backgroundColor: "var(--background)",
+                  border: "1px solid var(--border)",
+                  color: "var(--foreground)",
                 }}
               />
             </div>
 
             <div>
-              <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--text-secondary)" }}>
+              <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted-foreground)" }}>
                 Buyer Mobile (opt)
               </label>
               <input
@@ -286,9 +286,9 @@ function SellModal({
                 placeholder="e.g. 9876543210"
                 className="w-full px-3.5 py-2.5 rounded-[12px] text-[13.5px] font-medium outline-none focus:ring-2 focus:ring-[#565C3F] transition-all"
                 style={{
-                  backgroundColor: "var(--main-bg)",
-                  border: "1px solid var(--border-light)",
-                  color: "var(--text-primary)",
+                  backgroundColor: "var(--background)",
+                  border: "1px solid var(--border)",
+                  color: "var(--foreground)",
                 }}
               />
             </div>
@@ -296,7 +296,7 @@ function SellModal({
 
           {/* Notes */}
           <div>
-            <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--text-secondary)" }}>
+            <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted-foreground)" }}>
               Notes (optional)
             </label>
             <textarea
@@ -306,9 +306,9 @@ function SellModal({
               placeholder="Any sale details"
               className="w-full px-3.5 py-2.5 rounded-[12px] text-[13.5px] font-medium outline-none resize-none focus:ring-2 focus:ring-[#565C3F] transition-all"
               style={{
-                backgroundColor: "var(--main-bg)",
-                border: "1px solid var(--border-light)",
-                color: "var(--text-primary)",
+                backgroundColor: "var(--background)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
               }}
             />
           </div>
@@ -325,7 +325,7 @@ function SellModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-[12px] text-[13.5px] font-semibold transition-colors bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--text-secondary)] hover:bg-[#EAE9DF]"
+              className="flex-1 py-2.5 rounded-[12px] text-[13.5px] font-semibold transition-colors bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--muted-foreground)] hover:bg-[#EAE9DF]"
             >
               Cancel
             </button>
@@ -367,7 +367,7 @@ function ItemDetailsModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-150">
       <div
         className="relative w-full max-w-[580px] rounded-[24px] p-7 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
-        style={{ backgroundColor: "var(--card-bg, #ffffff)", border: "1px solid var(--border-light, #EAE9DF)" }}
+        style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -382,19 +382,19 @@ function ItemDetailsModal({
             )}
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-[19px] font-bold text-[var(--text-primary)]">{item.description}</h2>
+                <h2 className="text-[19px] font-bold text-[var(--foreground)]">{item.description}</h2>
                 <span className="px-2 py-0.5 rounded-[6px] text-[11px] font-bold uppercase tracking-wider bg-[#F5F4E7] text-[#565C3F] border border-[#EAE9DF]">
                   {displayId}
                 </span>
               </div>
-              <p className="text-[13px] text-[var(--text-secondary)] mt-0.5 font-medium">
+              <p className="text-[13px] text-[var(--muted-foreground)] mt-0.5 font-medium">
                 {item.itemType} · {metalLabel} · {Number(item.weightGrams).toFixed(2)}g
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-full hover:bg-[#EAE9DF] text-[var(--text-secondary)] transition-colors"
+            className="p-2 rounded-full hover:bg-[#EAE9DF] text-[var(--muted-foreground)] transition-colors"
           >
             <X size={18} />
           </button>
@@ -405,7 +405,7 @@ function ItemDetailsModal({
           {/* Status & Net Box */}
           <div className="grid grid-cols-2 gap-3">
             <div className="p-4 rounded-[16px] bg-[#FAFAF7] border border-[#EAE9DF]">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Status</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground-subtle)] block mb-1.5">Status</span>
               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-bold ${item.status === "IN_STOCK" ? "bg-[#E8F0DC] text-[#4D6B2A]" : "bg-[#E2E8F0] text-[#334155]"
                 }`}>
                 <span className={`w-2 h-2 rounded-full ${item.status === "IN_STOCK" ? "bg-[#4D6B2A]" : "bg-[#334155]"}`} />
@@ -413,46 +413,46 @@ function ItemDetailsModal({
               </span>
             </div>
             <div className="p-4 rounded-[16px] bg-[#FAFAF7] border border-[#EAE9DF]">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] block mb-1.5">Net Recovery / Margin</span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--muted-foreground-subtle)] block mb-1.5">Net Recovery / Margin</span>
               {net !== null ? (
-                <span className={`text-[15px] font-extrabold ${net > 0 ? "text-[#4D6B2A]" : net < 0 ? "text-[#B91C1C]" : "text-[var(--text-primary)]"}`}>
+                <span className={`text-[15px] font-extrabold ${net > 0 ? "text-[#4D6B2A]" : net < 0 ? "text-[#B91C1C]" : "text-[var(--foreground)]"}`}>
                   {net > 0 ? `+${fmtINR(net)} recovered` : net < 0 ? `${fmtINR(net)} loss` : "Break even"}
                 </span>
               ) : (
-                <span className="text-[13px] text-[var(--text-muted)] font-medium">No recovery recorded</span>
+                <span className="text-[13px] text-[var(--muted-foreground-subtle)] font-medium">No recovery recorded</span>
               )}
             </div>
           </div>
 
           {/* Details Grid */}
           <div className="space-y-2.5">
-            <h3 className="text-[12px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Acquisition Details</h3>
-            <div className="grid grid-cols-2 gap-y-3.5 gap-x-4 p-4 rounded-[16px] bg-[var(--main-bg)] border border-[#EAE9DF]">
+            <h3 className="text-[12px] font-bold uppercase tracking-wider text-[var(--muted-foreground-subtle)]">Acquisition Details</h3>
+            <div className="grid grid-cols-2 gap-y-3.5 gap-x-4 p-4 rounded-[16px] bg-[var(--background)] border border-[#EAE9DF]">
               <div>
-                <span className="text-[11.5px] text-[var(--text-muted)] font-medium block">Source</span>
+                <span className="text-[11.5px] text-[var(--muted-foreground-subtle)] font-medium block">Source</span>
                 {item.sourceType === "PLEDGE_SALE" && item.sourcePledge ? (
                   <Link href={`/customers/${item.sourcePledge.customerId}`} className="font-semibold text-[#565C3F] hover:underline inline-flex items-center gap-1 mt-0.5">
                     <Archive size={12} />
                     Pledge · {item.sourcePledge.customer.name}
                   </Link>
                 ) : (
-                  <span className="font-semibold text-[var(--text-primary)] mt-0.5 block">Direct Purchase</span>
+                  <span className="font-semibold text-[var(--foreground)] mt-0.5 block">Direct Purchase</span>
                 )}
               </div>
               <div>
-                <span className="text-[11.5px] text-[var(--text-muted)] font-medium block">Acquired Date</span>
-                <span className="font-semibold text-[var(--text-primary)] mt-0.5 block">{fmtDate(item.acquiredAt)}</span>
+                <span className="text-[11.5px] text-[var(--muted-foreground-subtle)] font-medium block">Acquired Date</span>
+                <span className="font-semibold text-[var(--foreground)] mt-0.5 block">{fmtDate(item.acquiredAt)}</span>
               </div>
               <div>
-                <span className="text-[11.5px] text-[var(--text-muted)] font-medium block">Acquired Cost</span>
-                <span className="font-bold text-[var(--text-primary)] mt-0.5 block">
+                <span className="text-[11.5px] text-[var(--muted-foreground-subtle)] font-medium block">Acquired Cost</span>
+                <span className="font-bold text-[var(--foreground)] mt-0.5 block">
                   {acquiredCost === 0 ? "Forfeited (₹0)" : fmtINR(acquiredCost)}
                 </span>
               </div>
               {item.amountOwedAt !== null && (
                 <div>
-                  <span className="text-[11.5px] text-[var(--text-muted)] font-medium block">Amount Owed at Forfeiture</span>
-                  <span className="font-semibold text-[var(--text-primary)] mt-0.5 block">{fmtINR(Number(item.amountOwedAt))}</span>
+                  <span className="text-[11.5px] text-[var(--muted-foreground-subtle)] font-medium block">Amount Owed at Forfeiture</span>
+                  <span className="font-semibold text-[var(--foreground)] mt-0.5 block">{fmtINR(Number(item.amountOwedAt))}</span>
                 </div>
               )}
             </div>
@@ -461,32 +461,32 @@ function ItemDetailsModal({
           {/* Sold Details if Sold */}
           {item.status === "SOLD" && (
             <div className="space-y-2.5">
-              <h3 className="text-[12px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Sale Information</h3>
+              <h3 className="text-[12px] font-bold uppercase tracking-wider text-[var(--muted-foreground-subtle)]">Sale Information</h3>
               <div className="grid grid-cols-2 gap-y-3.5 gap-x-4 p-4 rounded-[16px] bg-[#F5F4E7]/40 border border-[#EAE9DF]">
                 <div>
-                  <span className="text-[11.5px] text-[var(--text-muted)] font-medium block">Sold Price</span>
+                  <span className="text-[11.5px] text-[var(--muted-foreground-subtle)] font-medium block">Sold Price</span>
                   <span className="font-bold text-[#4D6B2A] text-[15px] mt-0.5 block">{item.soldPrice ? fmtINR(Number(item.soldPrice)) : "—"}</span>
                 </div>
                 <div>
-                  <span className="text-[11.5px] text-[var(--text-muted)] font-medium block">Sale Date</span>
-                  <span className="font-semibold text-[var(--text-primary)] mt-0.5 block">{item.soldAt ? fmtDate(item.soldAt) : "—"}</span>
+                  <span className="text-[11.5px] text-[var(--muted-foreground-subtle)] font-medium block">Sale Date</span>
+                  <span className="font-semibold text-[var(--foreground)] mt-0.5 block">{item.soldAt ? fmtDate(item.soldAt) : "—"}</span>
                 </div>
                 {item.buyerName && (
                   <div>
-                    <span className="text-[11.5px] text-[var(--text-muted)] font-medium block">Buyer Name</span>
-                    <span className="font-semibold text-[var(--text-primary)] mt-0.5 block">{item.buyerName}</span>
+                    <span className="text-[11.5px] text-[var(--muted-foreground-subtle)] font-medium block">Buyer Name</span>
+                    <span className="font-semibold text-[var(--foreground)] mt-0.5 block">{item.buyerName}</span>
                   </div>
                 )}
                 {item.buyerMobile && (
                   <div>
-                    <span className="text-[11.5px] text-[var(--text-muted)] font-medium block">Buyer Mobile</span>
-                    <span className="font-semibold text-[var(--text-primary)] mt-0.5 block">{item.buyerMobile}</span>
+                    <span className="text-[11.5px] text-[var(--muted-foreground-subtle)] font-medium block">Buyer Mobile</span>
+                    <span className="font-semibold text-[var(--foreground)] mt-0.5 block">{item.buyerMobile}</span>
                   </div>
                 )}
                 {item.saleNotes && (
                   <div className="col-span-2">
-                    <span className="text-[11.5px] text-[var(--text-muted)] font-medium block">Sale Notes</span>
-                    <p className="font-normal text-[var(--text-secondary)] mt-1 bg-white p-3 rounded-[12px] border border-[#EAE9DF] text-[13px]">{item.saleNotes}</p>
+                    <span className="text-[11.5px] text-[var(--muted-foreground-subtle)] font-medium block">Sale Notes</span>
+                    <p className="font-normal text-[var(--muted-foreground)] mt-1 bg-white p-3 rounded-[12px] border border-[#EAE9DF] text-[13px]">{item.saleNotes}</p>
                   </div>
                 )}
               </div>
@@ -496,8 +496,8 @@ function ItemDetailsModal({
           {/* Notes */}
           {item.notes && (
             <div className="space-y-1.5">
-              <span className="text-[12px] font-bold uppercase tracking-wider text-[var(--text-muted)] block">General Notes</span>
-              <p className="p-3.5 rounded-[14px] bg-[#FAFAF7] border border-[#EAE9DF] text-[13px] text-[var(--text-secondary)]">
+              <span className="text-[12px] font-bold uppercase tracking-wider text-[var(--muted-foreground-subtle)] block">General Notes</span>
+              <p className="p-3.5 rounded-[14px] bg-[#FAFAF7] border border-[#EAE9DF] text-[13px] text-[var(--muted-foreground)]">
                 {item.notes}
               </p>
             </div>
@@ -508,7 +508,7 @@ function ItemDetailsModal({
         <div className="pt-4 border-t border-[#EAE9DF] flex items-center justify-end gap-3 shrink-0">
           <button
             onClick={onClose}
-            className="px-5 py-2.5 rounded-[12px] text-[13.5px] font-semibold bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--text-secondary)] hover:bg-[#EAE9DF] transition-colors"
+            className="px-5 py-2.5 rounded-[12px] text-[13.5px] font-semibold bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--muted-foreground)] hover:bg-[#EAE9DF] transition-colors"
           >
             Close
           </button>
@@ -545,7 +545,7 @@ function Pill({
       onClick={onClick}
       className={`h-[38px] px-4 rounded-full text-[13px] font-semibold transition-all duration-180 flex items-center justify-center shrink-0 ${active
         ? "bg-[#565C3F] text-white shadow-[0_2px_8px_rgba(86,92,63,0.25)]"
-        : "bg-[#FAFAF7] text-[var(--text-secondary)] border border-[#EAE9DF] hover:bg-[#EAE9DF]/60 hover:text-[var(--text-primary)]"
+        : "bg-[#FAFAF7] text-[var(--muted-foreground)] border border-[#EAE9DF] hover:bg-[#EAE9DF]/60 hover:text-[var(--foreground)]"
         }`}
     >
       {label}
@@ -591,22 +591,22 @@ function InventoryRow({
           {item.photoUrl ? (
             <img src={item.photoUrl} alt="" className="w-[40px] h-[40px] rounded-[10px] object-cover shrink-0 border border-black/5" />
           ) : (
-            <div className="w-[40px] h-[40px] rounded-[10px] shrink-0 flex items-center justify-center bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--text-muted)]">
+            <div className="w-[40px] h-[40px] rounded-[10px] shrink-0 flex items-center justify-center bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--muted-foreground-subtle)]">
               <Package size={16} />
             </div>
           )}
           <div className="min-w-0 flex flex-col justify-center max-w-[220px]" style={{ gap: "2px" }}>
-            <p className="text-[15px] font-medium text-[var(--text-primary)] truncate leading-tight group-hover:text-[#565C3F] transition-colors">
+            <p className="text-[15px] font-medium text-[var(--foreground)] truncate leading-tight group-hover:text-[#565C3F] transition-colors">
               {item.description}
             </p>
             <div className="flex items-center gap-1.5 flex-wrap">
               {item.sourceType === "PLEDGE_SALE" && item.sourcePledge ? (
-                <span className="text-[12px] text-[var(--text-muted)] font-normal truncate flex items-center gap-1">
-                  <Archive size={10} className="text-[var(--text-muted)]" />
+                <span className="text-[12px] text-[var(--muted-foreground-subtle)] font-normal truncate flex items-center gap-1">
+                  <Archive size={10} className="text-[var(--muted-foreground-subtle)]" />
                   From pledge · {item.sourcePledge.customer.name}
                 </span>
               ) : (
-                <span className="text-[12px] text-[var(--text-muted)] font-normal">
+                <span className="text-[12px] text-[var(--muted-foreground-subtle)] font-normal">
                   Direct Purchase
                 </span>
               )}
@@ -616,12 +616,12 @@ function InventoryRow({
       </td>
 
       {/* 2. Type */}
-      <td className="py-2.5 px-3 align-middle text-[13.5px] font-normal text-[var(--text-primary)] whitespace-nowrap">
+      <td className="py-2.5 px-3 align-middle text-[13.5px] font-normal text-[var(--foreground)] whitespace-nowrap">
         {item.itemType}
       </td>
 
       {/* 3. Metal */}
-      <td className="py-2.5 px-3 align-middle text-[13.5px] font-normal text-[var(--text-primary)] whitespace-nowrap">
+      <td className="py-2.5 px-3 align-middle text-[13.5px] font-normal text-[var(--foreground)] whitespace-nowrap">
         <div className="flex items-center gap-1.5">
           <span className={`w-2 h-2 rounded-full shrink-0 ${isGold ? "bg-[#D97706]" : isSilver ? "bg-[#64748B]" : "bg-[#A2AB89]"}`} />
           <span>{metalLabel}</span>
@@ -629,12 +629,12 @@ function InventoryRow({
       </td>
 
       {/* 4. Weight */}
-      <td className="py-2.5 px-3 align-middle text-[13.5px] font-normal text-[var(--text-primary)] whitespace-nowrap">
+      <td className="py-2.5 px-3 align-middle text-[13.5px] font-normal text-[var(--foreground)] whitespace-nowrap">
         {Number(item.weightGrams).toFixed(2)}g
       </td>
 
       {/* 5. Acquired */}
-      <td className="py-2.5 px-3 align-middle text-[13.5px] font-normal text-[var(--text-secondary)] whitespace-nowrap">
+      <td className="py-2.5 px-3 align-middle text-[13.5px] font-normal text-[var(--muted-foreground)] whitespace-nowrap">
         {fmtDate(item.acquiredAt)}
       </td>
 
@@ -645,18 +645,18 @@ function InventoryRow({
             Forfeited
           </span>
         ) : (
-          <span className="text-[13.5px] font-medium text-[var(--text-primary)]">{fmtINR(acquiredCost)}</span>
+          <span className="text-[13.5px] font-medium text-[var(--foreground)]">{fmtINR(acquiredCost)}</span>
         )}
       </td>
 
       {/* 7. Net */}
       <td className="py-2.5 px-3 align-middle whitespace-nowrap">
         {net !== null ? (
-          <span className={`text-[13.5px] font-medium ${net > 0 ? "text-[#4D6B2A]" : net < 0 ? "text-[#B91C1C]" : "text-[var(--text-secondary)]"}`}>
+          <span className={`text-[13.5px] font-medium ${net > 0 ? "text-[#4D6B2A]" : net < 0 ? "text-[#B91C1C]" : "text-[var(--muted-foreground)]"}`}>
             {net > 0 ? `+${fmtINR(net)}` : net < 0 ? `${fmtINR(net)}` : "Break even"}
           </span>
         ) : (
-          <span className="text-[var(--text-muted)] text-[13.5px]">—</span>
+          <span className="text-[var(--muted-foreground-subtle)] text-[13.5px]">—</span>
         )}
       </td>
 
@@ -684,17 +684,17 @@ function InventoryRow({
           <div className="relative">
             <button
               onClick={() => setOpenMenuId(openMenuId === item.id ? null : item.id)}
-              className="p-1.5 rounded-[8px] hover:bg-[#EAE9DF] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+              className="p-1.5 rounded-[8px] hover:bg-[#EAE9DF] text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
             >
               <MoreVertical size={16} />
             </button>
             {openMenuId === item.id && (
-              <div className="absolute right-0 top-full mt-1 w-44 rounded-[12px] bg-[var(--card-bg,white)] border border-[#EAE9DF] shadow-xl py-1.5 z-30 text-left animate-in fade-in zoom-in-95 duration-150">
+              <div className="absolute right-0 top-full mt-1 w-44 rounded-[12px] bg-[var(--card)] border border-[#EAE9DF] shadow-xl py-1.5 z-30 text-left animate-in fade-in zoom-in-95 duration-150">
                 <button
                   onClick={() => { setOpenMenuId(null); onViewDetails(item); }}
-                  className="w-full px-3.5 py-2 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[#FAFAF7] flex items-center gap-2.5 transition-colors"
+                  className="w-full px-3.5 py-2 text-[13px] font-medium text-[var(--foreground)] hover:bg-[#FAFAF7] flex items-center gap-2.5 transition-colors"
                 >
-                  <Eye size={14} className="text-[var(--text-muted)]" />
+                  <Eye size={14} className="text-[var(--muted-foreground-subtle)]" />
                   View Details
                 </button>
                 {item.status === "IN_STOCK" && (
@@ -710,9 +710,9 @@ function InventoryRow({
                   <Link
                     href={`/customers/${item.sourcePledge.customerId}`}
                     onClick={() => setOpenMenuId(null)}
-                    className="w-full px-3.5 py-2 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[#FAFAF7] flex items-center gap-2.5 transition-colors"
+                    className="w-full px-3.5 py-2 text-[13px] font-medium text-[var(--foreground)] hover:bg-[#FAFAF7] flex items-center gap-2.5 transition-colors"
                   >
-                    <User size={14} className="text-[var(--text-muted)]" />
+                    <User size={14} className="text-[var(--muted-foreground-subtle)]" />
                     View Customer
                   </Link>
                 )}
@@ -836,10 +836,10 @@ export default function InventoryPage() {
         {/* Header + Subtitle + Add Item CTA */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-[22px] font-semibold tracking-tight text-[var(--text-primary)] leading-tight">
+            <h1 className="text-[22px] font-semibold tracking-tight text-[var(--foreground)] leading-tight">
               Inventory
             </h1>
-            <p className="text-[13px] mt-0.5 text-[var(--text-muted)] font-normal">
+            <p className="text-[13px] mt-0.5 text-[var(--muted-foreground-subtle)] font-normal">
               Items acquired through pledges and direct purchases
             </p>
             <div className="mt-2">
@@ -857,7 +857,7 @@ export default function InventoryPage() {
         </div>
 
         {/* Stats Strip (Single Container) */}
-        <div className="rounded-[16px] bg-[var(--card-bg,white)] border border-[#EAE9DF] shadow-[0_1px_3px_rgba(0,0,0,0.015)] overflow-hidden">
+        <div className="rounded-[16px] bg-[var(--card)] border border-[#EAE9DF] shadow-[0_1px_3px_rgba(0,0,0,0.015)] overflow-hidden">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 lg:divide-x divide-[#EAE9DF]">
             {[
               {
@@ -904,10 +904,10 @@ export default function InventoryPage() {
                   {card.icon}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)] block truncate mb-0.5">
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-[var(--muted-foreground-subtle)] block truncate mb-0.5">
                     {card.label}
                   </span>
-                  <span className="text-[24px] font-semibold text-[var(--text-primary)] block leading-tight truncate my-0.5 tracking-tight">
+                  <span className="text-[24px] font-semibold text-[var(--foreground)] block leading-tight truncate my-0.5 tracking-tight">
                     {card.value}
                   </span>
                   <span className={`text-[12px] font-normal block truncate ${card.subtextColor}`}>
@@ -920,21 +920,21 @@ export default function InventoryPage() {
         </div>
 
         {/* Filter Row */}
-        <div className="flex items-center justify-between gap-3 flex-wrap bg-[var(--card-bg,white)] p-2.5 rounded-[16px] border border-[#EAE9DF] shadow-[0_1px_3px_rgba(0,0,0,0.01)]">
+        <div className="flex items-center justify-between gap-3 flex-wrap bg-[var(--card)] p-2.5 rounded-[16px] border border-[#EAE9DF] shadow-[0_1px_3px_rgba(0,0,0,0.01)]">
           {/* Search bar taking 30-35% width */}
           <div className="flex items-center gap-2 px-3.5 h-[36px] rounded-full bg-[#FAFAF7] border border-[#EAE9DF] focus-within:border-[#565C3F] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#565C3F]/10 transition-all w-full md:w-[32%] min-w-[240px]">
-            <Search size={14} className="text-[var(--text-muted)] shrink-0" />
+            <Search size={14} className="text-[var(--muted-foreground-subtle)] shrink-0" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search inventory items..."
-              className="w-full bg-transparent outline-none text-[13px] font-normal text-[var(--text-primary)] placeholder-[var(--text-muted)]"
+              className="w-full bg-transparent outline-none text-[13px] font-normal text-[var(--foreground)] placeholder-[var(--muted-foreground-subtle)]"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="p-0.5 hover:bg-[#EAE9DF] rounded-full text-[var(--text-muted)] transition-colors"
+                className="p-0.5 hover:bg-[#EAE9DF] rounded-full text-[var(--muted-foreground-subtle)] transition-colors"
               >
                 <X size={13} />
               </button>
@@ -948,13 +948,13 @@ export default function InventoryPage() {
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value as typeof filterStatus)}
-                className="pl-3.5 pr-8 h-[36px] rounded-full text-[13px] font-medium appearance-none outline-none focus:ring-2 focus:ring-[#565C3F] bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--text-primary)] cursor-pointer transition-all hover:bg-[#EAE9DF]/50"
+                className="pl-3.5 pr-8 h-[36px] rounded-full text-[13px] font-medium appearance-none outline-none focus:ring-2 focus:ring-[#565C3F] bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--foreground)] cursor-pointer transition-all hover:bg-[#EAE9DF]/50"
               >
                 <option value="in_stock">In Stock</option>
                 <option value="sold">Sold</option>
                 <option value="all">All Stock</option>
               </select>
-              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-muted)]" />
+              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--muted-foreground-subtle)]" />
             </div>
 
             {/* Source Filter */}
@@ -962,13 +962,13 @@ export default function InventoryPage() {
               <select
                 value={filterSource}
                 onChange={(e) => setFilterSource(e.target.value as typeof filterSource)}
-                className="pl-3.5 pr-8 h-[36px] rounded-full text-[13px] font-medium appearance-none outline-none focus:ring-2 focus:ring-[#565C3F] bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--text-primary)] cursor-pointer transition-all hover:bg-[#EAE9DF]/50"
+                className="pl-3.5 pr-8 h-[36px] rounded-full text-[13px] font-medium appearance-none outline-none focus:ring-2 focus:ring-[#565C3F] bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--foreground)] cursor-pointer transition-all hover:bg-[#EAE9DF]/50"
               >
                 <option value="all">All Sources</option>
                 <option value="pledge">From Pledges</option>
                 <option value="direct">Direct Purchase</option>
               </select>
-              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-muted)]" />
+              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--muted-foreground-subtle)]" />
             </div>
 
             {/* Metal Filter */}
@@ -976,14 +976,14 @@ export default function InventoryPage() {
               <select
                 value={filterMetal}
                 onChange={(e) => setFilterMetal(e.target.value as typeof filterMetal)}
-                className="pl-3.5 pr-8 h-[36px] rounded-full text-[13px] font-medium appearance-none outline-none focus:ring-2 focus:ring-[#565C3F] bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--text-primary)] cursor-pointer transition-all hover:bg-[#EAE9DF]/50"
+                className="pl-3.5 pr-8 h-[36px] rounded-full text-[13px] font-medium appearance-none outline-none focus:ring-2 focus:ring-[#565C3F] bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--foreground)] cursor-pointer transition-all hover:bg-[#EAE9DF]/50"
               >
                 <option value="all">All Metals</option>
                 <option value="gold">Gold</option>
                 <option value="silver">Silver</option>
                 <option value="other">Other</option>
               </select>
-              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-muted)]" />
+              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--muted-foreground-subtle)]" />
             </div>
 
             {/* Type Filter */}
@@ -991,7 +991,7 @@ export default function InventoryPage() {
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value)}
-                className="pl-3.5 pr-8 h-[36px] rounded-full text-[13px] font-medium appearance-none outline-none focus:ring-2 focus:ring-[#565C3F] bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--text-primary)] cursor-pointer transition-all hover:bg-[#EAE9DF]/50"
+                className="pl-3.5 pr-8 h-[36px] rounded-full text-[13px] font-medium appearance-none outline-none focus:ring-2 focus:ring-[#565C3F] bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--foreground)] cursor-pointer transition-all hover:bg-[#EAE9DF]/50"
               >
                 <option value="all">All Types</option>
                 <option value="Pendant">Pendant</option>
@@ -1001,7 +1001,7 @@ export default function InventoryPage() {
                 <option value="Coin">Coin</option>
                 <option value="Other">Other</option>
               </select>
-              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-muted)]" />
+              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--muted-foreground-subtle)]" />
             </div>
 
             {/* Sort */}
@@ -1009,34 +1009,34 @@ export default function InventoryPage() {
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-                className="pl-3.5 pr-8 h-[36px] rounded-full text-[13px] font-medium appearance-none outline-none focus:ring-2 focus:ring-[#565C3F] bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--text-primary)] cursor-pointer transition-all hover:bg-[#EAE9DF]/50"
+                className="pl-3.5 pr-8 h-[36px] rounded-full text-[13px] font-medium appearance-none outline-none focus:ring-2 focus:ring-[#565C3F] bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--foreground)] cursor-pointer transition-all hover:bg-[#EAE9DF]/50"
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>
                 <option value="value_high">Value (high→low)</option>
                 <option value="value_low">Value (low→high)</option>
               </select>
-              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--text-muted)]" />
+              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--muted-foreground-subtle)]" />
             </div>
           </div>
         </div>
 
         {/* Inventory Table */}
-        <div className="rounded-[20px] bg-[var(--card-bg,white)] border border-[#EAE9DF] shadow-[0_2px_16px_rgba(0,0,0,0.02)] overflow-hidden">
+        <div className="rounded-[20px] bg-[var(--card)] border border-[#EAE9DF] shadow-[0_2px_16px_rgba(0,0,0,0.02)] overflow-hidden">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <Loader2 size={24} className="animate-spin text-[#565C3F]" />
-              <p className="text-[13px] font-medium text-[var(--text-secondary)]">Loading inventory items…</p>
+              <p className="text-[13px] font-medium text-[var(--muted-foreground)]">Loading inventory items…</p>
             </div>
           ) : filteredItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <div className="w-16 h-16 rounded-full bg-[#FAFAF7] flex items-center justify-center text-[#565C3F] mb-1 border border-[#EAE9DF]">
                 <Inbox size={32} strokeWidth={1.5} />
               </div>
-              <p className="text-[15px] font-semibold text-[var(--text-primary)]">
+              <p className="text-[15px] font-semibold text-[var(--foreground)]">
                 {searchQuery || filterType !== "all" ? "No matching items found" : "No inventory items yet"}
               </p>
-              <p className="text-[13px] text-[var(--text-secondary)] max-w-sm text-center font-normal">
+              <p className="text-[13px] text-[var(--muted-foreground)] max-w-sm text-center font-normal">
                 {searchQuery || filterType !== "all"
                   ? `We couldn't find anything matching your search and filters. Try adjusting them.`
                   : "Add your first item or add a pledge to inventory to get started."}
@@ -1059,7 +1059,7 @@ export default function InventoryPage() {
                       {["ITEM", "TYPE", "METAL", "WEIGHT", "ACQUIRED", "COST", "NET", "STATUS", "ACTIONS"].map((h, i) => (
                         <th
                           key={h}
-                          className={`py-2.5 px-3 text-[11px] font-medium tracking-wider uppercase text-[var(--text-muted)] whitespace-nowrap ${i === 0 ? "pl-4" : i === 8 ? "pr-4 text-right" : ""
+                          className={`py-2.5 px-3 text-[11px] font-medium tracking-wider uppercase text-[var(--muted-foreground-subtle)] whitespace-nowrap ${i === 0 ? "pl-4" : i === 8 ? "pr-4 text-right" : ""
                             }`}
                         >
                           {h}
@@ -1089,7 +1089,7 @@ export default function InventoryPage() {
                     <button
                       onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                       disabled={currentPage === 1}
-                      className="w-[32px] h-[32px] rounded-[8px] flex items-center justify-center bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--text-secondary)] hover:bg-[#EAE9DF] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                      className="w-[32px] h-[32px] rounded-[8px] flex items-center justify-center bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--muted-foreground)] hover:bg-[#EAE9DF] disabled:opacity-40 disabled:pointer-events-none transition-colors"
                     >
                       <ChevronLeft size={15} />
                     </button>
@@ -1099,7 +1099,7 @@ export default function InventoryPage() {
                         onClick={() => setCurrentPage(p)}
                         className={`w-[32px] h-[32px] rounded-[8px] flex items-center justify-center font-medium text-[12.5px] transition-all duration-180 ${currentPage === p
                           ? "bg-[#565C3F] text-white shadow-sm"
-                          : "bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--text-secondary)] hover:bg-[#EAE9DF]"
+                          : "bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--muted-foreground)] hover:bg-[#EAE9DF]"
                           }`}
                       >
                         {p}
@@ -1108,7 +1108,7 @@ export default function InventoryPage() {
                     <button
                       onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                       disabled={currentPage === totalPages}
-                      className="w-[32px] h-[32px] rounded-[8px] flex items-center justify-center bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--text-secondary)] hover:bg-[#EAE9DF] disabled:opacity-40 disabled:pointer-events-none transition-colors"
+                      className="w-[32px] h-[32px] rounded-[8px] flex items-center justify-center bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--muted-foreground)] hover:bg-[#EAE9DF] disabled:opacity-40 disabled:pointer-events-none transition-colors"
                     >
                       <ChevronRight size={15} />
                     </button>

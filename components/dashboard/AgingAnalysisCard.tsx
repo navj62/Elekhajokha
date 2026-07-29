@@ -32,8 +32,8 @@ export interface AgingAnalysisData {
 }
 
 const cardStyle: CSSProperties = {
-  backgroundColor: "var(--card-bg)",
-  border: "1px solid var(--border-light)",
+  backgroundColor: "var(--card)",
+  border: "1px solid var(--border)",
 };
 
 const OLIVE = "#565C3F";
@@ -61,7 +61,7 @@ export function AgingAnalysisCard({ data }: { data: AgingAnalysisData }) {
       <div className="rounded-[18px] p-7" style={cardStyle}>
         <div
           className="w-full flex flex-col items-center justify-center py-16"
-          style={{ color: "var(--text-muted)" }}
+          style={{ color: "var(--muted-foreground-subtle)" }}
         >
           <Inbox size={32} className="mb-2 opacity-20" />
           <span className="text-[13px] font-medium">
@@ -89,11 +89,11 @@ export function AgingAnalysisCard({ data }: { data: AgingAnalysisData }) {
         <div>
           <h3
             className="text-[18px] font-semibold"
-            style={{ color: "var(--text-primary)" }}
+            style={{ color: "var(--foreground)" }}
           >
             Aging Analysis
           </h3>
-          <p className="text-[13px]" style={{ color: "var(--text-muted)" }}>
+          <p className="text-[13px]" style={{ color: "var(--muted-foreground-subtle)" }}>
             Active loan book by pledge age
           </p>
         </div>
@@ -112,13 +112,13 @@ export function AgingAnalysisCard({ data }: { data: AgingAnalysisData }) {
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
-            <tr style={{ borderBottom: "1px solid var(--border-light)" }}>
+            <tr style={{ borderBottom: "1px solid var(--border)" }}>
               {headers.map((h, i) => (
                 <th
                   key={h}
                   className="text-[10px] uppercase tracking-wider font-bold pb-2"
                   style={{
-                    color: "var(--text-muted)",
+                    color: "var(--muted-foreground-subtle)",
                     textAlign: i === 0 ? "left" : "right",
                   }}
                 >
@@ -133,15 +133,15 @@ export function AgingAnalysisCard({ data }: { data: AgingAnalysisData }) {
               const isLast = idx === buckets.length - 1;
               const rowStyle: CSSProperties = isLast
                 ? {}
-                : { borderBottom: "1px solid var(--border-light)" };
-              const muted = { color: "var(--text-muted)" };
+                : { borderBottom: "1px solid var(--border)" };
+              const muted = { color: "var(--muted-foreground-subtle)" };
 
               return (
                 <tr key={b.ageRange} style={rowStyle} className="text-[14px]">
                   {/* Age */}
                   <td
                     className="py-3 text-left font-medium"
-                    style={{ color: "var(--text-primary)" }}
+                    style={{ color: "var(--foreground)" }}
                   >
                     {b.label}
                   </td>
@@ -151,7 +151,7 @@ export function AgingAnalysisCard({ data }: { data: AgingAnalysisData }) {
                     {empty ? (
                       <span style={muted}>—</span>
                     ) : (
-                      <span style={{ color: "var(--text-primary)" }}>
+                      <span style={{ color: "var(--foreground)" }}>
                         {b.count}
                       </span>
                     )}
@@ -162,7 +162,7 @@ export function AgingAnalysisCard({ data }: { data: AgingAnalysisData }) {
                     {empty ? (
                       <span style={muted}>—</span>
                     ) : (
-                      <span style={{ color: "var(--text-primary)" }}>
+                      <span style={{ color: "var(--foreground)" }}>
                         ₹{inr(b.principal)}
                       </span>
                     )}
@@ -173,7 +173,7 @@ export function AgingAnalysisCard({ data }: { data: AgingAnalysisData }) {
                     {empty ? (
                       <span style={muted}>—</span>
                     ) : (
-                      <span style={{ color: "var(--text-primary)" }}>
+                      <span style={{ color: "var(--foreground)" }}>
                         ₹{inr(b.owed)}
                       </span>
                     )}
@@ -200,7 +200,7 @@ export function AgingAnalysisCard({ data }: { data: AgingAnalysisData }) {
                           color:
                             b.underwaterCount > 0
                               ? "#B91C1C"
-                              : "var(--text-primary)",
+                              : "var(--foreground)",
                         }}
                       >
                         {b.underwaterCount}
@@ -214,14 +214,14 @@ export function AgingAnalysisCard({ data }: { data: AgingAnalysisData }) {
                       <span style={muted}>—</span>
                     ) : (
                       <div className="flex flex-col items-end gap-1">
-                        <span style={{ color: "var(--text-primary)" }}>
+                        <span style={{ color: "var(--foreground)" }}>
                           {b.pctOfPrincipal.toFixed(1)}%
                         </span>
                         <div
                           className="h-1 rounded w-full"
                           style={{
                             maxWidth: 64,
-                            backgroundColor: "var(--border-light)",
+                            backgroundColor: "var(--border)",
                           }}
                         >
                           <div
@@ -245,7 +245,7 @@ export function AgingAnalysisCard({ data }: { data: AgingAnalysisData }) {
       {/* ── Footer row ─────────────────────────────────────────── */}
       <div
         className="mt-5 text-[13px]"
-        style={{ color: "var(--text-muted)" }}
+        style={{ color: "var(--muted-foreground-subtle)" }}
       >
         Total: {totalActivePledges} pledges{" · "}
         Principal: ₹{inr(totalPrincipal)}

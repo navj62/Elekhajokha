@@ -67,7 +67,7 @@ const COMPOUNDING_OPTIONS: Compounding[] = ["MONTHLY", "HALFYEARLY", "YEARLY"];
 
 // Mirror financial-summary's ltvColor thresholds.
 function ltvColor(ltv: number | null): string {
-  if (ltv === null) return "var(--text-muted, #9E9E9E)";
+  if (ltv === null) return "var(--muted-foreground-subtle)";
   if (ltv < 65) return "#4D6B2A";
   if (ltv <= 75) return "#8A6B17";
   if (ltv <= 90) return "#9A4B14";
