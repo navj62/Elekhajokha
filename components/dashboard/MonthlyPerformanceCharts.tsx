@@ -80,8 +80,8 @@ const AXIS_TICK = "#9E9E9E";
 const AXIS_TICK_STYLE = { fontSize: 12, fill: AXIS_TICK };
 
 const cardStyle: CSSProperties = {
-  backgroundColor: "var(--card-bg)",
-  border: "1px solid var(--border-light)",
+  backgroundColor: "var(--card)",
+  border: "1px solid var(--border)",
 };
 
 const tooltipBox: CSSProperties = {
@@ -167,7 +167,7 @@ function EmptyState({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
   return (
     <div
       className="w-full h-full flex flex-col items-center justify-center"
-      style={{ color: "var(--text-muted)" }}
+      style={{ color: "var(--muted-foreground-subtle)" }}
     >
       <Icon size={32} className="mb-2 opacity-20" />
       <span className="text-[13px] font-medium">{text}</span>
@@ -178,11 +178,11 @@ function EmptyState({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
 function CardTitle({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="mb-3">
-      <h3 className="text-[17px] font-bold" style={{ color: "var(--text-primary)" }}>
+      <h3 className="text-[17px] font-bold" style={{ color: "var(--foreground)" }}>
         {title}
       </h3>
       {subtitle && (
-        <p className="text-[12px] font-medium mt-0.5" style={{ color: "var(--text-muted)" }}>
+        <p className="text-[12px] font-medium mt-0.5" style={{ color: "var(--muted-foreground-subtle)" }}>
           {subtitle}
         </p>
       )}
@@ -229,7 +229,7 @@ function ChangeIndicator({ changePercent }: { changePercent: number | null }) {
     );
   }
   return (
-    <span className="text-[11px] font-bold" style={{ color: "var(--text-muted)" }}>
+    <span className="text-[11px] font-bold" style={{ color: "var(--muted-foreground-subtle)" }}>
       —
     </span>
   );
