@@ -27,6 +27,9 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 import {
   MonthlyPerformanceSection,
@@ -101,10 +104,16 @@ interface DashboardData {
     releaseDate: string | null;
     status: string;
   }[];
-  portfolio?: {
-    goldItems: number;
-    silverItems: number;
-  };
+  portfolio: {
+    goldWeightGrams: number;
+    silverWeightGrams: number;
+    goldPricePerGram: number;
+    silverPricePerGram: number;
+    goldValue: number;
+    silverValue: number;
+    totalMarketValue: number;
+    snapshotDate: string;
+  } | null;
   regions?: {
     name: string;
     count: number;
@@ -826,91 +835,166 @@ function RegionDistribution({ regions = [] }: { regions?: { name: string; count:
 }
 
 /* ================================================================== */
-/*  Metal Portfolio (Semi-circle Gauge)                                 */
+/*  Metal Portfolio (Weight / Value slide)                              */
 /* ================================================================== */
 
-function MetalPortfolio({ portfolio }: { portfolio?: { goldItems: number; silverItems: number } }) {
-  const goldItems = portfolio?.goldItems || 0;
-  const silverItems = portfolio?.silverItems || 0;
-  const total = goldItems + silverItems;
-  const goldPct = total > 0 ? goldItems / total : 0;
+const METAL_COLORS = { gold: "#FBBF24", silver: "#9CA3AF" };
 
-  // Arc parameters
-  const cx = 90, cy = 85, r = 65;
-  const startAngle = Math.PI;
-  const goldEnd = startAngle + goldPct * Math.PI;
-  const silverEnd = startAngle + Math.PI;
+function formatWeight(grams: number): string {
+  if (grams >= 1000) return `${(grams / 1000).toFixed(2)} kg`;
+  return `${grams.toFixed(1)} g`;
+}
 
-  const arc = (from: number, to: number) => {
-    if (from >= to) return "";
-    const x1 = cx + r * Math.cos(from);
-    const y1 = cy + r * Math.sin(from);
-    const x2 = cx + r * Math.cos(to);
-    const y2 = cy + r * Math.sin(to);
-    const large = to - from > Math.PI ? 1 : 0;
-    return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2}`;
-  };
+function formatMetalCurrency(n: number): string {
+  return `₹${Math.round(n).toLocaleString("en-IN")}`;
+}
+
+type MetalPortfolioData = NonNullable<DashboardData["portfolio"]>;
+
+function MetalDonut({
+  goldValue,
+  silverValue,
+  tooltipFormatter,
+}: {
+  goldValue: number;
+  silverValue: number;
+  tooltipFormatter: (value: number) => string;
+}) {
+  const data = [
+    { name: "Gold", value: goldValue, color: METAL_COLORS.gold },
+    { name: "Silver", value: silverValue, color: METAL_COLORS.silver },
+  ];
+
+  return (
+    <div className="h-[160px]">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie data={data} dataKey="value" nameKey="name" innerRadius={50} outerRadius={72} paddingAngle={2} stroke="none">
+            {data.map((d) => (
+              <Cell key={d.name} fill={d.color} />
+            ))}
+          </Pie>
+          <Tooltip formatter={(value, name) => [tooltipFormatter(Number(value)), String(name)]} />
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function WeightSlide({ portfolio }: { portfolio: MetalPortfolioData }) {
+  const { goldWeightGrams, silverWeightGrams } = portfolio;
+  const total = goldWeightGrams + silverWeightGrams;
+
+  if (total === 0) {
+    return (
+      <div className="py-6 text-center text-[12.5px] font-medium text-[var(--muted-foreground-subtle)]">
+        No pledged items available.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <MetalDonut goldValue={goldWeightGrams} silverValue={silverWeightGrams} tooltipFormatter={formatWeight} />
+      <div className="flex items-center justify-center gap-5 mt-1">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: METAL_COLORS.gold }} />
+          <span className="text-[11px] font-semibold" style={{ color: "var(--muted-foreground)" }}>
+            Gold: {formatWeight(goldWeightGrams)}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: METAL_COLORS.silver }} />
+          <span className="text-[11px] font-semibold" style={{ color: "var(--muted-foreground)" }}>
+            Silver: {formatWeight(silverWeightGrams)}
+          </span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ValueSlide({ portfolio }: { portfolio: MetalPortfolioData }) {
+  const { goldValue, silverValue, totalMarketValue } = portfolio;
+
+  if (totalMarketValue === 0) {
+    return (
+      <div className="py-6 text-center text-[12.5px] font-medium text-[var(--muted-foreground-subtle)]">
+        No pledged items available.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <MetalDonut goldValue={goldValue} silverValue={silverValue} tooltipFormatter={formatMetalCurrency} />
+      <div className="flex flex-col items-center gap-1.5 mt-1">
+        <div className="flex items-center justify-center gap-5">
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: METAL_COLORS.gold }} />
+            <span className="text-[11px] font-semibold" style={{ color: "var(--muted-foreground)" }}>
+              Gold: {formatMetalCurrency(goldValue)}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: METAL_COLORS.silver }} />
+            <span className="text-[11px] font-semibold" style={{ color: "var(--muted-foreground)" }}>
+              Silver: {formatMetalCurrency(silverValue)}
+            </span>
+          </div>
+        </div>
+        <span className="text-[12px] font-bold" style={{ color: "var(--foreground)" }}>
+          Combined: {formatMetalCurrency(totalMarketValue)}
+        </span>
+      </div>
+    </>
+  );
+}
+
+function MetalPortfolio({
+  portfolio,
+  snapshotDateLabel,
+}: {
+  portfolio: MetalPortfolioData | null;
+  snapshotDateLabel: string | null;
+}) {
+  const [slide, setSlide] = useState<0 | 1>(0);
 
   return (
     <div
       className="rounded-[18px] p-5"
       style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
     >
-      <h3 className="text-[14px] font-bold mb-2" style={{ color: "var(--foreground)" }}>
+      <h3 className="text-[14px] font-bold" style={{ color: "var(--foreground)" }}>
         Metal Portfolio
       </h3>
+      <p className="text-[11px] font-medium mb-4" style={{ color: "var(--muted-foreground-subtle)" }}>
+        Active pledges{snapshotDateLabel ? ` • as of ${snapshotDateLabel}` : ""}
+      </p>
 
-      {total === 0 ? (
-        <div className="py-6 text-center text-[12.5px] font-medium text-[var(--muted-foreground-subtle)]">
-          No pledged items available.
+      {!portfolio ? (
+        <div className="py-10 text-center text-[12.5px] font-medium text-[var(--muted-foreground-subtle)]">
+          No data yet — updates daily
         </div>
       ) : (
         <>
-          <div className="flex justify-center">
-            <svg width="180" height="110" viewBox="0 0 180 110">
-              {/* Silver arc */}
-              {silverItems > 0 && (
-                <path
-                  d={arc(goldEnd + (goldItems > 0 ? 0.05 : 0), silverEnd)}
-                  fill="none"
-                  stroke="#E5E7EB"
-                  strokeWidth="14"
-                  strokeLinecap="round"
-                />
-              )}
-              {/* Gold arc */}
-              {goldItems > 0 && (
-                <path
-                  d={arc(startAngle, goldEnd - (silverItems > 0 ? 0.05 : 0))}
-                  fill="none"
-                  stroke="#FBBF24"
-                  strokeWidth="14"
-                  strokeLinecap="round"
-                />
-              )}
-              {/* Center text */}
-              <text x={cx} y={cy - 6} textAnchor="middle" fontSize="24" fontWeight="800" fill="#2C2C2C">
-                {total}
-              </text>
-              <text x={cx} y={cy + 10} textAnchor="middle" fontSize="8" fontWeight="700" fill="#9E9E9E" letterSpacing="1.2">
-                TOTAL ITEMS
-              </text>
-            </svg>
-          </div>
+          {slide === 0 ? <WeightSlide portfolio={portfolio} /> : <ValueSlide portfolio={portfolio} />}
 
-          <div className="flex items-center justify-center gap-5 mt-1">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#FBBF24" }} />
-              <span className="text-[11px] font-semibold" style={{ color: "var(--muted-foreground)" }}>
-                Gold ({goldItems})
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: "#E5E7EB" }} />
-              <span className="text-[11px] font-semibold" style={{ color: "var(--muted-foreground)" }}>
-                Silver ({silverItems})
-              </span>
-            </div>
+          <div className="flex items-center justify-center gap-2 mt-4">
+            {([0, 1] as const).map((i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setSlide(i)}
+                aria-label={i === 0 ? "Show weight view" : "Show value view"}
+                className="rounded-full transition-all"
+                style={{
+                  width: slide === i ? 16 : 6,
+                  height: 6,
+                  backgroundColor: slide === i ? "#565C3F" : "var(--border)",
+                }}
+              />
+            ))}
           </div>
         </>
       )}
@@ -1198,7 +1282,12 @@ export default function DashboardPage() {
         <section className="space-y-6">
           <TodaysTasks tasksData={dashboard?.tasks} />
           <RegionDistribution regions={dashboard?.regions} />
-          <MetalPortfolio portfolio={dashboard?.portfolio} />
+          <MetalPortfolio
+            portfolio={dashboard?.portfolio ?? null}
+            snapshotDateLabel={
+              dashboard?.portfolio?.snapshotDate ? formatDate(dashboard.portfolio.snapshotDate) : null
+            }
+          />
         </section>
       </div>
 

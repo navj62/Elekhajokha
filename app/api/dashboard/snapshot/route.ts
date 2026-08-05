@@ -34,8 +34,6 @@ export async function GET() {
       totalReleasedLoanAmount,
       totalBalanceAmount,
       recentPledgesRaw,
-      goldItemsCount,
-      silverItemsCount,
       regionsDataRaw,
       unreadAlerts,
       pledgesThisYear,
@@ -80,13 +78,6 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
         take: 4,
         include: { customer: true },
-      }),
-      // Portfolio
-      prisma.pledgeItem.count({
-        where: { metalType: "GOLD", pledge: { customer: { userId: user.id } } },
-      }),
-      prisma.pledgeItem.count({
-        where: { metalType: "SILVER", pledge: { customer: { userId: user.id } } },
       }),
       // Regions
       prisma.customer.groupBy({
@@ -233,10 +224,18 @@ export async function GET() {
       },
       stats,
       recentPledges,
-      portfolio: {
-        goldItems: goldItemsCount,
-        silverItems: silverItemsCount,
-      },
+      portfolio: today
+        ? {
+            goldWeightGrams: Number(today.totalGoldWeight),
+            silverWeightGrams: Number(today.totalSilverWeight),
+            goldPricePerGram: Number(today.goldPricePerGram),
+            silverPricePerGram: Number(today.silverPricePerGram),
+            goldValue: Number(today.totalGoldWeight) * Number(today.goldPricePerGram),
+            silverValue: Number(today.totalSilverWeight) * Number(today.silverPricePerGram),
+            totalMarketValue: Number(today.totalMarketValue),
+            snapshotDate: today.snapshotDate,
+          }
+        : null,
       regions,
       tasks,
       charts: {
