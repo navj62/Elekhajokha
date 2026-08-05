@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 import { Users, IndianRupee, type LucideIcon } from "lucide-react";
 import {
   ComposedChart,
@@ -78,8 +80,8 @@ const AXIS_TICK = "#9E9E9E";
 const AXIS_TICK_STYLE = { fontSize: 12, fill: AXIS_TICK };
 
 const cardStyle: CSSProperties = {
-  backgroundColor: "var(--card)",
-  border: "1px solid var(--border)",
+  backgroundColor: "var(--card-bg)",
+  border: "1px solid var(--border-light)",
 };
 
 const tooltipBox: CSSProperties = {
@@ -165,7 +167,7 @@ function EmptyState({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
   return (
     <div
       className="w-full h-full flex flex-col items-center justify-center"
-      style={{ color: "var(--muted-foreground-subtle)" }}
+      style={{ color: "var(--text-muted)" }}
     >
       <Icon size={32} className="mb-2 opacity-20" />
       <span className="text-[13px] font-medium">{text}</span>
@@ -176,11 +178,11 @@ function EmptyState({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
 function CardTitle({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="mb-3">
-      <h3 className="text-[17px] font-bold" style={{ color: "var(--foreground)" }}>
+      <h3 className="text-[17px] font-bold" style={{ color: "var(--text-primary)" }}>
         {title}
       </h3>
       {subtitle && (
-        <p className="text-[12px] font-medium mt-0.5" style={{ color: "var(--muted-foreground-subtle)" }}>
+        <p className="text-[12px] font-medium mt-0.5" style={{ color: "var(--text-muted)" }}>
           {subtitle}
         </p>
       )}
@@ -227,7 +229,7 @@ function ChangeIndicator({ changePercent }: { changePercent: number | null }) {
     );
   }
   return (
-    <span className="text-[11px] font-bold" style={{ color: "var(--muted-foreground-subtle)" }}>
+    <span className="text-[11px] font-bold" style={{ color: "var(--text-muted)" }}>
       —
     </span>
   );
@@ -238,134 +240,103 @@ function ChangeIndicator({ changePercent }: { changePercent: number | null }) {
 /* ================================================================== */
 
 export function MonthlyPerformanceCharts({ data }: { data: MonthlyPerformanceData }) {
-  const { months, summary } = data;
+  const { summary } = data;
+  const months = data.months.slice(-6);
+  const [activeTab, setActiveTab] = useState<"Pledges" | "Loan Amount" | "Customers" | "Interest">("Pledges");
   const hasCustomers = months.some((m) => m.newCustomers > 0);
   const hasInterest = months.some((m) => m.totalInterestReceived > 0);
 
   return (
-    <div className="space-y-6">
-      {/* Section header */}
-      <div>
-        <p
-          className="text-[10px] font-bold tracking-wider uppercase"
-          style={{ color: "var(--muted-foreground-subtle)" }}
-        >
-          Last 12 Months
-        </p>
-        <h2 className="text-[20px] font-bold mt-0.5" style={{ color: "var(--foreground)" }}>
-          Monthly Performance
-        </h2>
-      </div>
-
-      {/* Chart A — dual-axis pledge & loan activity (full width) */}
-      <div className="rounded-[18px] p-7" style={cardStyle}>
-        <CardTitle
-          title="Pledge & Loan Activity"
-          subtitle="Pledge counts (left axis) vs loan value (right axis), month by month"
-        />
-        <ResponsiveContainer width="100%" height={320}>
-          <ComposedChart data={months} barGap={2} barCategoryGap="18%">
-            <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
-            <XAxis dataKey="label" tick={AXIS_TICK_STYLE} axisLine={false} tickLine={false} />
-            <YAxis
-              yAxisId="left"
-              tick={AXIS_TICK_STYLE}
-              axisLine={false}
-              tickLine={false}
-              width={32}
-              allowDecimals={false}
-            />
-            <YAxis
-              yAxisId="right"
-              orientation="right"
-              tick={AXIS_TICK_STYLE}
-              axisLine={false}
-              tickLine={false}
-              width={48}
-              tickFormatter={(v: number) => formatCurrencyAbbr(v)}
-            />
-            <Tooltip content={<ActivityTooltip />} cursor={{ fill: "rgba(0,0,0,0.02)" }} />
-            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, fontWeight: 600, paddingTop: 12 }} />
-            <Bar yAxisId="left" dataKey="pledgesAdded" name="Pledges Added" fill={COLOR_PRIMARY} radius={[3, 3, 0, 0]} />
-            <Bar yAxisId="left" dataKey="pledgesReleased" name="Pledges Released" fill={COLOR_SECONDARY} radius={[3, 3, 0, 0]} />
-            <Bar yAxisId="right" dataKey="loanAmountGiven" name="Loan Disbursed" fill={COLOR_MONEY_PRIMARY} radius={[3, 3, 0, 0]} />
-            <Bar yAxisId="right" dataKey="totalAmountReceived" name="Amount Received" fill={COLOR_MONEY_SECONDARY} radius={[3, 3, 0, 0]} />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Charts B & C — half width each */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Chart B — New Customers */}
-        <div className="rounded-[18px] p-7" style={cardStyle}>
-          <CardTitle title="New Customers" subtitle="Customers added each month" />
-          <div className="h-[240px]">
-            {hasCustomers ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={months} barSize={22}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
-                  <XAxis dataKey="label" tick={AXIS_TICK_STYLE} axisLine={false} tickLine={false} />
-                  <YAxis tick={AXIS_TICK_STYLE} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
-                  <Tooltip content={<CustomersTooltip />} cursor={{ fill: "rgba(0,0,0,0.02)" }} />
-                  <Bar dataKey="newCustomers" name="New Customers" fill={COLOR_PRIMARY} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyState icon={Users} text="No new customers in this period." />
-            )}
-          </div>
-        </div>
-
-        {/* Chart C — Interest Collected */}
-        <div className="rounded-[18px] p-7" style={cardStyle}>
-          <CardTitle title="Interest Collected" subtitle="Interest received on released pledges" />
-          <div className="h-[240px]">
-            {hasInterest ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={months} barSize={22}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
-                  <XAxis dataKey="label" tick={AXIS_TICK_STYLE} axisLine={false} tickLine={false} />
-                  <YAxis
-                    tick={AXIS_TICK_STYLE}
-                    axisLine={false}
-                    tickLine={false}
-                    width={48}
-                    tickFormatter={(v: number) => formatCurrencyAbbr(v)}
-                  />
-                  <Tooltip content={<InterestTooltip />} cursor={{ fill: "rgba(0,0,0,0.02)" }} />
-                  <Bar dataKey="totalInterestReceived" name="Interest Collected" fill={COLOR_MONEY_PRIMARY} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <EmptyState icon={IndianRupee} text="No interest collected in this period." />
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Summary cards — current month vs previous */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {SUMMARY_METRICS.map(({ key, label, money }) => {
-          const m = summary[key];
-          const value = money ? formatCurrencyAbbr(m.current) : intl(m.current);
-          return (
-            <div key={key} className="rounded-[16px] p-5" style={cardStyle}>
-              <p
-                className="text-[10px] font-bold tracking-wider uppercase"
-                style={{ color: "var(--muted-foreground-subtle)" }}
+    <div className="h-full flex flex-col">
+      {/* Chart A — toggleable activity (full width) */}
+      <div className="rounded-[18px] p-7 flex flex-col flex-1" style={cardStyle}>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+          <CardTitle
+            title="Monthly Performance"
+            subtitle={
+              activeTab === "Pledges" ? "Pledge Activity (added and released)" :
+              activeTab === "Loan Amount" ? "Loan amounts disbursed and received" :
+              activeTab === "Customers" ? "Customers added each month" :
+              "Interest received on released pledges"
+            }
+          />
+          
+          {/* Segmented Control */}
+          <div className="flex bg-[#F0EFE9] rounded-full p-1 border border-[#ECEAE4]">
+            {(["Pledges", "Loan Amount", "Customers", "Interest"] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-1.5 rounded-full text-[12px] font-bold transition-colors ${
+                  activeTab === tab
+                    ? "bg-[#565C3F] text-white"
+                    : "text-[#8C8F7A] hover:text-[#565C3F]"
+                }`}
               >
-                {label}
-              </p>
-              <p className="text-[20px] font-bold mt-1 leading-none" style={{ color: "var(--foreground)" }}>
-                {value}
-              </p>
-              <div className="mt-2">
-                <ChangeIndicator changePercent={m.changePercent} />
-              </div>
-            </div>
-          );
-        })}
+                {tab}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex-1 min-h-[280px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            {activeTab === "Pledges" ? (
+            <BarChart data={months} barGap={2} barCategoryGap="18%">
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+              <XAxis dataKey="label" tick={AXIS_TICK_STYLE} axisLine={false} tickLine={false} />
+              <YAxis tick={AXIS_TICK_STYLE} axisLine={false} tickLine={false} width={32} allowDecimals={false} />
+              <Tooltip content={<ActivityTooltip />} cursor={{ fill: "rgba(0,0,0,0.02)" }} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, fontWeight: 600, paddingTop: 12 }} />
+              <Bar dataKey="pledgesAdded" name="Pledges Added" fill={COLOR_PRIMARY} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="pledgesReleased" name="Pledges Released" fill={COLOR_SECONDARY} radius={[3, 3, 0, 0]} />
+            </BarChart>
+          ) : activeTab === "Loan Amount" ? (
+            <BarChart data={months} barGap={2} barCategoryGap="18%">
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+              <XAxis dataKey="label" tick={AXIS_TICK_STYLE} axisLine={false} tickLine={false} />
+              <YAxis
+                tick={AXIS_TICK_STYLE}
+                axisLine={false}
+                tickLine={false}
+                width={48}
+                tickFormatter={(v: number) => formatCurrencyAbbr(v)}
+              />
+              <Tooltip content={<ActivityTooltip />} cursor={{ fill: "rgba(0,0,0,0.02)" }} />
+              <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, fontWeight: 600, paddingTop: 12 }} />
+              <Bar dataKey="loanAmountGiven" name="Loan Disbursed" fill={COLOR_MONEY_PRIMARY} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="totalAmountReceived" name="Amount Received" fill={COLOR_MONEY_SECONDARY} radius={[3, 3, 0, 0]} />
+            </BarChart>
+          ) : activeTab === "Customers" ? (
+            <BarChart data={months} barSize={32}>
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+              <XAxis dataKey="label" tick={AXIS_TICK_STYLE} axisLine={false} tickLine={false} />
+              <YAxis tick={AXIS_TICK_STYLE} axisLine={false} tickLine={false} width={30} allowDecimals={false} />
+              <Tooltip content={<CustomersTooltip />} cursor={{ fill: "rgba(0,0,0,0.02)" }} />
+              <Bar dataKey="newCustomers" name="New Customers" fill={COLOR_PRIMARY} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          ) : (
+            <BarChart data={months} barSize={32}>
+              <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} vertical={false} />
+              <XAxis dataKey="label" tick={AXIS_TICK_STYLE} axisLine={false} tickLine={false} />
+              <YAxis
+                tick={AXIS_TICK_STYLE}
+                axisLine={false}
+                tickLine={false}
+                width={48}
+                tickFormatter={(v: number) => formatCurrencyAbbr(v)}
+              />
+              <Tooltip content={<InterestTooltip />} cursor={{ fill: "rgba(0,0,0,0.02)" }} />
+              <Bar dataKey="totalInterestReceived" name="Interest Collected" fill={COLOR_MONEY_PRIMARY} radius={[4, 4, 0, 0]} />
+            </BarChart>
+            )}
+          </ResponsiveContainer>
+        </div>
       </div>
+
+
+
+
     </div>
   );
 }
