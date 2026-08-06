@@ -105,7 +105,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               className="flex w-full items-center justify-center gap-2 rounded-full bg-sidebar-primary px-4 py-3 text-[13.5px] font-bold text-sidebar-primary-foreground shadow-md transition-transform hover:-translate-y-[1px] active:scale-[0.98]"
               style={{ boxShadow: "0 4px 14px color-mix(in srgb, var(--sidebar-primary) 25%, transparent)" }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#e3e3e3">
+              <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="currentColor">
                 <path d="M200-120q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h280v80H200v560h280v80H200Zm440-160-55-58 102-102H360v-80h327L585-622l55-58 200 200-200 200Z" />
               </svg>
               {t("log_out")}

@@ -102,6 +102,13 @@
 
 /* --- Light theme --- */
 :root {
+  /* Drives NATIVE UA chrome that CSS variables cannot reach: scrollbars, and
+     the calendar/spinner widgets inside <input type="date"|"number">. Eight
+     screens use native date inputs — including release, bulk-release and sell
+     — so without the .dark counterpart below those pickers open as light
+     popups on a dark page. `light` is the UA default, so this is a no-op here. */
+  color-scheme: light;
+
   --radius: 0.625rem;
 
   --background: #F4F3EE;
@@ -256,6 +263,8 @@
 
 /* --- Dark theme --- */
 .dark {
+  color-scheme: dark;
+
   --background: #1A1C16;
   --foreground: #E8E6DD;
 
