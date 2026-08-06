@@ -51,7 +51,7 @@ export default function Breadcrumb() {
     return (
         <div className="flex items-center gap-2 text-sm">
             {/* Clickable Home/Brand Label */}
-            <Link href="/dashboard" className="text-gray-500 font-medium hover:text-gray-800 transition-colors">
+            <Link href="/dashboard" className="text-muted-foreground-subtle font-medium hover:text-foreground transition-colors">
                 Lekha-Jokha
             </Link>
 
@@ -61,18 +61,18 @@ export default function Breadcrumb() {
 
                 return (
                     <div key={index} className="flex items-center gap-2">
-                        <span className="text-gray-300">/</span>
+                        <span className="text-muted-foreground-subtle/40">/</span>
                         {isClickable ? (
                             // Clickable parent segments
                             <Link
                                 href={item.url}
-                                className="text-gray-500 font-medium hover:text-gray-800 transition-colors"
+                                className="text-muted-foreground-subtle font-medium hover:text-foreground transition-colors"
                             >
                                 {item.label}
                             </Link>
                         ) : (
                             // Non-clickable segments or last segment
-                            <span className={isLast ? "text-gray-800 font-semibold" : "text-gray-500 font-medium"}>
+                            <span className={isLast ? "text-foreground font-semibold" : "text-muted-foreground-subtle font-medium"}>
                                 {item.label}
                             </span>
                         )}
