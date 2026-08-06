@@ -60,29 +60,29 @@ export function ThemedSelect({
             {/* Trigger Box */}
             <div
                 onClick={() => setIsOpen(!isOpen)}
-                className={`w-full px-3.5 rounded-[12px] text-[15px] font-normal bg-[#FAFAF7] border border-[#EAE9DF] outline-none transition-all flex items-center justify-between cursor-pointer select-none ${isOpen ? "ring-2 ring-[#A2AB89] bg-white border-[#A2AB89]" : "hover:border-[#A2AB89]"
+                className={`w-full px-3.5 rounded-[12px] text-[15px] font-normal bg-card-alt border border-border outline-none transition-all flex items-center justify-between cursor-pointer select-none ${isOpen ? "ring-2 ring-ring bg-card border-ring" : "hover:border-ring"
                     } ${className || "h-[48px]"}`}
             >
                 <span
-                    className={`truncate pr-2 ${value ? "text-[var(--foreground)] font-normal" : "text-[var(--muted-foreground-subtle)] font-normal"
+                    className={`truncate pr-2 ${value ? "text-foreground font-normal" : "text-muted-foreground-subtle font-normal"
                         }`}
                 >
                     {displayLabel}
                 </span>
                 <ChevronDown
                     size={16}
-                    className={`shrink-0 text-[var(--muted-foreground-subtle)] transition-transform duration-200 ${isOpen ? "rotate-180 text-[#5E6442]" : ""
+                    className={`shrink-0 text-muted-foreground-subtle transition-transform duration-200 ${isOpen ? "rotate-180 text-primary" : ""
                         }`}
                 />
             </div>
 
             {/* Floating Menu Popover */}
             {isOpen && (
-                <div className="absolute z-50 left-0 right-0 mt-1.5 max-h-[280px] overflow-y-auto rounded-[14px] bg-[#FFFFFF] border border-[#EAE9DF] shadow-[0_4px_20px_rgba(0,0,0,0.08)] py-1.5 animate-in fade-in zoom-in-95 duration-100 divide-y divide-[#F5F4EF]">
+                <div className="absolute z-50 left-0 right-0 mt-1.5 max-h-[280px] overflow-y-auto rounded-[14px] bg-popover border border-border shadow-(--card-shadow) py-1.5 animate-in fade-in zoom-in-95 duration-100 divide-y divide-border">
                     {groups.map((group, groupIdx) => (
                         <div key={group.name || groupIdx} className="py-1 first:pt-0 last:pb-0">
                             {group.name && (
-                                <div className="px-3.5 py-1.5 text-[11px] font-semibold tracking-wider text-[var(--muted-foreground-subtle)] uppercase bg-[#FAFAF7]/80">
+                                <div className="px-3.5 py-1.5 text-[11px] font-semibold tracking-wider text-muted-foreground-subtle uppercase bg-card-alt/80">
                                     {group.name}
                                 </div>
                             )}
@@ -96,12 +96,12 @@ export function ThemedSelect({
                                             setIsOpen(false);
                                         }}
                                         className={`px-3.5 py-2.5 text-[14.5px] flex items-center justify-between cursor-pointer transition-colors ${isSelected
-                                                ? "bg-[#5E6442] text-white font-medium"
-                                                : "text-[var(--foreground)] hover:bg-[#F5F4EF] hover:text-[#5E6442]"
+                                                ? "bg-primary text-primary-foreground font-medium"
+                                                : "text-foreground hover:bg-muted hover:text-primary"
                                             }`}
                                     >
                                         <span className="truncate pr-2">{opt.label}</span>
-                                        {isSelected && <Check size={16} className="shrink-0 text-white" />}
+                                        {isSelected && <Check size={16} className="shrink-0 text-primary-foreground" />}
                                     </div>
                                 );
                             })}
