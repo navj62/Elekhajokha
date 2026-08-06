@@ -16,11 +16,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    // Dark mode is strictly OPT-IN. Do NOT fall back to
+    // `prefers-color-scheme` — the page layer has no dark styling yet, so
+    // auto-enabling dark for OS-dark users ships a broken UI to people who
+    // never asked for it. Users opt in via the sidebar / More-sheet toggle.
     const stored = localStorage.getItem("theme") as Theme | null;
     if (stored === "dark" || stored === "light") {
       setTheme(stored);
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setTheme("dark");
     }
     setMounted(true);
   }, []);
