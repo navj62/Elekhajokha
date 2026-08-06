@@ -52,6 +52,45 @@
   --color-warning: var(--warning);
   --color-warning-foreground: var(--warning-foreground);
 
+  /* --- Domain semantics (pledge status / risk tier / metal) ---
+     Each concept exposes the same 3 roles, so usage is predictable:
+       X             accent — dot, left border, progress bar
+       X-surface     badge / chip background
+       X-foreground  text sitting on X-surface
+     e.g. `bg-risk-high-surface text-risk-high-foreground border-risk-high` */
+  --color-status-active: var(--status-active);
+  --color-status-active-surface: var(--status-active-surface);
+  --color-status-active-foreground: var(--status-active-foreground);
+  --color-status-released: var(--status-released);
+  --color-status-released-surface: var(--status-released-surface);
+  --color-status-released-foreground: var(--status-released-foreground);
+  --color-status-overdue: var(--status-overdue);
+  --color-status-overdue-surface: var(--status-overdue-surface);
+  --color-status-overdue-foreground: var(--status-overdue-foreground);
+  --color-status-sold: var(--status-sold);
+  --color-status-sold-surface: var(--status-sold-surface);
+  --color-status-sold-foreground: var(--status-sold-foreground);
+
+  --color-risk-low: var(--risk-low);
+  --color-risk-low-surface: var(--risk-low-surface);
+  --color-risk-low-foreground: var(--risk-low-foreground);
+  --color-risk-medium: var(--risk-medium);
+  --color-risk-medium-surface: var(--risk-medium-surface);
+  --color-risk-medium-foreground: var(--risk-medium-foreground);
+  --color-risk-high: var(--risk-high);
+  --color-risk-high-surface: var(--risk-high-surface);
+  --color-risk-high-foreground: var(--risk-high-foreground);
+  --color-risk-critical: var(--risk-critical);
+  --color-risk-critical-surface: var(--risk-critical-surface);
+  --color-risk-critical-foreground: var(--risk-critical-foreground);
+
+  --color-gold: var(--gold);
+  --color-gold-surface: var(--gold-surface);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-silver: var(--silver);
+  --color-silver-surface: var(--silver-surface);
+  --color-silver-foreground: var(--silver-foreground);
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -74,6 +113,15 @@
   --popover: #FFFFFF;
   --popover-foreground: #2C2C2C;
 
+  /* CANONICAL brand olive. Verified against the live shell — do not drift.
+     Phase C maps these accumulated near-duplicates onto --primary (counts are
+     repo-wide occurrences in .tsx at the time of the Phase B audit):
+         #555B3F (137)  #565C3F (96, exact)  #585F42 (45)
+         #5A6043 (18)   #5E6442 (10)         #585E42 (9)  #5E6346 (7)
+     The lighter pair #6B7150 (25) and #737956 (30) are hover/gradient stops,
+     NOT --primary — map those to a hover token or --primary-gradient instead.
+     Collapsing the first group shifts light mode by <=1 hex point per channel;
+     that is an intentional consolidation, not an accident. */
   --primary: #565C3F;
   --primary-foreground: #FFFFFF;
 
@@ -125,6 +173,62 @@
   --secondary-brand: #8B9073;
   --primary-gradient: linear-gradient(135deg, #565C3F, #747B58);
   --card-shadow: 0 6px 24px rgba(0, 0, 0, 0.05);
+
+  /* ====================================================
+     DOMAIN SEMANTICS — status / risk / metal
+     Light values are TRANSCRIBED from what the screens already render, so
+     adopting a token is a visual no-op. Sources noted per group.
+     ==================================================== */
+
+  /* Pledge status. Enum is ACTIVE | RELEASED | OVERDUE | SOLD — there is no
+     FORFEITED state (the isForfeiture flag was removed when the acquisition-
+     cost model landed), so the 4th token is `sold`, matching the enum value
+     it styles. Source: pledgeList STATUS_CFG + pledge-detail StatusBadge. */
+  --status-active: #555B3F;
+  --status-active-surface: #E8EBD8;
+  --status-active-foreground: #555B3F;
+  --status-released: #C5C7B8;
+  --status-released-surface: #F0EFEC;
+  --status-released-foreground: #6F6F6F;
+  --status-overdue: #DC2626;
+  --status-overdue-surface: #FEE2E2;
+  --status-overdue-foreground: #991B1B;
+  /* Amber per CLAUDE.md ("SOLD card: amber Archive"), taken from the sell
+     page's closed-state card. NOTE: customers/[customerId]/page.tsx renders
+     SOLD in red (#FEE2E2/#B91C1C) — divergence to reconcile in Phase C. */
+  --status-sold: #D97706;
+  --status-sold-surface: #FEF3C7;
+  --status-sold-foreground: #92400E;
+
+  /* Risk tiers. getRiskTier() returns SAFE | WATCH | AT_RISK | UNDERWATER;
+     tokens use the low/medium/high/critical ramp:
+       low = SAFE, medium = WATCH, high = AT_RISK, critical = UNDERWATER
+     Source: ltv/page.tsx TIER_CFG — the dedicated risk surface, and the only
+     one whose ramp escalates monotonically (olive -> gold -> orange -> red).
+     NOTE: notifications/page.tsx and NotificationBell.tsx currently colour
+     UNDERWATER purple and use a different green/red pairing. Phase C must
+     converge them here; that WILL change light mode on those two files. */
+  --risk-low: #555B3F;
+  --risk-low-surface: #E8EBD8;
+  --risk-low-foreground: #555B3F;
+  --risk-medium: #C9A14B;
+  --risk-medium-surface: #FDF4DC;
+  --risk-medium-foreground: #8B6914;
+  --risk-high: #D97706;
+  --risk-high-surface: #FEF3C7;
+  --risk-high-foreground: #92400E;
+  --risk-critical: #DC2626;
+  --risk-critical-surface: #FEE2E2;
+  --risk-critical-foreground: #991B1B;
+
+  /* Metals. Accent/surface from the inventory + pledge metal badges;
+     dashboard METAL_COLORS uses #FBBF24 / #9CA3AF for chart fills. */
+  --gold: #D97706;
+  --gold-surface: #FDF4DC;
+  --gold-foreground: #8B6914;
+  --silver: #64748B;
+  --silver-surface: #F0EFEC;
+  --silver-foreground: #475569;
 
   /* --- Layout dimensions --- */
   --sidebar-w: 260px;   /* matches the shell's w-[260px]; the old 240px was drift */
@@ -204,6 +308,46 @@
   --secondary-brand: #A0A68A;
   --primary-gradient: linear-gradient(135deg, #6B7352, #8B9570);
   --card-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+
+  /* ====================================================
+     DOMAIN SEMANTICS — dark
+     Same hue as light, re-lightened for a #1A1C16 page. Verified:
+     every accent >= 3:1 vs --background, every -foreground >= 6.5:1 vs its
+     own -surface (WCAG AA text), and neighbouring risk tiers stay >= 29 deg
+     apart in OKLCH hue so the ramp is still readable at a glance.
+     ==================================================== */
+  --status-active: #8B9570;
+  --status-active-surface: #2A3020;
+  --status-active-foreground: #B8C49A;
+  --status-released: #8A8A82;
+  --status-released-surface: #2A2D24;
+  --status-released-foreground: #B5B2A6;
+  --status-overdue: #E06C6C;
+  --status-overdue-surface: #3A2020;
+  --status-overdue-foreground: #F0A8A8;
+  --status-sold: #D89A4A;
+  --status-sold-surface: #362A18;
+  --status-sold-foreground: #E8C089;
+
+  --risk-low: #8B9570;
+  --risk-low-surface: #2A3020;
+  --risk-low-foreground: #B8C49A;
+  --risk-medium: #E0C060;
+  --risk-medium-surface: #352E18;
+  --risk-medium-foreground: #EBD489;
+  --risk-high: #E8853A;
+  --risk-high-surface: #3A2A16;
+  --risk-high-foreground: #F2AE79;
+  --risk-critical: #E06C6C;
+  --risk-critical-surface: #3A2020;
+  --risk-critical-foreground: #F0A8A8;
+
+  --gold: #E0B44A;
+  --gold-surface: #352E18;
+  --gold-foreground: #EBCB82;
+  --silver: #A8B0BC;
+  --silver-surface: #262A30;
+  --silver-foreground: #C6CCD6;
 }
 
 @layer base {
