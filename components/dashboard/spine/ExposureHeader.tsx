@@ -59,9 +59,9 @@ export function ExposureHeader({
   const falling = ltvChange !== null && ltvChange < 0;
   const DeltaIcon = rising ? ArrowUpRight : falling ? ArrowDownRight : Minus;
   const deltaColor = rising
-    ? "var(--risk-critical)"
+    ? "var(--risk-critical-foreground)"
     : falling
-      ? "var(--risk-low)"
+      ? "var(--risk-low-foreground)"
       : "var(--muted-foreground-subtle)";
 
   return (
@@ -71,7 +71,10 @@ export function ExposureHeader({
         <div className="flex items-baseline gap-3 flex-wrap">
           <span
             className="text-[46px] leading-none font-bold tabular-nums tracking-tight"
-            style={{ color: tier ? tier.color : "var(--muted-foreground-subtle)" }}
+            // The -foreground token, not the solid tier colour: the solid
+            // medium/high values sit near 2.3:1 on the light ground, under the
+            // 3:1 floor for large text.
+            style={{ color: tier ? tier.foreground : "var(--muted-foreground-subtle)" }}
           >
             {overallLtv === null ? "—" : `${overallLtv.toFixed(1)}%`}
           </span>

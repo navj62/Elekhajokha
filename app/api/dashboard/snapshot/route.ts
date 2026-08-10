@@ -12,7 +12,7 @@ export async function GET() {
 
     const user = await prisma.user.findUnique({
       where: { clerkUserId },
-      select: { id: true },
+      select: { id: true, firstName: true, shopName: true },
     });
 
     if (!user) {
@@ -138,10 +138,13 @@ export async function GET() {
           .join("")
           .toUpperCase()
           .substring(0, 2) || "U",
+      customerId: p.customer.id,
       pledgeDate: p.pledgeDate.toISOString().split("T")[0],
       loanAmount: Number(p.loanAmount),
       releaseDate: p.releaseDate ? p.releaseDate.toISOString().split("T")[0] : null,
-      status: p.status === "ACTIVE" ? "Processing" : p.status === "RELEASED" ? "Released" : "On Hold",
+      // The pledge's real status. Do not remap to invented labels — an ACTIVE
+      // pledge is not "Processing", and SOLD is not "On Hold".
+      status: p.status,
     }));
 
     // Regions mapping
@@ -212,6 +215,10 @@ export async function GET() {
     const recoveryRate = totalDisbursed > 0 ? (totalRecovered / totalDisbursed) * 100 : 0;
 
     return NextResponse.json({
+      user: {
+        firstName: user.firstName,
+        shopName: user.shopName,
+      },
       snapshot: today,
       trend: {
         ltvChange: ltvChange !== null ? Math.round(ltvChange * 100) / 100 : null,

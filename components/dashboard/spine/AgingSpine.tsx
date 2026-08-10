@@ -57,7 +57,12 @@ export function AgingSpine({ buckets, totalOwed, selected, onSelect }: Props) {
           const barStyle: CSSProperties = {
             width: `${widths[i]}%`,
             backgroundColor: empty ? "var(--muted)" : tier.color,
-            opacity: dimmed ? 0.4 : 1,
+            // Unselected segments stay fully legible — the spine's job is to
+            // show the whole book at a glance, so selection adds emphasis
+            // rather than suppressing everything around it.
+            opacity: dimmed ? 0.88 : 1,
+            outline: isSelected ? "2px solid var(--foreground)" : "none",
+            outlineOffset: 2,
             borderTopLeftRadius: i === 0 ? 10 : 3,
             borderBottomLeftRadius: i === 0 ? 10 : 3,
             borderTopRightRadius: i === buckets.length - 1 ? 10 : 3,
@@ -100,19 +105,11 @@ export function AgingSpine({ buckets, totalOwed, selected, onSelect }: Props) {
                          focus-visible:outline-[var(--ring)] hover:brightness-105"
             >
               <Icon
-                size={18}
+                size={20}
                 strokeWidth={2.2}
                 aria-hidden
                 style={{ color: "var(--card)" }}
               />
-              {b.underwaterCount > 0 && (
-                <span
-                  className="text-[11px] font-bold tabular-nums px-1.5 py-0.5 rounded"
-                  style={{ backgroundColor: "var(--card)", color: tier.color }}
-                >
-                  {b.underwaterCount} underwater
-                </span>
-              )}
             </button>
           );
         })}
@@ -152,11 +149,27 @@ export function AgingSpine({ buckets, totalOwed, selected, onSelect }: Props) {
                     {inr(b.owed)}
                   </p>
                   <p
-                    className="text-[11px] tabular-nums truncate"
+                    className="text-[11px] tabular-nums"
                     style={{ color: "var(--muted-foreground-subtle)" }}
                   >
-                    {b.count} {b.count === 1 ? "pledge" : "pledges"} · {tier.label}
+                    {b.count} {b.count === 1 ? "pledge" : "pledges"}
                   </p>
+                  {/* The tier in words — the spine's colour is never the only
+                      channel carrying it, so this must not be truncated away. */}
+                  <p
+                    className="text-[11px] font-semibold"
+                    style={{ color: tier.foreground }}
+                  >
+                    {tier.label}
+                  </p>
+                  {b.underwaterCount > 0 && (
+                    <p
+                      className="text-[11px] font-semibold tabular-nums"
+                      style={{ color: "var(--risk-critical-foreground)" }}
+                    >
+                      {b.underwaterCount} underwater
+                    </p>
+                  )}
                 </>
               )}
             </div>

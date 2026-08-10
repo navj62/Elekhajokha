@@ -52,6 +52,7 @@ export const translations: Record<Language, Record<string, string>> = {
     status_active: "Active",
     status_released: "Released",
     status_overdue: "Overdue",
+    status_sold: "Sold to Shop",
     status_processing: "Processing",
     status_on_hold: "On Hold",
     status_unknown: "Unknown",
@@ -266,6 +267,7 @@ export const translations: Record<Language, Record<string, string>> = {
     status_active: "सक्रिय",
     status_released: "जारी",
     status_overdue: "बकाया",
+    status_sold: "दुकान को बेचा",
     status_processing: "प्रक्रिया में",
     status_on_hold: "रोक पर",
     status_unknown: "अज्ञात",
@@ -437,6 +439,7 @@ export function getStatusKey(status: string): string {
   if (s.includes("release")) return "status_released";
   if (s.includes("active")) return "status_active";
   if (s.includes("overdue")) return "status_overdue";
+  if (s.includes("sold")) return "status_sold";
   if (s.includes("process") || s.includes("pending")) return "status_processing";
   if (s.includes("hold")) return "status_on_hold";
   return "status_unknown";

@@ -7,12 +7,7 @@ import {
   DollarSign,
   IndianRupee,
   RefreshCw,
-  ChevronLeft,
-  ChevronRight,
   ArrowRight,
-  CheckCircle2,
-  Circle,
-  Plus,
   BarChart3,
 } from "lucide-react";
 import Link from "next/link";
@@ -83,6 +78,10 @@ interface FinancialSnapshot {
 }
 
 interface DashboardData {
+  user?: {
+    firstName: string | null;
+    shopName: string | null;
+  };
   snapshot: FinancialSnapshot | null;
   trend: {
     ltvChange: number | null;
@@ -144,16 +143,6 @@ interface DashboardData {
 /* ================================================================== */
 /*  Helpers                                                             */
 /* ================================================================== */
-
-function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const mins = Math.floor(diff / 60000);
-  const hours = Math.floor(mins / 60);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} mins ago`;
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -486,304 +475,6 @@ function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
 }
 
 /* ================================================================== */
-/*  Calendar Widget                                                     */
-/* ================================================================== */
-
-function CalendarWidget({ tasksData = [] }: { tasksData?: { id: string; text: string; done: boolean; createdAt?: string }[] }) {
-  const [weekOffset, setWeekOffset] = useState(0);
-
-  const todayDate = new Date();
-
-  // Calculate start of current week (Monday)
-  const day = todayDate.getDay();
-  const diff = todayDate.getDate() - day + (day === 0 ? -6 : 1);
-  const startOfCurrentWeek = new Date(todayDate);
-  startOfCurrentWeek.setDate(diff);
-  startOfCurrentWeek.setHours(0, 0, 0, 0);
-
-  const startOfWeek = new Date(startOfCurrentWeek);
-  startOfWeek.setDate(startOfWeek.getDate() + weekOffset * 7);
-
-  const days = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-  const dates = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(startOfWeek);
-    d.setDate(d.getDate() + i);
-    return d;
-  });
-
-  const monthYearStr = startOfWeek.toLocaleString('en-US', { month: 'long', year: 'numeric' });
-
-  // Check if a task exists for a given date
-  const hasTaskDue = (d: Date) => {
-    return tasksData.some((t) => {
-      if (!t.createdAt) return false;
-      const tDate = new Date(t.createdAt);
-      return (
-        tDate.getFullYear() === d.getFullYear() &&
-        tDate.getMonth() === d.getMonth() &&
-        tDate.getDate() === d.getDate()
-      );
-    });
-  };
-
-  return (
-    <div
-      className="rounded-[18px] p-5"
-      style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-[14px] font-bold" style={{ color: "var(--foreground)" }}>
-            {monthYearStr}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setWeekOffset((p) => p - 1)}
-            className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#5D6145] transition-colors"
-            style={{ color: "var(--muted-foreground-subtle)" }}
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <button
-            onClick={() => setWeekOffset((p) => p + 1)}
-            className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#5D6145] transition-colors"
-            style={{ color: "var(--muted-foreground-subtle)" }}
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-7 gap-1">
-        {days.map((d) => (
-          <div
-            key={d}
-            className="text-center text-[9px] font-bold tracking-wider pb-2"
-            style={{ color: "var(--muted-foreground-subtle)" }}
-          >
-            {d}
-          </div>
-        ))}
-        {dates.map((d, i) => {
-          const dateNum = d.getDate();
-          const isSelected =
-            d.getDate() === todayDate.getDate() &&
-            d.getMonth() === todayDate.getMonth() &&
-            d.getFullYear() === todayDate.getFullYear();
-          const taskDue = hasTaskDue(d);
-          return (
-            <div
-              key={i}
-              className="flex flex-col items-center py-1.5 rounded-lg cursor-pointer transition-all duration-150"
-              style={{
-                backgroundColor: isSelected ? "#565C3F" : "transparent",
-              }}
-            >
-              <span
-                className="text-[13px] font-semibold"
-                style={{ color: isSelected ? "#fff" : "var(--foreground)" }}
-              >
-                {dateNum}
-              </span>
-              {taskDue && (
-                <span
-                  className="w-1 h-1 rounded-full mt-0.5"
-                  style={{ backgroundColor: isSelected ? "#fff" : "#565C3F" }}
-                />
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/*  Today's Tasks                                                       */
-/* ================================================================== */
-
-type Task = { id: string; text: string; done: boolean; dueDate?: string | null; createdAt?: string };
-
-function TodaysTasks({ tasksData: initialData }: { tasksData?: Task[] }) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [newTitle, setNewTitle] = useState("");
-  const [newDueDate, setNewDueDate] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
-  const inputRef = React.useRef<HTMLInputElement>(null);
-
-  // Load from API on mount
-  useEffect(() => {
-    fetch("/api/tasks")
-      .then((r) => r.json())
-      .then((data) => { if (Array.isArray(data)) setTasks(data); })
-      .catch(() => setTasks(initialData || []));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (showAdd) setTimeout(() => inputRef.current?.focus(), 50);
-  }, [showAdd]);
-
-  const toggleTask = async (id: string, done: boolean) => {
-    setTogglingId(id);
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done: !done } : t)));
-    try {
-      await fetch(`/api/tasks/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isDone: !done }),
-      });
-    } catch {
-      // revert on error
-      setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done } : t)));
-    } finally {
-      setTogglingId(null);
-    }
-  };
-
-  const addTask = async () => {
-    if (!newTitle.trim() || adding) return;
-    setAdding(true);
-    try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: newTitle.trim(), dueDate: newDueDate || null }),
-      });
-      if (res.ok) {
-        const created = await res.json();
-        setTasks((prev) => [created, ...prev]);
-        setNewTitle("");
-        setNewDueDate("");
-        setShowAdd(false);
-      }
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  // Only show today's tasks in the widget
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const todayTasks = tasks.filter((t) => {
-    if (!t.dueDate) return true; // no due date = always show
-    return t.dueDate.startsWith(todayStr);
-  });
-
-  return (
-    <div
-      className="rounded-[18px] p-5"
-      style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
-    >
-      <h3 className="text-[14px] font-bold mb-4" style={{ color: "var(--foreground)" }}>
-        Today&apos;s Tasks
-      </h3>
-
-      {todayTasks.length === 0 && !showAdd ? (
-        <div className="py-6 text-center text-[12.5px] font-medium text-[var(--muted-foreground-subtle)]">
-          No tasks scheduled today.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {todayTasks.map((task) => (
-            <button
-              key={task.id}
-              onClick={() => toggleTask(task.id, task.done)}
-              disabled={togglingId === task.id}
-              className="flex items-start gap-2.5 w-full text-left group focus:outline-none rounded-[4px] disabled:opacity-60"
-            >
-              {task.done ? (
-                <CheckCircle2 size={16} className="mt-0.5 shrink-0" style={{ color: "#565C3F" }} />
-              ) : (
-                <Circle
-                  size={16}
-                  className="mt-0.5 shrink-0 group-hover:text-[#565C3F] transition-colors"
-                  style={{ color: "var(--muted-foreground-subtle)" }}
-                />
-              )}
-              <span
-                className="text-[12.5px] font-medium leading-snug transition-all"
-                style={{
-                  color: task.done ? "var(--muted-foreground-subtle)" : "var(--muted-foreground)",
-                  textDecoration: task.done ? "line-through" : "none",
-                }}
-              >
-                {task.text}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Add Task inline form */}
-      {showAdd && (
-        <div
-          className="mt-4 rounded-[12px] p-3 space-y-2"
-          style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)" }}
-        >
-          <input
-            ref={inputRef}
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") addTask(); if (e.key === "Escape") setShowAdd(false); }}
-            placeholder="Task title…"
-            className="w-full bg-transparent text-[12.5px] font-medium outline-none"
-            style={{ color: "var(--foreground)" }}
-          />
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={newDueDate}
-              onChange={(e) => setNewDueDate(e.target.value)}
-              className="flex-1 bg-transparent text-[11px] outline-none"
-              style={{ color: "var(--muted-foreground-subtle)" }}
-            />
-            <button
-              onClick={() => { setShowAdd(false); setNewTitle(""); setNewDueDate(""); }}
-              className="text-[10px] font-bold px-2 py-1 rounded-lg transition-opacity hover:opacity-70"
-              style={{ color: "var(--muted-foreground-subtle)" }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={addTask}
-              disabled={!newTitle.trim() || adding}
-              className="text-[10px] font-bold px-3 py-1 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-40"
-              style={{ backgroundColor: "#565C3F", color: "#fff" }}
-            >
-              {adding ? "Saving…" : "Save"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="flex items-center justify-between mt-5 pt-3" style={{ borderTop: "1px solid var(--border)" }}>
-        <button
-          onClick={() => setShowAdd((s) => !s)}
-          className="flex items-center gap-1.5 text-[11px] font-bold transition-opacity hover:opacity-70"
-          style={{ color: "#565C3F" }}
-        >
-          <Plus size={12} strokeWidth={3} />
-          Add Task
-        </button>
-        <Link
-          href="/tasks"
-          className="flex items-center gap-1 text-[11px] font-bold transition-opacity hover:opacity-70"
-          style={{ color: "var(--muted-foreground)" }}
-        >
-          View All Tasks
-          <ArrowRight size={11} strokeWidth={2.5} />
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-/* ================================================================== */
 /*  Customer Distribution by Region                                     */
 /* ================================================================== */
 
@@ -1087,36 +778,55 @@ export default function DashboardPage() {
 
   const pledgesToUse = dashboard?.recentPledges || [];
 
+  // No price on record shows nothing. A placeholder rate here would be a made-up
+  // number on the one surface whose whole claim is live valuation.
   const goldPriceDisplay = rates?.gold
     ? `₹${(Number(rates.gold.inrPerGram) * 10).toLocaleString("en-IN")} / 10g`
-    : "₹62,450 / 10g";
+    : "—";
   const silverPriceDisplay = rates?.silver
     ? `₹${Number(rates.silver.inrPerGram).toLocaleString("en-IN", { maximumFractionDigits: 2 })} / g`
-    : "₹273.42 / g";
+    : "—";
 
   function formatDate(d: string): string {
     return new Date(d).toLocaleDateString(locale, { month: "short", day: "2-digit", year: "numeric" });
   }
 
+  // Keyed on the pledge's real status, using the --status-* tokens so both
+  // themes are covered. RELEASED and SOLD are terminal; ACTIVE and OVERDUE are
+  // open. Nothing here invents a status the domain does not have.
   function getStatusStyle(status: string) {
-    const s = status.toLowerCase();
-    // Released → slate/grey
-    if (s.includes("release")) return { bg: "#F1F3F5", text: "#4B5563", accent: "#9CA3AF", label: "Released" };
-    // Overdue → soft red
-    if (s.includes("overdue")) return { bg: "#FFF0F0", text: "#B91C1C", accent: "#F87171", label: "Overdue" };
-    // Pending/Process → amber
-    if (s.includes("process") || s.includes("pending")) return { bg: "#FFFBEB", text: "#92400E", accent: "#F59E0B", label: "Pending" };
-    // Hold/Error → soft red
-    if (s.includes("hold") || s.includes("error")) return { bg: "#FFF0F0", text: "#B91C1C", accent: "#F87171", label: "On Hold" };
-    // Active → olive/green theme
-    return { bg: "#EAEDDA", text: "#3A4127", accent: "#6B7A4A", label: "Active" };
+    switch (status?.toUpperCase()) {
+      case "RELEASED":
+        return {
+          bg: "var(--status-released-surface)",
+          text: "var(--status-released-foreground)",
+          accent: "var(--status-released)",
+        };
+      case "OVERDUE":
+        return {
+          bg: "var(--status-overdue-surface)",
+          text: "var(--status-overdue-foreground)",
+          accent: "var(--status-overdue)",
+        };
+      case "SOLD":
+        return {
+          bg: "var(--status-sold-surface)",
+          text: "var(--status-sold-foreground)",
+          accent: "var(--status-sold)",
+        };
+      default:
+        return {
+          bg: "var(--status-active-surface)",
+          text: "var(--status-active-foreground)",
+          accent: "var(--status-active)",
+        };
+    }
   }
 
-  function formatCurrencyAbbr(n: number): string {
-    if (n >= 10000000) return "₹" + (n / 10000000).toFixed(1) + "Cr";
-    if (n >= 100000) return "₹" + (n / 100000).toFixed(0) + "L";
-    if (n >= 1000) return "₹" + (n / 1000).toFixed(0) + "K";
-    return "₹" + n;
+  // Exact rupees. Abbreviation hides interest accrual when amounts are close,
+  // so it belongs on axis labels, not on figures the owner compares.
+  function formatRupees(n: number): string {
+    return "₹" + Math.round(n).toLocaleString(locale);
   }
 
   /* ================================================================ */
@@ -1132,11 +842,15 @@ export default function DashboardPage() {
           className="text-[30px] sm:text-[36px] font-bold tracking-tight mb-1"
           style={{ color: "var(--foreground)" }}
         >
-          {getGreeting()}, Admin.
+          {dashboard?.user?.firstName
+            ? `${getGreeting()}, ${dashboard.user.firstName}.`
+            : `${getGreeting()}.`}
         </h1>
-        <p className="text-[13px] font-medium" style={{ color: "var(--muted-foreground)" }}>
-          Here is your financial workspace overview for today.
-        </p>
+        {dashboard?.user?.shopName && (
+          <p className="text-[13px] font-medium" style={{ color: "var(--muted-foreground)" }}>
+            {dashboard.user.shopName}
+          </p>
+        )}
       </section>
 
       {/* ═══════════════════════════════════════════════════════════ */}
@@ -1156,12 +870,21 @@ export default function DashboardPage() {
       </section>
 
       {/* ═══════════════════════════════════════════════════════════ */}
+      {/*  Aging table — the spine's tabular companion                */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <section className="mb-10">
+        <Suspense fallback={<AgingAnalysisSkeleton />}>
+          <AgingAnalysisSection />
+        </Suspense>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
       {/*  Market Rate Strip                                          */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div
         className="rounded-[14px] mx-0 mb-6 px-5 py-3 flex items-center justify-between"
         style={{
-          backgroundColor: "#EFEFDF",
+          backgroundColor: "var(--card-alt)",
           border: "1px solid var(--border)",
         }}
       >
@@ -1199,10 +922,9 @@ export default function DashboardPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/*  Row 1: Top Summary Unified Card (Left) & Calendar (Right)  */}
+      {/*  Book summary — context beneath the spine                   */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 mb-6">
-        {/* Left Column */}
+      <div className="mb-6">
         <section>
           <div
             className="rounded-[18px] p-0 flex items-center justify-between h-full"
@@ -1249,7 +971,7 @@ export default function DashboardPage() {
               <span className="text-[24px] font-bold" style={{ color: "var(--foreground)" }}>
                 <AnimatedCounter
                   value={statsToUse.totalBalanceAmount || 0}
-                  format={formatCurrencyAbbr}
+                  format={formatRupees}
                 />
               </span>
               {/* Right divider */}
@@ -1266,7 +988,7 @@ export default function DashboardPage() {
               </div>
               <span className="text-[24px] font-bold" style={{ color: "var(--foreground)" }}>
                 {inventory && inventory.marketValue !== null
-                  ? formatCurrencyAbbr(inventory.marketValue)
+                  ? formatRupees(inventory.marketValue)
                   : "—"}
               </span>
               {/* Right divider */}
@@ -1287,15 +1009,10 @@ export default function DashboardPage() {
             </div>
           </div>
         </section>
-
-        {/* Right Column */}
-        <section className="h-full">
-          <CalendarWidget tasksData={dashboard?.tasks} />
-        </section>
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/*  Row 2: Loan Overview Chart (Left) & Right Sidebar Widgets  */}
+      {/*  Performance & portfolio context                            */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 mb-6">
         {/* Left Column */}
@@ -1307,7 +1024,6 @@ export default function DashboardPage() {
 
         {/* Right Column */}
         <section className="space-y-6">
-          <TodaysTasks tasksData={dashboard?.tasks} />
           <RegionDistribution regions={dashboard?.regions} onViewAllRegions={() => setRegionsExplorerOpen(true)} />
           <MetalPortfolio
             portfolio={dashboard?.portfolio ?? null}
