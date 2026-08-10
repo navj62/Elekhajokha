@@ -1226,13 +1226,6 @@ export default function DashboardPage() {
       </section>
 
 
-      {/* ── Aging Analysis (active loan book by age — stock) ── */}
-      <section className="mb-6">
-        <Suspense fallback={<AgingAnalysisSkeleton />}>
-          <AgingAnalysisSection />
-        </Suspense>
-      </section>
-
       <RegionsExplorerOverlay
         open={regionsExplorerOpen}
         onClose={() => setRegionsExplorerOpen(false)}

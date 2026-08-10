@@ -3,19 +3,14 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Download, AlertCircle, Inbox } from "lucide-react";
+import { ArrowLeft, AlertCircle, Inbox } from "lucide-react";
 
 /* ─────────────────────────────────────────────
    Helpers
 ───────────────────────────────────────────── */
 
-function formatCurrencyAbbr(n: number): string {
-  if (n >= 10000000) return "₹" + (n / 10000000).toFixed(1) + "Cr";
-  if (n >= 100000)   return "₹" + (n / 100000).toFixed(0) + "L";
-  if (n >= 1000)     return "₹" + (n / 1000).toFixed(0) + "K";
-  return "₹" + n;
-}
-
+// Exact rupees only. Abbreviation hides interest accrual when amounts are
+// close, and every figure on this page is one the owner compares.
 function formatExact(n: number): string {
   return Math.round(n).toLocaleString("en-IN");
 }
@@ -44,8 +39,6 @@ interface ProcessedPledge {
   marketValue:      number | null;
   ltv:              number | null;
   risk:             PledgeTier;
-  metalType:        "GOLD" | "SILVER";
-  weight:           number;
   goldWeight:       number;
   silverWeight:     number;
   timeToUnderwater: TimeToUnderwater;
@@ -62,12 +55,10 @@ function metalLabel(goldWeight: number, silverWeight: number): string {
 }
 
 interface Alert {
-  pledgeId:         string;
-  pledgeName:       string;
-  risk:             string;
-  ltv:              number | null;
-  timeToUnderwater: TimeToUnderwater;
-  message:          string;
+  pledgeId:   string;
+  pledgeName: string;
+  risk:       string;
+  message:    string;
 }
 
 interface SummaryData {
@@ -84,8 +75,6 @@ interface SummaryData {
       concentration:    number;
       age:              number;
     };
-    totalActivePledges:      number;
-    lastPledgeDate:          string | null;
     lifetimeInterestEarned:  number;
     lifetimeReleasedPledges: number;
   };
@@ -109,45 +98,56 @@ interface SummaryData {
    Config
 ───────────────────────────────────────────── */
 
+/* Risk tiers map onto the shared low/medium/high/critical token ramp:
+   low = SAFE, medium = WATCH, high = AT_RISK, critical = UNDERWATER/CRITICAL.
+   Surfaces carry the fill, -foreground the text — both are defined for light
+   and dark in globals.css, so these badges follow the theme. */
 const TIER_CONFIG: Record<RiskTier, { label: string; bg: string; text: string }> = {
-  SAFE:     { label: "Safe",     bg: "#E8F0DC", text: "#4D6B2A" },
-  WATCH:    { label: "Watch",    bg: "#FFF4D1", text: "#8A6B17" },
-  AT_RISK:  { label: "At Risk",  bg: "#FFEDD5", text: "#9A4B14" },
-  CRITICAL: { label: "Critical", bg: "#FEE2E2", text: "#B91C1C" },
+  SAFE:     { label: "Safe",     bg: "var(--risk-low-surface)",      text: "var(--risk-low-foreground)" },
+  WATCH:    { label: "Watch",    bg: "var(--risk-medium-surface)",   text: "var(--risk-medium-foreground)" },
+  AT_RISK:  { label: "At Risk",  bg: "var(--risk-high-surface)",     text: "var(--risk-high-foreground)" },
+  CRITICAL: { label: "Critical", bg: "var(--risk-critical-surface)", text: "var(--risk-critical-foreground)" },
 };
 
 const PLEDGE_TIER_CONFIG: Record<PledgeTier, { label: string; bg: string; text: string }> = {
-  SAFE:       { label: "Safe",       bg: "#E8F0DC", text: "#4D6B2A" },
-  WATCH:      { label: "Watch",      bg: "#FFF4D1", text: "#8A6B17" },
-  AT_RISK:    { label: "At Risk",    bg: "#FFEDD5", text: "#9A4B14" },
-  UNDERWATER: { label: "Underwater", bg: "#FEE2E2", text: "#B91C1C" },
+  SAFE:       { label: "Safe",       bg: "var(--risk-low-surface)",      text: "var(--risk-low-foreground)" },
+  WATCH:      { label: "Watch",      bg: "var(--risk-medium-surface)",   text: "var(--risk-medium-foreground)" },
+  AT_RISK:    { label: "At Risk",    bg: "var(--risk-high-surface)",     text: "var(--risk-high-foreground)" },
+  UNDERWATER: { label: "Underwater", bg: "var(--risk-critical-surface)", text: "var(--risk-critical-foreground)" },
 };
 
+/* OVERDUE is not a status this page builds new UI around, but the entry stays:
+   dropping it would fall through to the ACTIVE style and silently mislabel a
+   real overdue row as active. */
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
-  ACTIVE:   { bg: "#E8F0DC", text: "#4D6B2A" },
-  OVERDUE:  { bg: "#FEE2E2", text: "#B91C1C" },
-  RELEASED: { bg: "var(--border)", text: "var(--muted-foreground-subtle)" },
+  ACTIVE:   { bg: "var(--status-active-surface)",   text: "var(--status-active-foreground)" },
+  OVERDUE:  { bg: "var(--status-overdue-surface)",  text: "var(--status-overdue-foreground)" },
+  RELEASED: { bg: "var(--status-released-surface)", text: "var(--status-released-foreground)" },
 };
 
+// Thresholds mirror getRiskTier (≤65 / ≤75 / ≤90) — display only; the tier
+// itself is always server-derived.
 function ltvColor(ltv: number | null, status: string): string {
   if (status === "RELEASED" || ltv === null) return "var(--muted-foreground-subtle)";
-  if (ltv < 65)  return "#4D6B2A";
-  if (ltv <= 75) return "#8A6B17";
-  if (ltv <= 90) return "#9A4B14";
-  return "#B91C1C";
+  if (ltv < 65)  return "var(--risk-low-foreground)";
+  if (ltv <= 75) return "var(--risk-medium-foreground)";
+  if (ltv <= 90) return "var(--risk-high-foreground)";
+  return "var(--risk-critical-foreground)";
 }
 
 function ttuColor(status: TTUStatus): string {
-  if (status === "underwater") return "#B91C1C";
-  if (status === "soon")       return "#F97316";
+  if (status === "underwater") return "var(--risk-critical-foreground)";
+  if (status === "soon")       return "var(--risk-high-foreground)";
   if (status === "ok")         return "var(--foreground)";
   return "var(--muted-foreground-subtle)";
 }
 
+// Dots are non-text marks, so they take the accent tokens rather than the
+// -foreground text variants.
 function alertDotColor(risk: string): string {
-  if (risk === "UNDERWATER") return "#B91C1C";
-  if (risk === "AT_RISK")    return "#F97316";
-  return "#EAB308";
+  if (risk === "UNDERWATER") return "var(--risk-critical)";
+  if (risk === "AT_RISK")    return "var(--risk-high)";
+  return "var(--risk-medium)";
 }
 
 /* ─────────────────────────────────────────────
@@ -172,7 +172,7 @@ function LTVArc({ pct }: { pct: number }) {
         />
         <path
           d={`M ${arc(start)} A ${r} ${r} 0 ${large} 1 ${arc(end)}`}
-          fill="none" stroke="#565C3F" strokeWidth={12} strokeLinecap="round"
+          fill="none" stroke="var(--primary)" strokeWidth={12} strokeLinecap="round"
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-end pb-3">
@@ -292,7 +292,7 @@ export default function FinancialSummaryPage() {
           <button
             onClick={load}
             className="text-[13px] underline underline-offset-2 font-medium"
-            style={{ color: "#565C3F" }}
+            style={{ color: "var(--primary)" }}
           >
             Try again
           </button>
@@ -317,12 +317,13 @@ export default function FinancialSummaryPage() {
     <div className="max-w-[1200px] mx-auto pb-16 mt-4 space-y-4">
 
       {/* ── PAGE HEADER ── */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="mb-2">
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.back()}
             className="flex items-center justify-center w-9 h-9 rounded-full shrink-0 transition-colors"
-            style={{ backgroundColor: "#E8F0DC", color: "#4D6B2A" }}
+            style={{ backgroundColor: "var(--accent)", color: "var(--accent-foreground)" }}
+            aria-label="Go back"
           >
             <ArrowLeft size={16} strokeWidth={2.5} />
           </button>
@@ -338,17 +339,6 @@ export default function FinancialSummaryPage() {
             </p>
           </div>
         </div>
-        <button
-          className="flex items-center gap-2 text-[13px] font-semibold px-4 py-2 rounded-[10px] transition-colors"
-          style={{
-            border: "1px solid var(--border)",
-            color: "var(--foreground)",
-            backgroundColor: "var(--card)",
-          }}
-        >
-          <Download size={14} />
-          Export
-        </button>
       </div>
 
       {/* ══════════════════════════════════════════════
@@ -386,7 +376,7 @@ export default function FinancialSummaryPage() {
             <button
               onClick={() => setWhyOpen((o) => !o)}
               className="flex items-center gap-1 text-[12px] font-medium"
-              style={{ color: "#565C3F" }}
+              style={{ color: "var(--primary)" }}
             >
               Why this score?
               <span
@@ -521,7 +511,7 @@ export default function FinancialSummaryPage() {
                       customer.lifetimeReleasedPledges === 1 ? "" : "s"
                     }`,
               red:   false,
-              color: customer.lifetimeReleasedPledges === 0 ? null : "#565C3F",
+              color: customer.lifetimeReleasedPledges === 0 ? null : "var(--primary)",
             },
           ] as const
         ).map(({ key, label, value, sub, red, color }) => (
@@ -530,7 +520,7 @@ export default function FinancialSummaryPage() {
             <p
               className="text-2xl font-bold tabular-nums"
               style={{
-                color: color ?? (red ? "#B91C1C" : "var(--foreground)"),
+                color: color ?? (red ? "var(--risk-critical-foreground)" : "var(--foreground)"),
               }}
             >
               {value}
@@ -560,7 +550,7 @@ export default function FinancialSummaryPage() {
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <div
               className="relative w-8 h-4 rounded-full transition-colors"
-              style={{ backgroundColor: showReleased ? "#565C3F" : "var(--border)" }}
+              style={{ backgroundColor: showReleased ? "var(--primary)" : "var(--border)" }}
               onClick={() => setShowReleased((v) => !v)}
             >
               <div

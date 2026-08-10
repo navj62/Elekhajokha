@@ -109,7 +109,7 @@ export async function GET(_req: Request, context: RouteContext) {
       prisma.metalPrice.findFirst({
         where: { metal: "GOLD" },
         orderBy: { createdAt: "desc" },
-        select: { inrPerGram: true, createdAt: true },
+        select: { inrPerGram: true },
       }),
       prisma.metalPrice.findFirst({
         where: { metal: "SILVER" },
@@ -203,8 +203,6 @@ export async function GET(_req: Request, context: RouteContext) {
         firstItem?.itemName ??
         (firstItem ? `${firstItem.itemType} (${firstItem.metalType})` : "Pledge");
 
-      const metalType = goldWeight >= silverWeight ? "GOLD" : "SILVER";
-
       return {
         id: p.id,
         name,
@@ -215,8 +213,6 @@ export async function GET(_req: Request, context: RouteContext) {
         marketValue,
         ltv,
         risk,
-        metalType,
-        weight: goldWeight + silverWeight,
         goldWeight,
         silverWeight,
         timeToUnderwater: buildTimeToUnderwater(
@@ -262,19 +258,6 @@ export async function GET(_req: Request, context: RouteContext) {
           )
         : null;
 
-    const riskDistribution = [
-      { name: "Safe", value: activePledges.filter((p) => p.risk === "SAFE").length, color: "#22c55e" },
-      { name: "Watch", value: activePledges.filter((p) => p.risk === "WATCH").length, color: "#eab308" },
-      { name: "At Risk", value: activePledges.filter((p) => p.risk === "AT_RISK").length, color: "#f97316" },
-      { name: "Underwater", value: activePledges.filter((p) => p.risk === "UNDERWATER").length, color: "#ef4444" },
-    ].filter((r) => r.value > 0);
-
-    const exposureData = [
-      { name: "Loan", gold: totalLoanAmount, silver: 0 },
-      { name: "Owed", gold: totalAmountOwed, silver: 0 },
-      { name: "Market", gold: totalMarketValue, silver: 0 },
-    ];
-
     const riskOrder: Record<string, number> = {
       UNDERWATER: 0,
       AT_RISK: 1,
@@ -288,8 +271,6 @@ export async function GET(_req: Request, context: RouteContext) {
         pledgeId: p.id,
         pledgeName: p.name,
         risk: p.risk,
-        ltv: p.ltv,
-        timeToUnderwater: p.timeToUnderwater,
         message:
           p.risk === "UNDERWATER"
             ? `${p.name} is currently underwater — action required`
@@ -297,11 +278,6 @@ export async function GET(_req: Request, context: RouteContext) {
             ? `${p.name} may go underwater in ${p.timeToUnderwater.label}`
             : `${p.name} is approaching risk threshold (LTV ${p.ltv?.toFixed(1)}%)`,
       }));
-
-    const lastPledgeDate =
-      activePledges.length > 0
-        ? activePledges[activePledges.length - 1].pledgeDate
-        : null;
 
     /* ── Composite risk score ──────────────────────────────────── */
     // Composite risk score: weighted sum of LTV, interest velocity,
@@ -364,48 +340,6 @@ export async function GET(_req: Request, context: RouteContext) {
       avgPledgeAgeMonths,
     });
 
-    /* ── LTV trend — last 6 months of pledge audit snapshots ───── */
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-    const audits = await prisma.pledgeAudit.findMany({
-      where: {
-        pledge: { customerId },
-        createdAt: { gte: sixMonthsAgo },
-      },
-      orderBy: { createdAt: "asc" },
-      select: {
-        createdAt: true,
-        principal: true,
-        totalInterest: true,
-        receivableAmount: true,
-        marketValueAtRelease: true,
-        ltvAtRelease: true,
-      },
-    });
-
-    const trendByMonth = new Map<
-      string,
-      { ltv: number; marketValue: number; amountOwed: number }
-    >();
-
-    for (const audit of audits) {
-      const month = audit.createdAt.toLocaleDateString("en-IN", {
-        month: "short",
-      });
-      const mv = audit.marketValueAtRelease
-        ? Number(audit.marketValueAtRelease)
-        : 0;
-      const owed = audit.receivableAmount ? Number(audit.receivableAmount) : 0;
-      const ltv = audit.ltvAtRelease ? Number(audit.ltvAtRelease) : 0;
-      trendByMonth.set(month, { ltv, marketValue: mv, amountOwed: owed });
-    }
-
-    const ltvTrend = Array.from(trendByMonth.entries()).map(([month, data]) => ({
-      month,
-      ...data,
-    }));
-
     /* ── Final response ────────────────────────────────────────── */
     return NextResponse.json({
       customer: {
@@ -415,8 +349,6 @@ export async function GET(_req: Request, context: RouteContext) {
         riskScore: riskResult.score,
         riskTier: riskResult.tier,
         riskBreakdown: riskResult.breakdown,
-        totalActivePledges: activePledges.length,
-        lastPledgeDate,
         lifetimeInterestEarned,
         lifetimeReleasedPledges,
       },
@@ -432,15 +364,7 @@ export async function GET(_req: Request, context: RouteContext) {
         totalMarketValue: parseFloat(totalMarketValue.toFixed(2)),
         estimatedCoverage,
       },
-      prices: {
-        goldPerGram,
-        silverPerGram,
-        updatedAt: goldPrice?.createdAt ?? null,
-      },
       pledges: processed,
-      riskDistribution,
-      exposureData,
-      ltvTrend,
       alerts,
     });
   } catch (err: unknown) {
