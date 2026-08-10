@@ -16,6 +16,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { getRiskTier } from "@/lib/calculateLTV";
 
 interface Bucket {
   label: string;
@@ -31,6 +32,23 @@ interface Bucket {
   _ltvSum: number;
   _ltvCount: number;
 }
+
+// One drill-down row. Carries only what the spine's pledge list renders —
+// no weights, rates, or compounding config leave the server here.
+interface PledgeRow {
+  id: string;
+  customerId: string;
+  customerName: string;
+  ageDays: number;
+  principal: number;
+  owed: number;
+  ltv: number | null;
+  riskTier: "SAFE" | "WATCH" | "AT_RISK" | "UNDERWATER" | null;
+}
+
+// Per-bucket cap on drill-down rows. The spine aggregates without limit; only
+// the expanded list is bounded, so the headline figures never depend on it.
+const DRILLDOWN_CAP = 100;
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
@@ -73,6 +91,7 @@ export async function GET() {
         netWeightOfSilver: true,
         lastCalculatedLtv: true,
         lastAmountOwed: true,
+        customer: { select: { id: true, name: true } },
       },
     });
 
@@ -91,13 +110,17 @@ export async function GET() {
       _ltvCount: 0,
     }));
 
+    // Drill-down rows, parallel to `buckets` by index.
+    const bucketPledges: PledgeRow[][] = BUCKET_DEFS.map(() => []);
+
     const now = Date.now();
     const DAY_MS = 1000 * 60 * 60 * 24;
 
     for (const p of pledges) {
       const ageDays = Math.floor((now - p.pledgeDate.getTime()) / DAY_MS);
       const bi = BUCKET_DEFS.findIndex((d) => ageDays <= d.maxDays);
-      const bucket = buckets[bi === -1 ? buckets.length - 1 : bi];
+      const idx = bi === -1 ? buckets.length - 1 : bi;
+      const bucket = buckets[idx];
 
       const principal = Number(p.loanAmount);
       const owed = p.lastAmountOwed !== null ? Number(p.lastAmountOwed) : principal;
@@ -106,12 +129,35 @@ export async function GET() {
       bucket.principal += principal;
       bucket.owed += owed;
 
-      if (p.lastCalculatedLtv !== null) {
-        const ltv = Number(p.lastCalculatedLtv);
+      const ltv = p.lastCalculatedLtv !== null ? Number(p.lastCalculatedLtv) : null;
+
+      if (ltv !== null) {
         bucket._ltvSum += ltv;
         bucket._ltvCount += 1;
         if (ltv > 90) bucket.underwaterCount += 1;
       }
+
+      bucketPledges[idx].push({
+        id: p.id,
+        customerId: p.customer.id,
+        customerName: p.customer.name,
+        ageDays,
+        principal,
+        owed,
+        ltv,
+        // Tier is derived from the cron's cached LTV via the shared helper —
+        // never a local threshold ladder (Invariant 8).
+        riskTier: ltv !== null ? getRiskTier(ltv) : null,
+      });
+    }
+
+    // Worst first: highest LTV leads, un-evaluated pledges sink to the bottom.
+    for (const rows of bucketPledges) {
+      rows.sort((a, b) => {
+        if (a.ltv === null) return b.ltv === null ? 0 : 1;
+        if (b.ltv === null) return -1;
+        return b.ltv - a.ltv;
+      });
     }
 
     const totalActivePledges = pledges.length;
@@ -131,7 +177,7 @@ export async function GET() {
       totalPrincipal > 0 ? round1((capitalStuck / totalPrincipal) * 100) : 0;
 
     // Strip the internal LTV accumulators before responding.
-    const outBuckets = buckets.map((b) => ({
+    const outBuckets = buckets.map((b, i) => ({
       label: b.label,
       ageRange: b.ageRange,
       count: b.count,
@@ -141,6 +187,8 @@ export async function GET() {
       underwaterCount: b.underwaterCount,
       pctOfPrincipal: b.pctOfPrincipal,
       pctOfOwed: b.pctOfOwed,
+      pledges: bucketPledges[i].slice(0, DRILLDOWN_CAP),
+      pledgesTruncated: bucketPledges[i].length > DRILLDOWN_CAP,
     }));
 
     return NextResponse.json({

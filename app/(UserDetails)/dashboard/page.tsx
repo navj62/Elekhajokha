@@ -41,6 +41,10 @@ import {
   AgingAnalysisSkeleton,
 } from "@/components/dashboard/AgingAnalysisSection";
 import { RegionsExplorerOverlay } from "@/components/dashboard/RegionsExplorerOverlay";
+import {
+  AgingSpineSection,
+  AgingSpineSkeleton,
+} from "@/components/dashboard/spine/AgingSpineSection";
 
 /* ================================================================== */
 /*  Types                                                               */
@@ -1133,6 +1137,22 @@ export default function DashboardPage() {
         <p className="text-[13px] font-medium" style={{ color: "var(--muted-foreground)" }}>
           Here is your financial workspace overview for today.
         </p>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/*  Exposure + Aging Spine — the page's lead                   */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <section className="mb-10">
+        {snapshotLoading ? (
+          <AgingSpineSkeleton />
+        ) : (
+          <Suspense fallback={<AgingSpineSkeleton />}>
+            <AgingSpineSection
+              snapshot={dashboard?.snapshot ?? null}
+              ltvChange={dashboard?.trend?.ltvChange ?? null}
+            />
+          </Suspense>
+        )}
       </section>
 
       {/* ═══════════════════════════════════════════════════════════ */}
