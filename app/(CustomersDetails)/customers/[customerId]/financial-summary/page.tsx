@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { ArrowLeft, AlertCircle, Inbox } from "lucide-react";
 
 /* ─────────────────────────────────────────────
@@ -11,37 +12,22 @@ import { ArrowLeft, AlertCircle, Inbox } from "lucide-react";
 
 // Exact rupees only. Abbreviation hides interest accrual when amounts are
 // close, and every figure on this page is one the owner compares.
-function formatExact(n: number): string {
-  return Math.round(n).toLocaleString("en-IN");
+function rupees(n: number): string {
+  return "₹" + Math.round(n).toLocaleString("en-IN");
 }
 
-/* ─────────────────────────────────────────────
-   Types (mirrors API response)
-───────────────────────────────────────────── */
-
-type RiskTier   = "SAFE" | "WATCH" | "AT_RISK" | "CRITICAL";
-type TTUStatus  = "underwater" | "soon" | "ok" | "unknown" | "released";
-type PledgeTier = "SAFE" | "WATCH" | "AT_RISK" | "UNDERWATER";
-
-interface TimeToUnderwater {
-  days:   number | null;
-  label:  string;
-  status: TTUStatus;
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }
 
-interface ProcessedPledge {
-  id:               string;
-  name:             string;
-  pledgeDate:       string;
-  status:           "ACTIVE" | "RELEASED" | "OVERDUE" | "SOLD";
-  loanAmount:       number;
-  amountOwed:       number;
-  marketValue:      number | null;
-  ltv:              number | null;
-  risk:             PledgeTier;
-  goldWeight:       number;
-  silverWeight:     number;
-  timeToUnderwater: TimeToUnderwater;
+// Days are the honest unit for a pledge term — a "4 month" label rounds away
+// the part-month the interest engine actually charges for.
+function formatDuration(days: number): string {
+  return `${days.toLocaleString("en-IN")} day${days === 1 ? "" : "s"}`;
 }
 
 // Human label for which metals a pledge actually holds (handles mixed pledges).
@@ -54,44 +40,102 @@ function metalLabel(goldWeight: number, silverWeight: number): string {
   return "—";
 }
 
-interface Alert {
-  pledgeId:   string;
-  pledgeName: string;
-  risk:       string;
-  message:    string;
+const TXN_LABEL: Record<string, string> = {
+  REPAYMENT_PRINCIPAL: "Principal repayment",
+  REPAYMENT_INTEREST: "Interest repayment",
+  TOPUP: "Top-up",
+};
+
+/* ─────────────────────────────────────────────
+   Types (mirrors API response)
+───────────────────────────────────────────── */
+
+type RiskTier = "SAFE" | "WATCH" | "AT_RISK" | "CRITICAL";
+type PledgeTier = "SAFE" | "WATCH" | "AT_RISK" | "UNDERWATER";
+
+interface OpenPledge {
+  id: string;
+  name: string;
+  pledgeDate: string;
+  status: "ACTIVE" | "RELEASED" | "OVERDUE" | "SOLD";
+  loanAmount: number;
+  amountOwed: number;
+  marketValue: number | null;
+  ltv: number | null;
+  risk: PledgeTier;
+  goldWeight: number;
+  silverWeight: number;
+}
+
+interface Settlement {
+  id: string;
+  pledgeId: string;
+  name: string;
+  pledgeDate: string;
+  settledOn: string;
+  daysHeld: number;
+  principal: number;
+  interestEarned: number;
+  ltvAtRelease: number | null;
+  returnPct: number | null;
+}
+
+interface SoldItem {
+  pledgeId: string;
+  inventoryItemId: string | null;
+  name: string;
+  pledgeDate: string;
+  closedOn: string | null;
+  amountOwedAt: number | null;
+  acquiredCost: number | null;
+  netPosition: number | null;
+  cashToCustomer: number | null;
+  resold: boolean;
 }
 
 interface SummaryData {
   customer: {
-    id:                string;
-    name:              string;
-    region:            string | null;
-    riskScore:         number;
-    riskTier:          RiskTier;
-    riskBreakdown:     {
-      ltv:              number;
-      velocity:         number;
-      timeToUnderwater: number;
-      concentration:    number;
-      age:              number;
-    };
-    lifetimeInterestEarned:  number;
+    name: string;
+    region: string | null;
     lifetimeReleasedPledges: number;
   };
-  metrics: {
-    totalLoanAmount:   number;
-    totalAmountOwed:   number;
-    totalGoldWeight:   number;
-    totalSilverWeight: number;
-    activePledges:     number;
-    releasedPledges:   number;
-    underwaterPledges: number;
-    overallLTV:        number | null;
-    totalMarketValue:  number;
-    estimatedCoverage: number | null;
+  risk: {
+    score: number;
+    tier: RiskTier;
+    worstLtv: number | null;
+    longestDaysHeld: number | null;
+    daysToUnderwaterWorst: number | null;
   };
-  pledges: ProcessedPledge[];
-  alerts:  Alert[];
+  metrics: {
+    totalLoanAmount: number;
+    totalAmountOwed: number;
+    totalGoldWeight: number;
+    totalSilverWeight: number;
+    activePledges: number;
+    overallLTV: number | null;
+    totalMarketValue: number;
+  };
+  realised: {
+    principalSettled: number;
+    interestEarned: number;
+    amountReceived: number;
+    returnPct: number | null;
+    avgDaysHeld: number | null;
+  };
+  disposition: {
+    open: number;
+    released: number;
+    sold: number;
+    settlementsCovered: number;
+  };
+  repayments: {
+    byType: { type: string; count: number; amount: number }[];
+    total: number;
+    count: number;
+  };
+  settlements: Settlement[];
+  soldToShop: SoldItem[];
+  pledges: OpenPledge[];
 }
 
 /* ─────────────────────────────────────────────
@@ -99,9 +143,11 @@ interface SummaryData {
 ───────────────────────────────────────────── */
 
 /* Risk tiers map onto the shared low/medium/high/critical token ramp:
-   low = SAFE, medium = WATCH, high = AT_RISK, critical = UNDERWATER/CRITICAL.
+   low = SAFE, medium = WATCH, high = AT_RISK, critical = UNDERWATER.
    Surfaces carry the fill, -foreground the text — both are defined for light
    and dark in globals.css, so these badges follow the theme. */
+/* Customer tiers run SAFE / WATCH / AT_RISK / CRITICAL — a different top end
+   from the per-pledge ladder, which ends at UNDERWATER. Both share the ramp. */
 const TIER_CONFIG: Record<RiskTier, { label: string; bg: string; text: string }> = {
   SAFE:     { label: "Safe",     bg: "var(--risk-low-surface)",      text: "var(--risk-low-foreground)" },
   WATCH:    { label: "Watch",    bg: "var(--risk-medium-surface)",   text: "var(--risk-medium-foreground)" },
@@ -120,106 +166,25 @@ const PLEDGE_TIER_CONFIG: Record<PledgeTier, { label: string; bg: string; text: 
    dropping it would fall through to the ACTIVE style and silently mislabel a
    real overdue row as active. */
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
-  ACTIVE:   { bg: "var(--status-active-surface)",   text: "var(--status-active-foreground)" },
-  OVERDUE:  { bg: "var(--status-overdue-surface)",  text: "var(--status-overdue-foreground)" },
-  RELEASED: { bg: "var(--status-released-surface)", text: "var(--status-released-foreground)" },
+  ACTIVE:  { bg: "var(--status-active-surface)",  text: "var(--status-active-foreground)" },
+  OVERDUE: { bg: "var(--status-overdue-surface)", text: "var(--status-overdue-foreground)" },
 };
 
 // Thresholds mirror getRiskTier (≤65 / ≤75 / ≤90) — display only; the tier
 // itself is always server-derived.
-function ltvColor(ltv: number | null, status: string): string {
-  if (status === "RELEASED" || ltv === null) return "var(--muted-foreground-subtle)";
-  if (ltv < 65)  return "var(--risk-low-foreground)";
+function ltvColor(ltv: number | null): string {
+  if (ltv === null) return "var(--muted-foreground-subtle)";
+  if (ltv < 65) return "var(--risk-low-foreground)";
   if (ltv <= 75) return "var(--risk-medium-foreground)";
   if (ltv <= 90) return "var(--risk-high-foreground)";
   return "var(--risk-critical-foreground)";
-}
-
-function ttuColor(status: TTUStatus): string {
-  if (status === "underwater") return "var(--risk-critical-foreground)";
-  if (status === "soon")       return "var(--risk-high-foreground)";
-  if (status === "ok")         return "var(--foreground)";
-  return "var(--muted-foreground-subtle)";
-}
-
-// Dots are non-text marks, so they take the accent tokens rather than the
-// -foreground text variants.
-function alertDotColor(risk: string): string {
-  if (risk === "UNDERWATER") return "var(--risk-critical)";
-  if (risk === "AT_RISK")    return "var(--risk-high)";
-  return "var(--risk-medium)";
-}
-
-/* ─────────────────────────────────────────────
-   LTV Arc gauge (preserved from original)
-───────────────────────────────────────────── */
-
-function LTVArc({ pct }: { pct: number }) {
-  const r = 60, cx = 90, cy = 90;
-  const start = -210;
-  const end   = start + Math.min(pct / 100, 1) * 240;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const arc   = (a: number) =>
-    `${cx + r * Math.cos(toRad(a))},${cy + r * Math.sin(toRad(a))}`;
-  const large = end - start > 180 ? 1 : 0;
-
-  return (
-    <div className="relative w-[180px] h-[110px] mx-auto">
-      <svg width={180} height={110} viewBox="0 0 180 110">
-        <path
-          d={`M ${arc(start)} A ${r} ${r} 0 1 1 ${arc(start + 240)}`}
-          fill="none" stroke="var(--border)" strokeWidth={12} strokeLinecap="round"
-        />
-        <path
-          d={`M ${arc(start)} A ${r} ${r} 0 ${large} 1 ${arc(end)}`}
-          fill="none" stroke="var(--primary)" strokeWidth={12} strokeLinecap="round"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-end pb-3">
-        <div className="text-[36px] font-semibold leading-none tracking-tight" style={{ color: "var(--foreground)" }}>
-          {(pct ?? 0).toFixed(1)}
-          <span className="text-[20px] font-medium ml-0.5" style={{ color: "var(--muted-foreground-subtle)" }}>%</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   Skeleton
-───────────────────────────────────────────── */
-
-function Skeleton() {
-  const pulse = { backgroundColor: "var(--border)" };
-  return (
-    <div className="max-w-[1200px] mx-auto pb-16 mt-4 space-y-4">
-      <div className="h-10 rounded-[18px] animate-pulse" style={pulse} />
-      <div className="grid grid-cols-1 lg:grid-cols-[60fr_40fr] gap-4">
-        <div className="h-48 rounded-[18px] animate-pulse" style={pulse} />
-        <div className="h-48 rounded-[18px] animate-pulse" style={pulse} />
-      </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="h-24 rounded-[18px] animate-pulse" style={pulse} />
-        ))}
-      </div>
-      <div className="h-72 rounded-[18px] animate-pulse" style={pulse} />
-      <div className="h-40 rounded-[18px] animate-pulse" style={pulse} />
-    </div>
-  );
 }
 
 /* ─────────────────────────────────────────────
    Primitives
 ───────────────────────────────────────────── */
 
-function Card({
-  children,
-  className = "",
-}: {
-  children: ReactNode;
-  className?: string;
-}) {
+function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
     <div
       className={`rounded-[18px] p-7 ${className}`}
@@ -241,20 +206,136 @@ function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * One labelled figure inside a card. Label sits left, figure right, and the
+ * qualifier hangs under the figure it qualifies. Keeping the numbers in a
+ * single right-aligned column is what makes a card of these scannable —
+ * the owner reads down the amounts, not across the labels.
+ */
+function StatLine({
+  label,
+  value,
+  sub,
+  tone,
+  last = false,
+}: {
+  label: string;
+  value: string;
+  sub?: string | null;
+  tone?: string;
+  last?: boolean;
+}) {
+  return (
+    <div
+      className="flex items-start justify-between gap-6 py-3"
+      style={last ? undefined : { borderBottom: "1px solid var(--border)" }}
+    >
+      <span className="text-[12px] font-medium pt-0.5" style={{ color: "var(--muted-foreground)" }}>
+        {label}
+      </span>
+      <span className="text-right shrink-0">
+        <span
+          className="block text-[17px] font-bold tabular-nums leading-tight"
+          style={{ color: tone ?? "var(--foreground)" }}
+        >
+          {value}
+        </span>
+        {sub && (
+          <span
+            className="block text-[10px] leading-snug mt-0.5"
+            style={{ color: "var(--muted-foreground-subtle)" }}
+          >
+            {sub}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function TableShell({
+  label,
+  note,
+  children,
+}: {
+  label: string;
+  note?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="rounded-[18px] overflow-hidden"
+      style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
+    >
+      <div className="px-7 py-5" style={{ borderBottom: "1px solid var(--border)" }}>
+        <SectionLabel>{label}</SectionLabel>
+        {note && (
+          <p className="text-[11px] mt-1.5" style={{ color: "var(--muted-foreground-subtle)" }}>
+            {note}
+          </p>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function Th({ children, align = "left" }: { children: ReactNode; align?: "left" | "right" }) {
+  return (
+    <th
+      className={`px-5 py-3 text-[10px] font-bold tracking-wider uppercase whitespace-nowrap ${
+        align === "right" ? "text-right" : "text-left"
+      }`}
+      style={{ color: "var(--muted-foreground-subtle)" }}
+    >
+      {children}
+    </th>
+  );
+}
+
+function EmptyRow({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-14 gap-3">
+      <Inbox size={28} style={{ color: "var(--muted-foreground-subtle)", opacity: 0.25 }} />
+      <p className="text-[13px] font-medium" style={{ color: "var(--muted-foreground-subtle)" }}>
+        {message}
+      </p>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   Skeleton
+───────────────────────────────────────────── */
+
+function Skeleton() {
+  const pulse = { backgroundColor: "var(--border)" };
+  return (
+    <div className="max-w-[1200px] mx-auto pb-16 mt-4 space-y-4">
+      <div className="h-12 rounded-[18px] animate-pulse" style={pulse} />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-72 rounded-[18px] animate-pulse" style={pulse} />
+        ))}
+      </div>
+      <div className="h-64 rounded-[18px] animate-pulse" style={pulse} />
+      <div className="h-64 rounded-[18px] animate-pulse" style={pulse} />
+    </div>
+  );
+}
+
 /* ================================================================
    Page
 ================================================================ */
 
 export default function FinancialSummaryPage() {
-  const params     = useParams<{ customerId: string }>();
-  const router     = useRouter();
+  const params = useParams<{ customerId: string }>();
+  const router = useRouter();
   const customerId = params?.customerId;
 
-  const [data,         setData]         = useState<SummaryData | null>(null);
-  const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState<string | null>(null);
-  const [whyOpen,      setWhyOpen]      = useState(false);
-  const [showReleased, setShowReleased] = useState(false);
+  const [data, setData] = useState<SummaryData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -277,10 +358,8 @@ export default function FinancialSummaryPage() {
     if (customerId) load();
   }, [customerId]);
 
-  /* ── Loading ── */
   if (loading) return <Skeleton />;
 
-  /* ── Error ── */
   if (error || !data) {
     return (
       <div className="max-w-[1200px] mx-auto mt-4">
@@ -301,18 +380,29 @@ export default function FinancialSummaryPage() {
     );
   }
 
-  const { customer, metrics, pledges, alerts } = data;
-  const tierConf      = TIER_CONFIG[customer.riskTier] ?? TIER_CONFIG.WATCH;
-  const bd            = customer.riskBreakdown;
-  const breakdownSum  = (bd.ltv + bd.velocity + bd.timeToUnderwater + bd.concentration + bd.age).toFixed(1);
+  const { customer, risk, metrics, realised, disposition, repayments, settlements, soldToShop } = data;
 
-  const activePledges   = pledges.filter((p) => p.status === "ACTIVE" || p.status === "OVERDUE");
-  const releasedPledges = pledges.filter((p) => p.status === "RELEASED");
-  const visiblePledges  = showReleased
-    ? [...activePledges, ...releasedPledges]
-    : activePledges;
+  const tierConf = TIER_CONFIG[risk.tier] ?? TIER_CONFIG.WATCH;
 
-  /* ── Render ── */
+  const openPledges = data.pledges.filter(
+    (p) => p.status === "ACTIVE" || p.status === "OVERDUE"
+  );
+
+  // Weights read as one line under the collateral figure rather than as two
+  // more cards — they qualify that number, they are not peers of it.
+  const weightSub =
+    metrics.totalGoldWeight === 0 && metrics.totalSilverWeight === 0
+      ? "no pledged metal"
+      : [
+          metrics.totalGoldWeight > 0 ? `${metrics.totalGoldWeight}g gold` : null,
+          metrics.totalSilverWeight > 0 ? `${metrics.totalSilverWeight}g silver` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+  const hasSettlements = settlements.length > 0;
+  const settlementGap = disposition.released - disposition.settlementsCovered;
+
   return (
     <div className="max-w-[1200px] mx-auto pb-16 mt-4 space-y-4">
 
@@ -335,382 +425,464 @@ export default function FinancialSummaryPage() {
               Financial Summary
             </h1>
             <p className="text-[12px]" style={{ color: "var(--muted-foreground-subtle)" }}>
-              Risk &amp; exposure overview
+              {customer.name}
+              {customer.region ? ` · ${customer.region}` : ""}
+            </p>
+            {/* Disposition is metadata about the relationship, not a figure to
+                compare — it belongs on the name, not in cards of its own. */}
+            <p className="text-[12px] mt-0.5" style={{ color: "var(--muted-foreground-subtle)" }}>
+              {disposition.open} open · {disposition.released} released ·{" "}
+              {disposition.sold} sold
             </p>
           </div>
         </div>
       </div>
 
       {/* ══════════════════════════════════════════════
-          SECTION 1 — Header: two cards
+          The three summary cards
       ══════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-[60fr_40fr] gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
-        {/* Left: customer identity + composite risk score */}
-        <Card>
-          <p className="text-2xl font-semibold mb-0.5" style={{ color: "var(--foreground)" }}>
-            {customer.name}
-          </p>
-          <p className="text-sm mb-6" style={{ color: "var(--muted-foreground-subtle)" }}>
-            {customer.region ?? "Location unknown"}
-          </p>
-
-          {/* Score + tier badge */}
-          <div className="flex items-center gap-4 mb-4">
-            <span
-              className="text-5xl font-bold tabular-nums leading-none"
-              style={{ color: "var(--foreground)" }}
-            >
-              {customer.riskScore}
+        {/* ── Risk ── */}
+        <Card className="!p-6">
+          <SectionLabel>Risk</SectionLabel>
+          <div className="flex items-center gap-3 mt-3 mb-1">
+            <span className="text-[32px] font-bold tabular-nums leading-none" style={{ color: "var(--foreground)" }}>
+              {risk.score}
             </span>
+            {/* Tier is named in text as well as coloured — risk must never be
+                communicated by colour alone. */}
             <span
-              className="text-[12px] font-bold px-3 py-1 rounded-full"
+              className="text-[11px] font-bold px-2.5 py-1 rounded-full"
               style={{ backgroundColor: tierConf.bg, color: tierConf.text }}
             >
               {tierConf.label}
             </span>
           </div>
+          <p className="text-[10px] mb-3" style={{ color: "var(--muted-foreground-subtle)" }}>
+            composite score out of 100
+          </p>
 
-          {/* Collapsible "Why this score?" */}
-          <div>
-            <button
-              onClick={() => setWhyOpen((o) => !o)}
-              className="flex items-center gap-1 text-[12px] font-medium"
-              style={{ color: "var(--primary)" }}
-            >
-              Why this score?
-              <span
-                className="transition-transform duration-200 inline-block"
-                style={{ transform: whyOpen ? "rotate(180deg)" : "rotate(0deg)" }}
-              >
-                ▾
-              </span>
-            </button>
+          <StatLine
+            label="Overall LTV"
+            value={metrics.overallLTV !== null ? `${metrics.overallLTV.toFixed(1)}%` : "—"}
+            tone={ltvColor(metrics.overallLTV)}
+          />
+          <StatLine
+            label="Worst pledge LTV"
+            value={risk.worstLtv !== null ? `${risk.worstLtv.toFixed(1)}%` : "—"}
+            tone={ltvColor(risk.worstLtv)}
+          />
+          <StatLine
+            label="Longest held"
+            value={risk.longestDaysHeld !== null ? formatDuration(risk.longestDaysHeld) : "—"}
+            sub="of the open pledges"
+            last={risk.daysToUnderwaterWorst === null}
+          />
+          {/* Only shown when there is something to say. A simple-interest
+              estimate, so it is labelled as approximate rather than presented
+              as a date the owner can bank on. */}
+          {risk.daysToUnderwaterWorst !== null && (
+            <StatLine
+              label="Nearest underwater"
+              value={
+                risk.daysToUnderwaterWorst === 0
+                  ? "Already"
+                  : `~${formatDuration(risk.daysToUnderwaterWorst)}`
+              }
+              sub="approximate"
+              tone={
+                risk.daysToUnderwaterWorst === 0
+                  ? "var(--risk-critical-foreground)"
+                  : risk.daysToUnderwaterWorst <= 90
+                  ? "var(--risk-high-foreground)"
+                  : undefined
+              }
+              last
+            />
+          )}
+        </Card>
 
-            {whyOpen && (
-              <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
-                {(
-                  [
-                    { key: "LTV",                label: "LTV",                value: bd.ltv },
-                    { key: "Velocity",           label: "Velocity",           value: bd.velocity },
-                    { key: "TimeToUnderwater",   label: "Time-to-Underwater", value: bd.timeToUnderwater },
-                    { key: "Concentration",      label: "Concentration",      value: bd.concentration },
-                    { key: "Age",                label: "Age",                value: bd.age },
-                  ] as const
-                ).map(({ key, label, value }) => (
-                  <span key={key} className="text-[11px]" style={{ color: "var(--muted-foreground-subtle)" }}>
-                    {label}{" "}
-                    <span className="font-semibold" style={{ color: "var(--muted-foreground)" }}>
-                      {value.toFixed(1)}
-                    </span>
-                  </span>
-                ))}
-                <span className="text-[11px]" style={{ color: "var(--muted-foreground-subtle)" }}>
-                  ={" "}
-                  <span className="font-semibold" style={{ color: "var(--muted-foreground)" }}>
-                    ~{breakdownSum}
-                  </span>
-                </span>
-              </div>
-            )}
+        {/* ── Open position ── */}
+        <Card className="!p-6">
+          <SectionLabel>Open position</SectionLabel>
+          <div className="mt-3">
+            <StatLine
+              label="Principal Out"
+              value={rupees(metrics.totalLoanAmount)}
+              sub={`across ${metrics.activePledges} open pledge${metrics.activePledges === 1 ? "" : "s"}`}
+            />
+            <StatLine
+              label="Amount Owed"
+              value={rupees(metrics.totalAmountOwed)}
+              sub="incl. accrued interest"
+            />
+            <StatLine
+              label="Collateral Value"
+              // A missing metal price is a real state, not a zero.
+              value={metrics.totalMarketValue > 0 ? rupees(metrics.totalMarketValue) : "—"}
+              sub={weightSub}
+            />
+            <StatLine
+              label="Overall LTV"
+              value={metrics.overallLTV !== null ? `${metrics.overallLTV.toFixed(1)}%` : "—"}
+              sub={
+                metrics.overallLTV !== null
+                  ? "owed against collateral"
+                  : "no metal price on record"
+              }
+              tone={ltvColor(metrics.overallLTV)}
+              last
+            />
           </div>
         </Card>
 
-        {/* Right: LTV arc gauge + coverage */}
-        <Card className="flex flex-col items-center justify-center text-center">
-          <SectionLabel>Overall Portfolio LTV</SectionLabel>
-          <div className="mt-4 mb-2">
-            <LTVArc pct={metrics.overallLTV ?? 0} />
-          </div>
-          <p
-            className="text-3xl font-bold tabular-nums mt-4"
-            style={{ color: "var(--foreground)" }}
-          >
-            {metrics.estimatedCoverage !== null
-              ? `${metrics.estimatedCoverage.toFixed(1)}%`
-              : "—"}
-          </p>
-          <p className="text-[12px] mt-0.5" style={{ color: "var(--muted-foreground-subtle)" }}>
-            of amount owed
-          </p>
-          <p className="text-[11px] mt-3 px-2" style={{ color: "var(--muted-foreground-subtle)" }}>
-            {(metrics.overallLTV ?? 0).toFixed(1)}% LTV · coverage of ₹{formatExact(metrics.totalAmountOwed)}
-          </p>
-        </Card>
-      </div>
-
-      {/* ══════════════════════════════════════════════
-          SECTION 2 — KPI Strip
-      ══════════════════════════════════════════════ */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
-        {(
-          [
-            {
-              key:   "loan",
-              label: "Loan Amount",
-              value: "₹" + Math.round(metrics.totalLoanAmount).toLocaleString("en-IN"),
-              sub:   null,
-              red:   false,
-              color: null,
-            },
-            {
-              key:   "owed",
-              label: "Total Owed",
-              value: "₹" + Math.round(metrics.totalAmountOwed).toLocaleString("en-IN"),
-              sub:   "incl. accrued interest",
-              red:   false,
-              color: null,
-            },
-            {
-              key:   "pledges",
-              label: "Active Pledges",
-              value: String(metrics.activePledges),
-              sub:   null,
-              red:   false,
-              color: null,
-            },
-            {
-              key:   "gold",
-              label: "Gold Weight",
-              value: `${metrics.totalGoldWeight}g`,
-              sub:   null,
-              red:   false,
-              color: null,
-            },
-            {
-              key:   "silver",
-              label: "Silver Weight",
-              value: `${metrics.totalSilverWeight}g`,
-              sub:   null,
-              red:   false,
-              color: null,
-            },
-            {
-              key:   "underwater",
-              label: "Underwater",
-              value: String(metrics.underwaterPledges),
-              sub:   null,
-              red:   metrics.underwaterPledges > 0,
-              color: null,
-            },
-            {
-              key:   "interest",
-              label: "Interest Earned",
-              // EXACT (not abbreviated) — this is the most meaningful number
-              // on the page for evaluating customer profitability.
-              // Show "—" when nothing has been redeemed yet (≠ "₹0").
-              value:
-                customer.lifetimeReleasedPledges === 0
-                  ? "—"
-                  : "₹" +
-                    Math.round(customer.lifetimeInterestEarned).toLocaleString("en-IN"),
-              sub:
-                customer.lifetimeReleasedPledges === 0
-                  ? "no released pledges yet"
-                  : `from ${customer.lifetimeReleasedPledges} released pledge${
+        {/* ── Realised performance ── */}
+        <Card className="!p-6">
+          <SectionLabel>Realised performance</SectionLabel>
+          <div className="mt-3">
+            <StatLine
+              label="Interest Earned"
+              // "—" not "₹0": nothing settled yet is a different fact from
+              // settled and earned nothing.
+              value={hasSettlements ? rupees(realised.interestEarned) : "—"}
+              sub={
+                hasSettlements
+                  ? `from ${customer.lifetimeReleasedPledges} settled pledge${
                       customer.lifetimeReleasedPledges === 1 ? "" : "s"
-                    }`,
-              red:   false,
-              color: customer.lifetimeReleasedPledges === 0 ? null : "var(--primary)",
-            },
-          ] as const
-        ).map(({ key, label, value, sub, red, color }) => (
-          <Card key={key} className="flex flex-col gap-1 !p-5">
-            <SectionLabel>{label}</SectionLabel>
-            <p
-              className="text-2xl font-bold tabular-nums"
-              style={{
-                color: color ?? (red ? "var(--risk-critical-foreground)" : "var(--foreground)"),
-              }}
-            >
-              {value}
-            </p>
-            {sub && (
-              <p className="text-[10px]" style={{ color: "var(--muted-foreground-subtle)" }}>
-                {sub}
-              </p>
-            )}
-          </Card>
-        ))}
+                    }`
+                  : "no settled pledges yet"
+              }
+              tone={hasSettlements ? "var(--primary)" : undefined}
+            />
+            <StatLine
+              label="Return on Principal"
+              value={realised.returnPct !== null ? `${realised.returnPct.toFixed(1)}%` : "—"}
+              sub="interest ÷ principal advanced"
+            />
+            <StatLine
+              label="Avg Duration"
+              value={realised.avgDaysHeld !== null ? formatDuration(realised.avgDaysHeld) : "—"}
+              sub="pledge to release"
+            />
+            <StatLine
+              label="Principal Settled"
+              value={hasSettlements ? rupees(realised.principalSettled) : "—"}
+              sub="returned and closed"
+              last
+            />
+          </div>
+        </Card>
       </div>
 
       {/* ══════════════════════════════════════════════
-          SECTION 3 — Active Pledges Table
+          Open pledges
       ══════════════════════════════════════════════ */}
-      <div
-        className="rounded-[18px] overflow-hidden"
-        style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
-      >
-        {/* Table toolbar */}
-        <div
-          className="flex items-center justify-between px-7 py-5"
-          style={{ borderBottom: "1px solid var(--border)" }}
-        >
-          <SectionLabel>Active Pledges</SectionLabel>
-          <label className="flex items-center gap-2 cursor-pointer select-none">
-            <div
-              className="relative w-8 h-4 rounded-full transition-colors"
-              style={{ backgroundColor: showReleased ? "var(--primary)" : "var(--border)" }}
-              onClick={() => setShowReleased((v) => !v)}
-            >
-              <div
-                className="absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all"
-                style={{ left: showReleased ? "18px" : "2px" }}
-              />
+      <div className="pt-4">
+        <TableShell label="Open pledges">
+          {openPledges.length === 0 ? (
+            <EmptyRow message="No open pledges." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[13px] text-left">
+                <thead>
+                  <tr style={{ backgroundColor: "var(--card-alt)", borderBottom: "1px solid var(--border)" }}>
+                    <Th>Item</Th>
+                    <Th>Pledged</Th>
+                    <Th align="right">Principal</Th>
+                    <Th align="right">Owed</Th>
+                    <Th align="right">Collateral</Th>
+                    <Th align="right">LTV</Th>
+                    <Th>Risk</Th>
+                    <Th>Status</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openPledges.map((p) => {
+                    const tier = PLEDGE_TIER_CONFIG[p.risk];
+                    const statusStyle = STATUS_STYLE[p.status] ?? STATUS_STYLE.ACTIVE;
+                    return (
+                      <tr key={p.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                        <td className="px-5 py-4 font-medium whitespace-nowrap" style={{ color: "var(--foreground)" }}>
+                          {p.name}
+                          <div className="text-[11px] font-normal mt-0.5" style={{ color: "var(--muted-foreground-subtle)" }}>
+                            {metalLabel(p.goldWeight, p.silverWeight)}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap" style={{ color: "var(--muted-foreground)" }}>
+                          {formatDate(p.pledgeDate)}
+                        </td>
+                        <td className="px-5 py-4 tabular-nums text-right" style={{ color: "var(--muted-foreground)" }}>
+                          {rupees(p.loanAmount)}
+                        </td>
+                        <td className="px-5 py-4 tabular-nums text-right font-medium" style={{ color: "var(--foreground)" }}>
+                          {rupees(p.amountOwed)}
+                        </td>
+                        <td className="px-5 py-4 tabular-nums text-right" style={{ color: "var(--muted-foreground)" }}>
+                          {p.marketValue !== null ? (
+                            rupees(p.marketValue)
+                          ) : (
+                            <span style={{ color: "var(--muted-foreground-subtle)" }}>—</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 tabular-nums text-right font-semibold">
+                          {p.ltv !== null ? (
+                            <span style={{ color: ltvColor(p.ltv) }}>{p.ltv.toFixed(1)}%</span>
+                          ) : (
+                            <span style={{ color: "var(--muted-foreground-subtle)" }}>—</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          {p.ltv === null || !tier ? (
+                            <span style={{ color: "var(--muted-foreground-subtle)" }}>—</span>
+                          ) : (
+                            <span
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
+                              style={{ backgroundColor: tier.bg, color: tier.text }}
+                            >
+                              {tier.label}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
+                          >
+                            {p.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-            <span className="text-[11px] font-medium" style={{ color: "var(--muted-foreground-subtle)" }}>
-              Show released
-            </span>
-          </label>
-        </div>
+          )}
+        </TableShell>
+      </div>
 
-        {/* Empty state */}
-        {activePledges.length === 0 && !showReleased ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <Inbox size={32} style={{ color: "var(--muted-foreground-subtle)", opacity: 0.2 }} />
-            <p className="text-[13px] font-medium" style={{ color: "var(--muted-foreground-subtle)" }}>
-              No active pledges.
-            </p>
-          </div>
+      {/* ══════════════════════════════════════════════
+          Settlement history
+      ══════════════════════════════════════════════ */}
+      <TableShell
+        label="Settlement history"
+        note={
+          // Say it plainly when the table cannot account for every release,
+          // rather than letting the totals imply full coverage.
+          settlementGap > 0
+            ? `${settlementGap} earlier release${settlementGap === 1 ? "" : "s"} has no settlement record and is not counted in the figures above.`
+            : null
+        }
+      >
+        {!hasSettlements ? (
+          <EmptyRow message="No pledges settled yet." />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-[13px] text-left">
               <thead>
                 <tr style={{ backgroundColor: "var(--card-alt)", borderBottom: "1px solid var(--border)" }}>
-                  {["Asset", "Principal", "Owed", "Market Value", "LTV", "Risk", "Time to Underwater", "Status"].map((h) => (
-                    <th
-                      key={h}
-                      className="px-5 py-3 text-[10px] font-bold tracking-wider uppercase whitespace-nowrap"
-                      style={{ color: "var(--muted-foreground-subtle)" }}
-                    >
-                      {h}
-                    </th>
-                  ))}
+                  <Th>Item</Th>
+                  <Th>Pledged</Th>
+                  <Th>Settled</Th>
+                  <Th align="right">Held</Th>
+                  <Th align="right">Principal</Th>
+                  <Th align="right">Interest Earned</Th>
+                  <Th align="right">Return</Th>
+                  <Th align="right">LTV at Release</Th>
                 </tr>
               </thead>
               <tbody>
-                {visiblePledges.map((p) => {
-                  const isReleased  = p.status === "RELEASED";
-                  const pledgeTier  = PLEDGE_TIER_CONFIG[p.risk as PledgeTier];
-                  const ltvDisplay  = isReleased || p.ltv === null ? null : p.ltv;
-                  const statusStyle = STATUS_STYLE[p.status] ?? STATUS_STYLE.ACTIVE;
-
-                  return (
-                    <tr
-                      key={p.id}
-                      className={isReleased ? "opacity-60" : ""}
-                      style={{ borderBottom: "1px solid var(--border)" }}
-                    >
-                      {/* Asset */}
-                      <td className="px-5 py-4 font-medium whitespace-nowrap" style={{ color: "var(--foreground)" }}>
-                        {p.name}
-                        <div className="text-[11px] font-normal mt-0.5" style={{ color: "var(--muted-foreground-subtle)" }}>
-                          {metalLabel(p.goldWeight, p.silverWeight)}
-                        </div>
-                      </td>
-
-                      {/* Principal */}
-                      <td className="px-5 py-4 tabular-nums" style={{ color: "var(--muted-foreground)" }}>
-                        ₹{Math.round(p.loanAmount).toLocaleString("en-IN")}
-                      </td>
-
-                      {/* Owed */}
-                      <td className="px-5 py-4 tabular-nums font-medium" style={{ color: "var(--foreground)" }}>
-                        ₹{Math.round(p.amountOwed).toLocaleString("en-IN")}
-                      </td>
-
-                      {/* Market Value */}
-                      <td className="px-5 py-4 tabular-nums" style={{ color: "var(--muted-foreground)" }}>
-                        {p.marketValue !== null
-                          ? `₹${Math.round(p.marketValue).toLocaleString("en-IN")}`
-                          : <span style={{ color: "var(--muted-foreground-subtle)" }}>—</span>}
-                      </td>
-
-                      {/* LTV */}
-                      <td className="px-5 py-4 tabular-nums font-semibold">
-                        {ltvDisplay !== null ? (
-                          <span style={{ color: ltvColor(ltvDisplay, p.status) }}>
-                            {ltvDisplay.toFixed(1)}%
-                          </span>
-                        ) : (
-                          <span style={{ color: "var(--muted-foreground-subtle)" }}>—</span>
-                        )}
-                      </td>
-
-                      {/* Risk */}
-                      <td className="px-5 py-4">
-                        {isReleased || !pledgeTier ? (
-                          <span style={{ color: "var(--muted-foreground-subtle)" }}>—</span>
-                        ) : (
-                          <span
-                            className="text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap"
-                            style={{ backgroundColor: pledgeTier.bg, color: pledgeTier.text }}
-                          >
-                            {pledgeTier.label}
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Time to Underwater — label used directly, no reformatting */}
-                      <td className="px-5 py-4 whitespace-nowrap font-medium">
-                        <span style={{ color: ttuColor(p.timeToUnderwater.status) }}>
-                          {p.timeToUnderwater.label}
-                        </span>
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-5 py-4">
-                        <span
-                          className="text-[10px] font-bold px-2 py-0.5 rounded-full"
-                          style={{ backgroundColor: statusStyle.bg, color: statusStyle.text }}
-                        >
-                          {p.status}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {settlements.map((s) => (
+                  <tr key={s.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td className="px-5 py-4 font-medium whitespace-nowrap">
+                      <Link
+                        href={`/customers/${customerId}/pledges/${s.pledgeId}`}
+                        className="hover:underline underline-offset-2"
+                        style={{ color: "var(--foreground)" }}
+                      >
+                        {s.name}
+                      </Link>
+                    </td>
+                    <td className="px-5 py-4 whitespace-nowrap" style={{ color: "var(--muted-foreground)" }}>
+                      {formatDate(s.pledgeDate)}
+                    </td>
+                    <td className="px-5 py-4 whitespace-nowrap" style={{ color: "var(--muted-foreground)" }}>
+                      {formatDate(s.settledOn)}
+                    </td>
+                    <td className="px-5 py-4 tabular-nums text-right whitespace-nowrap" style={{ color: "var(--muted-foreground)" }}>
+                      {formatDuration(s.daysHeld)}
+                    </td>
+                    <td className="px-5 py-4 tabular-nums text-right" style={{ color: "var(--muted-foreground)" }}>
+                      {rupees(s.principal)}
+                    </td>
+                    <td className="px-5 py-4 tabular-nums text-right font-semibold" style={{ color: "var(--primary)" }}>
+                      {rupees(s.interestEarned)}
+                    </td>
+                    <td className="px-5 py-4 tabular-nums text-right font-medium" style={{ color: "var(--foreground)" }}>
+                      {s.returnPct !== null ? `${s.returnPct.toFixed(1)}%` : "—"}
+                    </td>
+                    <td className="px-5 py-4 tabular-nums text-right" style={{ color: ltvColor(s.ltvAtRelease) }}>
+                      {s.ltvAtRelease !== null ? `${s.ltvAtRelease.toFixed(1)}%` : "—"}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         )}
-      </div>
+      </TableShell>
 
       {/* ══════════════════════════════════════════════
-          SECTION 4 — Risk Alerts (conditional)
+          Sold to shop (only when it happened)
       ══════════════════════════════════════════════ */}
-      {alerts.length > 0 && (
-        <Card>
-          <SectionLabel>Risk Alerts</SectionLabel>
-          <div className="mt-5 space-y-3">
-            {alerts.map((alert, i) => (
-              <div
-                key={`${alert.pledgeId}-${i}`}
-                className="flex items-start gap-3 p-4 rounded-[12px]"
-                style={{
-                  backgroundColor: "var(--card-alt)",
-                  border: "1px solid var(--border)",
-                }}
+      {soldToShop.length > 0 && (
+        <TableShell
+          label="Sold to shop"
+          note={
+            <>
+              Acquisition cost is the shop&apos;s cost basis, not the cash handed over.{" "}
+              <Link
+                href="/inventory"
+                className="font-medium underline underline-offset-2"
+                style={{ color: "var(--primary)" }}
               >
-                {/* Severity dot */}
-                <div
-                  className="w-2 h-2 rounded-full mt-1.5 shrink-0"
-                  style={{ backgroundColor: alertDotColor(alert.risk) }}
-                />
-                <div>
-                  <p className="text-[13px] font-medium" style={{ color: "var(--foreground)" }}>
-                    {alert.pledgeName}
-                  </p>
-                  <p className="text-[12px] mt-0.5 leading-relaxed" style={{ color: "var(--muted-foreground-subtle)" }}>
-                    {alert.message}
-                  </p>
-                </div>
-              </div>
-            ))}
+                View in Inventory →
+              </Link>
+            </>
+          }
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px] text-left">
+              <thead>
+                <tr style={{ backgroundColor: "var(--card-alt)", borderBottom: "1px solid var(--border)" }}>
+                  <Th>Item</Th>
+                  <Th>Pledged</Th>
+                  <Th>Closed</Th>
+                  <Th align="right">Amount Owed</Th>
+                  <Th align="right">Acquisition Cost</Th>
+                  <Th align="right">Cash Paid</Th>
+                  <Th align="right">Net Position</Th>
+                  <Th>Inventory</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {soldToShop.map((s) => (
+                  <tr key={s.pledgeId} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td className="px-5 py-4 font-medium whitespace-nowrap">
+                      <Link
+                        href={`/customers/${customerId}/pledges/${s.pledgeId}`}
+                        className="hover:underline underline-offset-2"
+                        style={{ color: "var(--foreground)" }}
+                      >
+                        {s.name}
+                      </Link>
+                    </td>
+                    <td className="px-5 py-4 whitespace-nowrap" style={{ color: "var(--muted-foreground)" }}>
+                      {formatDate(s.pledgeDate)}
+                    </td>
+                    <td className="px-5 py-4 whitespace-nowrap" style={{ color: "var(--muted-foreground)" }}>
+                      {s.closedOn ? formatDate(s.closedOn) : "—"}
+                    </td>
+                    <td className="px-5 py-4 tabular-nums text-right" style={{ color: "var(--muted-foreground)" }}>
+                      {s.amountOwedAt !== null ? rupees(s.amountOwedAt) : "—"}
+                    </td>
+                    <td className="px-5 py-4 tabular-nums text-right" style={{ color: "var(--foreground)" }}>
+                      {s.acquiredCost !== null ? rupees(s.acquiredCost) : "—"}
+                    </td>
+                    <td className="px-5 py-4 tabular-nums text-right" style={{ color: "var(--muted-foreground)" }}>
+                      {s.cashToCustomer !== null ? rupees(s.cashToCustomer) : "—"}
+                    </td>
+                    <td
+                      className="px-5 py-4 tabular-nums text-right font-semibold"
+                      style={{
+                        color:
+                          s.netPosition === null
+                            ? "var(--muted-foreground-subtle)"
+                            : s.netPosition < 0
+                            ? "var(--risk-critical-foreground)"
+                            : "var(--foreground)",
+                      }}
+                    >
+                      {s.netPosition !== null ? rupees(s.netPosition) : "—"}
+                    </td>
+                    <td className="px-5 py-4 whitespace-nowrap">
+                      {s.inventoryItemId ? (
+                        <span
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                          style={
+                            s.resold
+                              ? {
+                                  backgroundColor: "var(--status-sold-surface)",
+                                  color: "var(--status-sold-foreground)",
+                                }
+                              : {
+                                  backgroundColor: "var(--status-active-surface)",
+                                  color: "var(--status-active-foreground)",
+                                }
+                          }
+                        >
+                          {s.resold ? "RESOLD" : "IN STOCK"}
+                        </span>
+                      ) : (
+                        <span style={{ color: "var(--muted-foreground-subtle)" }}>—</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </Card>
+        </TableShell>
       )}
 
+      {/* ══════════════════════════════════════════════
+          Repayments received (only when any exist)
+      ══════════════════════════════════════════════ */}
+      {repayments.count > 0 && (
+        <TableShell
+          label="Repayments received"
+          note="Recorded receipts against open pledges. These are a ledger — they do not reduce the amount owed above."
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-[13px] text-left">
+              <thead>
+                <tr style={{ backgroundColor: "var(--card-alt)", borderBottom: "1px solid var(--border)" }}>
+                  <Th>Type</Th>
+                  <Th align="right">Entries</Th>
+                  <Th align="right">Amount</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {repayments.byType.map((r) => (
+                  <tr key={r.type} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td className="px-5 py-4 font-medium" style={{ color: "var(--foreground)" }}>
+                      {TXN_LABEL[r.type] ?? r.type}
+                    </td>
+                    <td className="px-5 py-4 tabular-nums text-right" style={{ color: "var(--muted-foreground)" }}>
+                      {r.count.toLocaleString("en-IN")}
+                    </td>
+                    <td className="px-5 py-4 tabular-nums text-right font-medium" style={{ color: "var(--foreground)" }}>
+                      {rupees(r.amount)}
+                    </td>
+                  </tr>
+                ))}
+                <tr style={{ backgroundColor: "var(--card-alt)" }}>
+                  <td className="px-5 py-3 text-[11px] font-bold tracking-wider uppercase" style={{ color: "var(--muted-foreground-subtle)" }}>
+                    Total
+                  </td>
+                  <td className="px-5 py-3 tabular-nums text-right text-[11px] font-bold" style={{ color: "var(--muted-foreground-subtle)" }}>
+                    {repayments.count.toLocaleString("en-IN")}
+                  </td>
+                  <td className="px-5 py-3 tabular-nums text-right font-bold" style={{ color: "var(--foreground)" }}>
+                    {rupees(repayments.total)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </TableShell>
+      )}
     </div>
   );
 }

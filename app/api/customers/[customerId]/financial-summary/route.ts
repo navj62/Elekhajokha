@@ -20,8 +20,6 @@ type RouteContext = {
 // Do NOT redefine risk thresholds here — they previously diverged from the
 // canonical ≤65 SAFE / ≤75 WATCH / ≤90 AT_RISK / else UNDERWATER tiers.
 
-type RiskTier = ReturnType<typeof getRiskTier>;
-
 // NOTE: simple-interest approximation; understates time-to-underwater
 // for compounding pledges by 5-15% typically. Display-only — the
 // canonical interest engine (calculateHybridInterest) is the source
@@ -40,6 +38,18 @@ function daysToUnderwater(
   if (dailyAccrual <= 0) return null;
 
   return Math.ceil((marketValue - amountOwed) / dailyAccrual);
+}
+
+const DAY_MS = 1000 * 60 * 60 * 24;
+
+// Display label for a pledge, taken from its first item. Used by the open,
+// settled, and sold lists so one pledge reads the same name everywhere.
+function pledgeLabel(
+  items: { itemName: string | null; itemType: string; metalType: string }[]
+): string {
+  const first = items[0];
+  if (!first) return "Pledge";
+  return first.itemName ?? `${first.itemType} (${first.metalType})`;
 }
 
 type TTUStatus = "underwater" | "soon" | "ok" | "unknown" | "released";
@@ -104,32 +114,79 @@ export async function GET(_req: Request, context: RouteContext) {
     if (!customer)
       return NextResponse.json({ error: "Customer not found" }, { status: 404 });
 
-    /* ── Latest metal prices + lifetime interest earned ─────────── */
-    const [goldPrice, silverPrice, lifetimeInterest] = await Promise.all([
-      prisma.metalPrice.findFirst({
-        where: { metal: "GOLD" },
-        orderBy: { createdAt: "desc" },
-        select: { inrPerGram: true },
-      }),
-      prisma.metalPrice.findFirst({
-        where: { metal: "SILVER" },
-        orderBy: { createdAt: "desc" },
-        select: { inrPerGram: true },
-      }),
-      // Sum of interest ever collected from this customer across released
-      // pledges. Ownership-scoped via the customer 404 guard above.
-      prisma.pledgeAudit.aggregate({
-        where: {
-          pledge: { customerId },
-          action: "RELEASED",
-        },
-        _sum: { totalInterest: true },
-        _count: { _all: true },
-      }),
-    ]);
-
-    const lifetimeInterestEarned = Number(lifetimeInterest._sum.totalInterest ?? 0);
-    const lifetimeReleasedPledges = lifetimeInterest._count._all;
+    /* ── Prices, settlement history, sold pledges, repayment ledger ──
+       All four are ownership-scoped through the customer 404 guard above. */
+    const [goldPrice, silverPrice, settlementAudits, soldPledges, repaymentGroups] =
+      await Promise.all([
+        prisma.metalPrice.findFirst({
+          where: { metal: "GOLD" },
+          orderBy: { createdAt: "desc" },
+          select: { inrPerGram: true },
+        }),
+        prisma.metalPrice.findFirst({
+          where: { metal: "SILVER" },
+          orderBy: { createdAt: "desc" },
+          select: { inrPerGram: true },
+        }),
+        // Settled releases. These are finalized financial records snapshotted
+        // at release — never recomputed here. action:"RELEASED" excludes SOLD
+        // audit rows, which are structurally identical but a different event.
+        prisma.pledgeAudit.findMany({
+          where: { pledge: { customerId }, action: "RELEASED" },
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            createdAt: true,
+            releaseDate: true,
+            principal: true,
+            totalInterest: true,
+            receivableAmount: true,
+            ltvAtRelease: true,
+            pledge: {
+              select: {
+                id: true,
+                pledgeDate: true,
+                items: {
+                  select: { itemName: true, itemType: true, metalType: true },
+                  take: 1,
+                },
+              },
+            },
+          },
+        }),
+        // SOLD pledges and the inventory item each became. Deliberately a
+        // SEPARATE query from the risk pipeline below: SOLD pledges must never
+        // reach the customer risk score or the active-exposure aggregates.
+        prisma.pledge.findMany({
+          where: { customerId, status: "SOLD" },
+          orderBy: { pledgeDate: "desc" },
+          select: {
+            id: true,
+            pledgeDate: true,
+            items: {
+              select: { itemName: true, itemType: true, metalType: true },
+              take: 1,
+            },
+            inventoryItem: {
+              select: {
+                id: true,
+                acquiredAt: true,
+                acquiredCost: true,
+                amountOwedAt: true,
+                status: true,
+              },
+            },
+          },
+        }),
+        // Part-payment ledger. NOTE: transactions are a record of receipts and
+        // are NOT applied to interest accrual — never net these against owed.
+        prisma.transaction.groupBy({
+          by: ["type"],
+          where: { pledge: { customerId } },
+          _sum: { amount: true },
+          _count: { _all: true },
+        }),
+      ]);
 
     const goldPerGram = goldPrice ? Number(goldPrice.inrPerGram) : null;
     const silverPerGram = silverPrice ? Number(silverPrice.inrPerGram) : null;
@@ -162,6 +219,13 @@ export async function GET(_req: Request, context: RouteContext) {
 
     /* ── Process each pledge ───────────────────────────────────── */
     const now = new Date();
+
+    // Per-pledge time-to-underwater is no longer a table column — the
+    // dashboard owns time-to-trouble. Only the worst case across open pledges
+    // survives: it feeds the composite risk score and is shown as one line on
+    // the risk card, labelled approximate because this is a simple-interest
+    // estimate that understates compounding pledges.
+    let daysToUnderwaterWorst: number | null = null;
 
     const processed = pledges.map((p) => {
       const loanAmount = Number(p.loanAmount);
@@ -198,14 +262,9 @@ export async function GET(_req: Request, context: RouteContext) {
       const ltv = ltvResult.ltv;
       const risk = ltv !== null ? getRiskTier(ltv) : "SAFE";
 
-      const firstItem = p.items[0];
-      const name =
-        firstItem?.itemName ??
-        (firstItem ? `${firstItem.itemType} (${firstItem.metalType})` : "Pledge");
-
       return {
         id: p.id,
-        name,
+        name: pledgeLabel(p.items),
         pledgeDate: p.pledgeDate.toISOString(),
         status: p.status,
         loanAmount,
@@ -215,14 +274,25 @@ export async function GET(_req: Request, context: RouteContext) {
         risk,
         goldWeight,
         silverWeight,
-        timeToUnderwater: buildTimeToUnderwater(
-          p.status,
-          loanAmount,
-          interestRate,
-          amountOwed,
-          marketValue
-        ),
       };
+    });
+
+    // processed is a 1:1 map of pledges, so index alignment holds. The rate
+    // lives only on the raw row, which is why this reads from both.
+    pledges.forEach((p, i) => {
+      if (p.status !== "ACTIVE" && p.status !== "OVERDUE") return;
+      const row = processed[i];
+      const { days } = buildTimeToUnderwater(
+        p.status,
+        row.loanAmount,
+        Number(p.interestRate),
+        row.amountOwed,
+        row.marketValue
+      );
+      if (days === null) return;
+      if (daysToUnderwaterWorst === null || days < daysToUnderwaterWorst) {
+        daysToUnderwaterWorst = days;
+      }
     });
 
     /* ── Portfolio aggregates ──────────────────────────────────── */
@@ -242,42 +312,104 @@ export async function GET(_req: Request, context: RouteContext) {
     const totalGoldWeight = activePledges.reduce((s, p) => s + p.goldWeight, 0);
     const totalSilverWeight = activePledges.reduce((s, p) => s + p.silverWeight, 0);
 
-    const underwaterPledges = activePledges.filter(
-      (p) => p.risk === "UNDERWATER"
-    ).length;
-
     const overallLTV =
       totalMarketValue > 0
         ? parseFloat(((totalAmountOwed / totalMarketValue) * 100).toFixed(2))
         : null;
 
-    const estimatedCoverage =
-      totalAmountOwed > 0
-        ? parseFloat(
-            (((totalMarketValue * 0.85) / totalAmountOwed) * 100).toFixed(2)
-          )
+    // Drivers behind the composite score, surfaced so the number is readable
+    // rather than opaque. Both are plain maxima over open pledges — the score
+    // itself still comes only from computeCustomerRiskScore.
+    const worstLtv = activePledges.reduce<number | null>(
+      (worst, p) =>
+        p.ltv === null ? worst : worst === null ? p.ltv : Math.max(worst, p.ltv),
+      null
+    );
+
+    const longestDaysHeld = activePledges.reduce<number | null>((max, p) => {
+      const held = Math.floor((now.getTime() - new Date(p.pledgeDate).getTime()) / DAY_MS);
+      return max === null || held > max ? held : max;
+    }, null);
+
+    /* ── Settled releases — realised performance ───────────────────
+       Every figure here is read from the audit row written at release, not
+       recomputed. Interest already collected is the one number that says
+       whether lending to this customer has actually paid. */
+    const settlements = settlementAudits.map((a) => {
+      const principal = Number(a.principal);
+      const interestEarned = Number(a.totalInterest ?? 0);
+      const settledOn = a.releaseDate ?? a.createdAt;
+      const daysHeld = Math.max(
+        0,
+        Math.round((settledOn.getTime() - a.pledge.pledgeDate.getTime()) / DAY_MS)
+      );
+
+      return {
+        id: a.id,
+        pledgeId: a.pledge.id,
+        name: pledgeLabel(a.pledge.items),
+        pledgeDate: a.pledge.pledgeDate.toISOString(),
+        settledOn: settledOn.toISOString(),
+        daysHeld,
+        principal,
+        interestEarned,
+        ltvAtRelease: a.ltvAtRelease !== null ? Number(a.ltvAtRelease) : null,
+        // Interest as a share of principal advanced. Null on a zero principal
+        // so the UI renders "—" rather than a divide-by-zero artefact.
+        returnPct:
+          principal > 0
+            ? parseFloat(((interestEarned / principal) * 100).toFixed(2))
+            : null,
+      };
+    });
+
+    const lifetimeInterestEarned = settlements.reduce((s, r) => s + r.interestEarned, 0);
+    const lifetimeReleasedPledges = settlements.length;
+    const principalSettled = settlements.reduce((s, r) => s + r.principal, 0);
+
+    const realisedReturnPct =
+      principalSettled > 0
+        ? parseFloat(((lifetimeInterestEarned / principalSettled) * 100).toFixed(2))
         : null;
 
-    const riskOrder: Record<string, number> = {
-      UNDERWATER: 0,
-      AT_RISK: 1,
-      WATCH: 2,
-    };
+    const avgDaysHeld =
+      settlements.length > 0
+        ? Math.round(settlements.reduce((s, r) => s + r.daysHeld, 0) / settlements.length)
+        : null;
 
-    const alerts = activePledges
-      .filter((p) => p.risk !== "SAFE")
-      .sort((a, b) => (riskOrder[a.risk] ?? 9) - (riskOrder[b.risk] ?? 9))
-      .map((p) => ({
+    /* ── Sold to shop ──────────────────────────────────────────────
+       Net position and cash paid are derived here for display only and are
+       never stored (Invariant 11). amountOwedAt is the snapshot taken at the
+       sale date — it is read, never recomputed. */
+    const soldToShop = soldPledges.map((p) => {
+      const inv = p.inventoryItem;
+      const acquiredCost = inv ? Number(inv.acquiredCost) : null;
+      const amountOwedAt =
+        inv && inv.amountOwedAt !== null ? Number(inv.amountOwedAt) : null;
+      const bothKnown = acquiredCost !== null && amountOwedAt !== null;
+
+      return {
         pledgeId: p.id,
-        pledgeName: p.name,
-        risk: p.risk,
-        message:
-          p.risk === "UNDERWATER"
-            ? `${p.name} is currently underwater — action required`
-            : p.timeToUnderwater.status === "soon"
-            ? `${p.name} may go underwater in ${p.timeToUnderwater.label}`
-            : `${p.name} is approaching risk threshold (LTV ${p.ltv?.toFixed(1)}%)`,
-      }));
+        inventoryItemId: inv?.id ?? null,
+        name: pledgeLabel(p.items),
+        pledgeDate: p.pledgeDate.toISOString(),
+        closedOn: inv ? inv.acquiredAt.toISOString() : null,
+        amountOwedAt,
+        acquiredCost,
+        netPosition: bothKnown ? acquiredCost - amountOwedAt : null,
+        cashToCustomer: bothKnown ? Math.max(acquiredCost - amountOwedAt, 0) : null,
+        resold: inv?.status === "SOLD",
+      };
+    });
+
+    /* ── Repayment ledger ─────────────────────────────────────────── */
+    const repayments = repaymentGroups.map((g) => ({
+      type: g.type,
+      count: g._count._all,
+      amount: Number(g._sum.amount ?? 0),
+    }));
+    const repaymentTotal = repayments.reduce((s, r) => s + r.amount, 0);
+    const repaymentCount = repayments.reduce((s, r) => s + r.count, 0);
 
     /* ── Composite risk score ──────────────────────────────────── */
     // Composite risk score: weighted sum of LTV, interest velocity,
@@ -308,16 +440,6 @@ export async function GET(_req: Request, context: RouteContext) {
         ? parseFloat(((totalAmountOwed30dAgo / totalMarketValue) * 100).toFixed(2))
         : null;
 
-    let daysToUnderwaterWorst: number | null = null;
-    for (const p of activePledges) {
-      const d = p.timeToUnderwater.days;
-      if (d === null) continue;
-      if (d === 0) { daysToUnderwaterWorst = 0; break; }
-      if (daysToUnderwaterWorst === null || d < daysToUnderwaterWorst) {
-        daysToUnderwaterWorst = d;
-      }
-    }
-
     const largestPledgeMarketValue = activePledges.reduce(
       (max, p) => (p.marketValue !== null ? Math.max(max, p.marketValue) : max),
       0
@@ -343,14 +465,18 @@ export async function GET(_req: Request, context: RouteContext) {
     /* ── Final response ────────────────────────────────────────── */
     return NextResponse.json({
       customer: {
-        id: customer.id,
         name: customer.name,
         region: customer.region,
-        riskScore: riskResult.score,
-        riskTier: riskResult.tier,
-        riskBreakdown: riskResult.breakdown,
-        lifetimeInterestEarned,
         lifetimeReleasedPledges,
+      },
+      // Score and tier come straight from computeCustomerRiskScore; the three
+      // drivers beside them explain it without restating its internal weights.
+      risk: {
+        score: riskResult.score,
+        tier: riskResult.tier,
+        worstLtv,
+        longestDaysHeld,
+        daysToUnderwaterWorst,
       },
       metrics: {
         totalLoanAmount,
@@ -358,14 +484,34 @@ export async function GET(_req: Request, context: RouteContext) {
         totalGoldWeight: parseFloat(totalGoldWeight.toFixed(3)),
         totalSilverWeight: parseFloat(totalSilverWeight.toFixed(3)),
         activePledges: activePledges.length,
-        releasedPledges: releasedPledges.length,
-        underwaterPledges,
         overallLTV,
         totalMarketValue: parseFloat(totalMarketValue.toFixed(2)),
-        estimatedCoverage,
       },
+      // Realised performance across every settled release.
+      realised: {
+        principalSettled: parseFloat(principalSettled.toFixed(2)),
+        interestEarned: parseFloat(lifetimeInterestEarned.toFixed(2)),
+        returnPct: realisedReturnPct,
+        avgDaysHeld,
+      },
+      // How this customer's pledges have ended. `settlementsCovered` is the
+      // number of releases with an audit row behind them; when it trails
+      // `released`, the settlement table is showing less than the full history
+      // and the UI says so rather than implying the gap is zero.
+      disposition: {
+        open: activePledges.length,
+        released: releasedPledges.length,
+        sold: soldPledges.length,
+        settlementsCovered: settlements.length,
+      },
+      repayments: {
+        byType: repayments,
+        total: parseFloat(repaymentTotal.toFixed(2)),
+        count: repaymentCount,
+      },
+      settlements,
+      soldToShop,
       pledges: processed,
-      alerts,
     });
   } catch (err: unknown) {
     console.error("FINANCIAL SUMMARY ERROR:", err);
