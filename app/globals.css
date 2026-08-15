@@ -246,6 +246,20 @@
        bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom))
      Phase 3's sticky form-submit bars depend on this contract. */
   --bottom-nav-h: 56px;
+
+  /* The resolved form of the rule above — one value every bottom-anchored
+     element shares, so nothing has to re-derive the calc and get it wrong.
+     Sticky action bars sit AT this offset; floating toasts sit at this
+     offset plus their own gap. Collapses to 0 at lg:, where the bottom nav
+     does not exist, so `bottom: calc(var(--bottom-anchor) + 1.5rem)` keeps
+     its desktop position without a breakpoint of its own. */
+  --bottom-anchor: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 64rem) {
+  :root {
+    --bottom-anchor: 0px;
+  }
 }
 
 /* ======================================================
@@ -260,6 +274,17 @@
      50  sheet / dialog backdrop
      51  sheet / dialog content
    ====================================================== */
+
+/* The bottom-nav FAB is raised 20px above the bar (z-45), so it overhangs
+   into a sticky action bar anchored at --bottom-anchor and can obscure a
+   button under it. A screen showing a sticky action bar is mid-task, and a
+   global "new pledge" FAB is both a distraction and a physical obstruction
+   there — so the bar's presence retires the FAB for as long as it is
+   mounted. Expressed here rather than as a prop so no consumer can forget,
+   and so BottomNav keeps its single source of truth in navConfig.ts. */
+body:has([data-slot="sticky-actions"]) [data-slot="bottom-nav-fab"] {
+  display: none;
+}
 
 /* --- Dark theme --- */
 .dark {
