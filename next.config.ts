@@ -7,10 +7,13 @@ const nextConfig: NextConfig = {
      `dev.tsx` is a recognised page extension, which it is in development
      and is not in a production build — so such a file is never compiled
      into the route table, never rendered, and never reachable, rather than
-     being shipped and gated at runtime. This matters because the scratch
-     harness lives under /view/*, a prefix proxy.ts treats as PUBLIC: a
-     runtime guard alone would put a dev surface one NODE_ENV mistake away
-     from being served unauthenticated on a deployed app.
+     being shipped and gated at runtime.
+
+     Use it for scratch harnesses that exercise a component in isolation.
+     A runtime NODE_ENV guard is not equivalent: parts of the route tree
+     (`/view/*`) are PUBLIC in proxy.ts, so a guard alone leaves a dev
+     surface one mistake away from being served unauthenticated.
+
      Keep the base list in sync with the extensions the app actually uses. */
   pageExtensions:
     process.env.NODE_ENV === "development"
