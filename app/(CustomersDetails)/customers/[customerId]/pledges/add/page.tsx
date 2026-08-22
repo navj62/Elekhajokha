@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
-  AlertTriangle,
   Calendar,
   Camera,
   MoreVertical,
@@ -517,38 +516,33 @@ export default function AddPledgePage() {
 
                 <div>
                   <div className="flex items-center gap-3 mb-1.5">
-                    <h2 className="text-[24px] font-bold text-[#2C2C2C] leading-none">{customer.name}</h2>
-                    <span className="bg-[#555B3F] text-white text-[9px] font-bold px-2 py-0.5 rounded-[12px] uppercase tracking-wider">
+                    <h2 className="text-[24px] font-bold text-foreground leading-none">{customer.name}</h2>
+                    <span className="bg-primary text-primary-foreground text-[9px] font-bold px-2 py-0.5 rounded-[12px] uppercase tracking-wider">
                       Active
                     </span>
                   </div>
-                  <div className="text-[13px] font-medium text-[#6F6F6F] flex items-center gap-2">
-                    <span>Member since {customer.createdAt ? new Date(customer.createdAt).getFullYear() : "2022"}</span>
-                  </div>
+                  {/* Rendered only when the date is real. The previous fallback
+                      invented "2022" for any customer without a createdAt. */}
+                  {customer.createdAt && (
+                    <div className="text-[13px] font-medium text-muted-foreground-subtle flex items-center gap-2">
+                      <span>Member since {new Date(customer.createdAt).getFullYear()}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
+              {/* Risk Score was a hardcoded 0. The real score comes from
+                  computeCustomerRiskScore, which this endpoint does not return,
+                  and a create screen is not a risk surface — so it is gone
+                  rather than faked. */}
               <div className="flex items-center gap-8 text-center">
                 <div>
-                  <p className="text-[10px] font-bold tracking-wider text-[#9E9E9E] uppercase mb-1">Total Pledges</p>
-                  <p className="text-[24px] font-bold text-[#2C2C2C] leading-none">{customer.totalPledges}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold tracking-wider text-[#9E9E9E] uppercase mb-1">Risk Score</p>
-                  <p className="text-[24px] font-bold text-[#2C2C2C] leading-none">0</p>
+                  <p className="text-[10px] font-bold tracking-wider text-muted-foreground-subtle uppercase mb-1">Total Pledges</p>
+                  <p className="text-[24px] font-bold text-foreground leading-none">{customer.totalPledges}</p>
                 </div>
               </div>
             </div>
           )}
-
-          {/* Warning Banner */}
-          <div className="bg-[#FCEAE9] border border-[#F5C2C7] rounded-[16px] p-4 flex items-start gap-3 mb-8">
-            <AlertTriangle size={20} className="text-[#C94A4A] mt-0.5 shrink-0" />
-            <div>
-              <h4 className="text-[14px] font-bold text-[#C94A4A] mb-0.5">Live prices unavailable</h4>
-              <p className="text-[13px] text-[#A65B5B]">LTV preview hidden. Proceed with manual estimations if necessary.</p>
-            </div>
-          </div>
 
           {/* Main Layout Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8">
