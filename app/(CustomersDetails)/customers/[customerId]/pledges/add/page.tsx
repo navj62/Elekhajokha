@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
+  AlertCircle,
   Camera,
   MoreVertical,
   Plus,
@@ -16,6 +17,7 @@ import {
 
 import SubscriptionGuard from "@/components/SubscriptionGuard";
 import Sheet from "@/components/ui/Sheet";
+import StickyActions from "@/components/ui/StickyActions";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                              */
@@ -123,7 +125,7 @@ function ItemTypeSelect({
         aria-expanded={open}
         aria-describedby={describedBy}
         className={`w-full min-h-11 flex items-center justify-between px-4 py-3 rounded-[12px] border bg-[var(--card-alt)] text-[14px] text-foreground outline-none transition-colors hover:border-primary focus-visible:border-primary ${
-          invalid ? "border-destructive" : "border-border"
+          invalid ? "border-risk-critical" : "border-border"
         }`}
       >
         <span className={value ? "" : "text-muted-foreground-subtle"}>{value || "Select type"}</span>
@@ -141,6 +143,85 @@ function ItemTypeSelect({
       </Sheet>
     </>
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Inline field errors                                                */
+/* ------------------------------------------------------------------ */
+
+/** Error message under a field. `id` is what the input points aria-describedby at. */
+function FieldError({ id, children }: { id: string; children?: string }) {
+  if (!children) return null;
+  return (
+    /* risk-critical, not destructive: --destructive is a fill colour and
+       measures 2.99:1 as text on --card, which fails. The risk-critical
+       foreground is 8.31:1 light / 7.92:1 dark. */
+    <p id={id} role="alert" className="mt-1.5 flex items-start gap-1.5 text-[12px] font-medium text-risk-critical-foreground">
+      <AlertCircle size={13} className="mt-px shrink-0" />
+      {children}
+    </p>
+  );
+}
+
+/** DOM id for a field, so a failed submit can scroll to and focus the first one. */
+const fieldId = (key: string) => `f-${key.replace(/:/g, "-")}`;
+
+/** Input classes, with the invalid state carried by the border as well as the message. */
+const inputCls = (bad?: boolean, extra = "") =>
+  `w-full min-h-11 px-4 py-3 rounded-[12px] border bg-[var(--card-alt)] text-[14px] text-foreground outline-none transition-colors ${
+    bad ? "border-risk-critical focus:border-risk-critical" : "border-border focus:border-primary"
+  }${extra}`;
+
+/**
+ * Client-side mirror of the create route's item validation
+ * (app/api/customers/[customerId]/pledges/route.ts). Kept deliberately in
+ * lockstep with it: the point is that the server round-trip stops happening,
+ * not that the client is lenient. If a rule changes there, change it here.
+ */
+function validateForm(input: {
+  pledgeDate: string;
+  loanAmount: string;
+  interestRate: string;
+  items: Item[];
+}): Record<string, string> {
+  const e: Record<string, string> = {};
+
+  if (!input.pledgeDate) e.pledgeDate = "Pick the date this pledge was taken.";
+
+  const loan = Number(input.loanAmount);
+  if (!input.loanAmount) e.loanAmount = "Enter the loan amount.";
+  else if (!isFinite(loan) || loan <= 0) e.loanAmount = "Loan amount must be greater than 0.";
+
+  const rate = Number(input.interestRate);
+  if (!input.interestRate) e.interestRate = "Enter the interest rate.";
+  else if (!isFinite(rate) || rate <= 0) e.interestRate = "Interest rate must be greater than 0.";
+
+  const LABEL: Record<string, string> = {
+    grossWeight: "Gross weight",
+    netWeight: "Net weight",
+    purity: "Purity",
+  };
+
+  input.items.forEach((item) => {
+    (["grossWeight", "netWeight", "purity"] as const).forEach((f) => {
+      const key = `item:${item.id}:${f}`;
+      const raw = item[f];
+      const v = Number(raw);
+      if (raw === "" || isNaN(v) || !isFinite(v)) e[key] = `${LABEL[f]} is required.`;
+      else if (v <= 0) e[key] = `${LABEL[f]} must be greater than 0.`;
+      else if (f === "purity" && v > 100) e[key] = "Purity cannot exceed 100%.";
+      else if (f !== "purity" && v > 100000) e[key] = `${LABEL[f]} cannot exceed 100000 g.`;
+    });
+
+    // Only meaningful once both weights are individually valid.
+    const g = Number(item.grossWeight);
+    const n = Number(item.netWeight);
+    const key = `item:${item.id}:netWeight`;
+    if (!e[key] && !e[`item:${item.id}:grossWeight`] && n > g)
+      e[key] = "Net weight cannot exceed gross weight.";
+  });
+
+  return e;
 }
 
 /* ------------------------------------------------------------------ */
@@ -200,6 +281,16 @@ export default function AddPledgePage() {
   /* Which item's action sheet is open. One page-level Sheet keyed by id,
      rather than one mounted Sheet per item card. */
   const [menuItemId, setMenuItemId] = useState<string | null>(null);
+
+  /* Inline field errors, keyed by field or `item:<id>:<field>`. */
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  /* Anything the server rejects that the client rules did not catch. Should
+     stay empty in practice — the two rule sets mirror each other. */
+  const [formError, setFormError] = useState<string | null>(null);
+
+  /** Clears one field's error as soon as the owner edits it. */
+  const clearError = (key: string) =>
+    setErrors((prev) => (prev[key] ? { ...prev, [key]: "" } : prev));
 
   /* ---- Fetch Customer Summary ----------------------------------- */
   useEffect(() => {
@@ -302,8 +393,19 @@ export default function AddPledgePage() {
 
   const handleSave = async () => {
     if (!customerId) return;
-    if (!loanAmount || !interestRate || !pledgeDate) {
-      alert("Please fill in Pledge Date, Loan Amount, and Interest Rate.");
+
+    /* Validation lives in validateForm() so this function stays a submit
+       path. On failure, move to the first bad field — on a phone it is
+       usually off-screen, and without this a tap on Save looks like
+       nothing happened. */
+    const found = validateForm({ pledgeDate, loanAmount, interestRate, items });
+    setErrors(found);
+    setFormError(null);
+    const firstKey = Object.keys(found)[0];
+    if (firstKey) {
+      const el = document.getElementById(fieldId(firstKey));
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      (el as HTMLElement | null)?.focus({ preventScroll: true });
       return;
     }
 
@@ -349,8 +451,7 @@ export default function AddPledgePage() {
 
       const data = await res.json();
       if (!res.ok) {
-        const msg = data?.details?.join(", ") || data?.error || "Failed to save pledge.";
-        alert(msg);
+        setFormError(data?.details?.join(" ") || data?.error || "Failed to save pledge.");
         return;
       }
 
@@ -358,7 +459,7 @@ export default function AddPledgePage() {
       setShowSuccessModal(true);
     } catch (err) {
       console.error("PLEDGE SAVE ERROR:", err);
-      alert("Unexpected error saving pledge.");
+      setFormError("Could not save the pledge. Check your connection and try again.");
     } finally {
       setSaving(false);
     }
@@ -377,7 +478,7 @@ export default function AddPledgePage() {
 
   return (
     <SubscriptionGuard featureName="Add Pledge">
-      <div className="font-sans pb-32">
+      <div className="font-sans">
         <div className="max-w-[1200px] mx-auto pt-4">
 
           {/* Header Summary Card */}
@@ -444,50 +545,70 @@ export default function AddPledgePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Pledge Date */}
                   <div>
-                    <label htmlFor="pledgeDate" className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Pledge Date</label>
+                    <label htmlFor={fieldId("pledgeDate")} className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Pledge Date</label>
                     {/* Native picker. Replaced a bespoke calendar that stored
                         every picked date a day early via toISOString, rendered
                         month/year controls with no handlers behind them, and
                         was the app's third date pattern. Native is already
                         what seven other screens use. */}
                     <input
-                      id="pledgeDate"
+                      id={fieldId("pledgeDate")}
                       type="date"
                       value={pledgeDate}
                       min={customerSinceISO}
                       max={todayISO}
-                      onChange={(e) => setPledgeDate(e.target.value)}
-                      className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors"
+                      aria-invalid={!!errors.pledgeDate}
+                      aria-describedby={errors.pledgeDate ? `${fieldId("pledgeDate")}-err` : undefined}
+                      onChange={(e) => {
+                        setPledgeDate(e.target.value);
+                        clearError("pledgeDate");
+                      }}
+                      className={inputCls(!!errors.pledgeDate)}
                     />
+                    <FieldError id={`${fieldId("pledgeDate")}-err`}>{errors.pledgeDate}</FieldError>
                   </div>
 
                   {/* Loan Amount */}
                   <div>
-                    <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Loan Amount (₹)</label>
+                    <label htmlFor={fieldId("loanAmount")} className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Loan Amount (₹)</label>
                     <input
+                      id={fieldId("loanAmount")}
                       type="number"
                       inputMode="numeric"
                       placeholder="e.g. 50000"
                       value={loanAmount}
-                      onChange={(e) => setLoanAmount(e.target.value)}
-                      className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      aria-invalid={!!errors.loanAmount}
+                      aria-describedby={errors.loanAmount ? `${fieldId("loanAmount")}-err` : undefined}
+                      onChange={(e) => {
+                        setLoanAmount(e.target.value);
+                        clearError("loanAmount");
+                      }}
+                      className={inputCls(!!errors.loanAmount, " [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none")}
                     />
+                    <FieldError id={`${fieldId("loanAmount")}-err`}>{errors.loanAmount}</FieldError>
                   </div>
 
                   {/* Interest Rate */}
                   <div>
-                    <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Interest Rate (% p.a.)</label>
+                    <label htmlFor={fieldId("interestRate")} className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Interest Rate (% p.a.)</label>
                     <input
+                      id={fieldId("interestRate")}
                       type="text"
                       inputMode="decimal"
                       placeholder="e.g. 12"
                       value={interestRate}
+                      aria-invalid={!!errors.interestRate}
+                      aria-describedby={errors.interestRate ? `${fieldId("interestRate")}-err` : undefined}
                       onChange={(e) => {
                         const v = decimalOnly(e.target.value);
-                        if (v !== null) setInterestRate(v);
+                        if (v !== null) {
+                          setInterestRate(v);
+                          clearError("interestRate");
+                        }
                       }}
-                      className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors"
+                      className={inputCls(!!errors.interestRate)}
                     />
+                    <FieldError id={`${fieldId("interestRate")}-err`}>{errors.interestRate}</FieldError>
                   </div>
 
                   {/* Compounding Duration */}
@@ -594,46 +715,85 @@ export default function AddPledgePage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Gross Weight (g)</label>
+                      <label htmlFor={fieldId(`item:${item.id}:grossWeight`)} className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Gross Weight (g)</label>
                       <input
+                        id={fieldId(`item:${item.id}:grossWeight`)}
                         type="text"
                         inputMode="decimal"
                         placeholder="e.g. 22.500"
                         value={item.grossWeight}
+                        aria-invalid={!!errors[`item:${item.id}:grossWeight`]}
+                        aria-describedby={
+                          errors[`item:${item.id}:grossWeight`]
+                            ? `${fieldId(`item:${item.id}:grossWeight`)}-err`
+                            : undefined
+                        }
                         onChange={(e) => {
                           const v = decimalOnly(e.target.value);
-                          if (v !== null) updateItem(item.id, "grossWeight", v);
+                          if (v !== null) {
+                            updateItem(item.id, "grossWeight", v);
+                            clearError(`item:${item.id}:grossWeight`);
+                          }
                         }}
-                        className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors"
+                        className={inputCls(!!errors[`item:${item.id}:grossWeight`])}
                       />
+                      <FieldError id={`${fieldId(`item:${item.id}:grossWeight`)}-err`}>
+                        {errors[`item:${item.id}:grossWeight`]}
+                      </FieldError>
                     </div>
                     <div>
-                      <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Net Weight (g)</label>
+                      <label htmlFor={fieldId(`item:${item.id}:netWeight`)} className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Net Weight (g)</label>
                       <input
+                        id={fieldId(`item:${item.id}:netWeight`)}
                         type="text"
                         inputMode="decimal"
                         placeholder="e.g. 20.00"
                         value={item.netWeight}
+                        aria-invalid={!!errors[`item:${item.id}:netWeight`]}
+                        aria-describedby={
+                          errors[`item:${item.id}:netWeight`]
+                            ? `${fieldId(`item:${item.id}:netWeight`)}-err`
+                            : undefined
+                        }
                         onChange={(e) => {
                           const v = decimalOnly(e.target.value);
-                          if (v !== null) updateItem(item.id, "netWeight", v);
+                          if (v !== null) {
+                            updateItem(item.id, "netWeight", v);
+                            clearError(`item:${item.id}:netWeight`);
+                          }
                         }}
-                        className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors"
+                        className={inputCls(!!errors[`item:${item.id}:netWeight`])}
                       />
+                      <FieldError id={`${fieldId(`item:${item.id}:netWeight`)}-err`}>
+                        {errors[`item:${item.id}:netWeight`]}
+                      </FieldError>
                     </div>
                     <div>
-                      <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Purity (%)</label>
+                      <label htmlFor={fieldId(`item:${item.id}:purity`)} className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Purity (%)</label>
                       <input
+                        id={fieldId(`item:${item.id}:purity`)}
                         type="text"
                         inputMode="decimal"
                         placeholder="e.g. 91.6"
                         value={item.purity}
+                        aria-invalid={!!errors[`item:${item.id}:purity`]}
+                        aria-describedby={
+                          errors[`item:${item.id}:purity`]
+                            ? `${fieldId(`item:${item.id}:purity`)}-err`
+                            : undefined
+                        }
                         onChange={(e) => {
                           const v = decimalOnly(e.target.value);
-                          if (v !== null) updateItem(item.id, "purity", v);
+                          if (v !== null) {
+                            updateItem(item.id, "purity", v);
+                            clearError(`item:${item.id}:purity`);
+                          }
                         }}
-                        className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors"
+                        className={inputCls(!!errors[`item:${item.id}:purity`])}
                       />
+                      <FieldError id={`${fieldId(`item:${item.id}:purity`)}-err`}>
+                        {errors[`item:${item.id}:purity`]}
+                      </FieldError>
                     </div>
                   </div>
 
@@ -720,37 +880,52 @@ export default function AddPledgePage() {
           </div>
         </div>
 
-        {/* Sticky Footer Actions */}
-        <div className="fixed bottom-0 left-0 w-full bg-[#FAFAF8]/95 backdrop-blur-sm border-t border-[#E8E6DB] px-8 h-[76px] z-40 flex items-center justify-between shadow-[0_-4px_24px_rgba(0,0,0,0.02)]">
-          {/* Left: Draft Status */}
-          <div className="flex items-center gap-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#555B3F]"></span>
-            <div className="flex flex-col">
-              <span className="text-[13px] font-bold text-[#2C2C2C] leading-tight mb-0.5">Unsaved Changes</span>
-              <span className="text-[11px] font-medium text-[#6F6F6F]">
-                {items.length} Item{items.length !== 1 ? 's' : ''} • Ready to Save
-              </span>
-            </div>
+        {formError && (
+          <div
+            role="alert"
+            className="mt-6 flex items-start gap-2.5 rounded-[16px] border border-risk-critical/40 bg-risk-critical-surface p-4 text-[13px] text-risk-critical-foreground"
+          >
+            <AlertCircle size={18} className="mt-px shrink-0" />
+            <span>{formError}</span>
           </div>
+        )}
 
-          {/* Right: Actions */}
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => router.back()}
-              disabled={saving}
-              className="px-8 py-2.5 rounded-full text-[13px] font-bold bg-[#EAE9DF] text-[#6F6F6F] hover:bg-[#D8D6CD] transition-colors disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center justify-center gap-2 px-8 py-2.5 rounded-full text-[13px] font-bold bg-[#555B3F] text-white hover:bg-[#4B5036] transition-colors disabled:opacity-50 min-w-[170px]"
-            >
-              {saving ? <Loader2 size={16} className="animate-spin" /> : "Save Pledge"}
-            </button>
-          </div>
-        </div>
+        {/* Sticky action bar. Was `fixed bottom-0 z-40`, which the mobile
+            bottom nav (also z-40, rendered later) painted over: at 380px a
+            tap on Save Pledge landed on the nav's More button. StickyActions
+            owns the offset and the z-30 band, and reserves its own space in
+            flow — which is why the wrapper no longer carries pb-32. */}
+        <StickyActions
+          leading={
+            /* Hidden on the narrowest screens: at 380px the actions need
+               the width, and this wrapped to five lines. The item count is
+               already visible in the form itself. */
+            <div className="hidden sm:flex items-center gap-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0"></span>
+              <div className="flex flex-col">
+                <span className="text-[13px] font-bold text-foreground leading-tight mb-0.5">Unsaved Changes</span>
+                <span className="text-[11px] font-medium text-muted-foreground-subtle">
+                  {items.length} Item{items.length !== 1 ? "s" : ""} &bull; Ready to Save
+                </span>
+              </div>
+            </div>
+          }
+        >
+          <button
+            onClick={() => router.back()}
+            disabled={saving}
+            className="min-h-11 px-6 rounded-full text-[13px] font-bold bg-secondary text-secondary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex min-h-11 items-center justify-center gap-2 px-6 rounded-full text-[13px] font-bold bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 min-w-[150px]"
+          >
+            {saving ? <Loader2 size={16} className="animate-spin" /> : "Save Pledge"}
+          </button>
+        </StickyActions>
 
       </div>
 
@@ -782,7 +957,7 @@ export default function AddPledgePage() {
                 /* Disabled with the reason shown, rather than a row that
                    silently does nothing on the last remaining item. */
                 trailing={onlyItem ? "Only item" : undefined}
-                className="text-destructive"
+                className="text-risk-critical-foreground"
                 onClick={() => {
                   if (target) handleRemoveItem(target.id);
                   setMenuItemId(null);
@@ -793,34 +968,34 @@ export default function AddPledgePage() {
         );
       })()}
 
-      {/* Success Modal */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[24px] p-8 w-full max-w-[400px] text-center shadow-xl">
-            <div className="w-14 h-14 bg-[#FAFAF8] border border-[#ECEAE4] rounded-full flex items-center justify-center mx-auto mb-5">
-              <Check className="text-[#555B3F]" size={24} strokeWidth={2.5} />
-            </div>
-            <h3 className="text-[20px] font-bold text-[#2C2C2C] mb-2">Pledge added successfully</h3>
-            <p className="text-[14px] text-[#6F6F6F] mb-8">
-              The new pledge has been created and synced with your workspace.
-            </p>
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => router.push(`/customers/${customerId}/pledges/${newPledgeId}`)}
-                className="w-full py-3 rounded-[12px] bg-[#555B3F] text-white text-[14px] font-bold hover:bg-[#4B5036] transition-colors"
-              >
-                Go to pledge detail
-              </button>
-              <button
-                onClick={resetForm}
-                className="w-full py-3 rounded-[12px] bg-white border border-[#555B3F] text-[#555B3F] text-[14px] font-bold hover:bg-[#FAFAF8] transition-colors"
-              >
-                Add another pledge
-              </button>
-            </div>
+      {/* Success — Sheet, not a hand-rolled fixed inset-0 dialog. */}
+      <Sheet
+        open={showSuccessModal}
+        onOpenChange={(o) => !o && setShowSuccessModal(false)}
+        title="Pledge added"
+        description="The pledge has been saved against this customer."
+        size="sm"
+      >
+        <div className="flex flex-col items-center gap-4 py-2 text-center">
+          <div className="flex size-14 items-center justify-center rounded-full bg-[var(--card-alt)] border border-border">
+            <Check className="text-primary" size={24} strokeWidth={2.5} />
+          </div>
+          <div className="flex w-full flex-col gap-3">
+            <button
+              onClick={() => router.push(`/customers/${customerId}/pledges/${newPledgeId}`)}
+              className="w-full min-h-11 rounded-[12px] bg-primary text-primary-foreground text-[14px] font-bold hover:opacity-90 transition-opacity"
+            >
+              Go to pledge detail
+            </button>
+            <button
+              onClick={resetForm}
+              className="w-full min-h-11 rounded-[12px] bg-card border border-primary text-primary text-[14px] font-bold hover:bg-accent transition-colors"
+            >
+              Add another pledge
+            </button>
           </div>
         </div>
-      )}
+      </Sheet>
 
     </SubscriptionGuard>
   );
