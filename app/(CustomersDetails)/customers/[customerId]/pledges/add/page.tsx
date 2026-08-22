@@ -3,19 +3,19 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import {
-  Calendar,
   Camera,
   MoreVertical,
   Plus,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
+  Copy,
   Loader2,
   Check,
+  Trash2,
   X,
 } from "lucide-react";
 
 import SubscriptionGuard from "@/components/SubscriptionGuard";
+import Sheet from "@/components/ui/Sheet";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                              */
@@ -41,6 +41,31 @@ type Item = {
 };
 
 /* ------------------------------------------------------------------ */
+/* Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A calendar date as YYYY-MM-DD in the LOCAL zone.
+ *
+ * Never use `toISOString().split("T")[0]` for this. That converts to UTC, so
+ * east of Greenwich a local midnight lands on the previous day — in IST it
+ * shifted every picked pledge date back by one, which feeds
+ * calculateHybridInterest and can move an amount owed across a duration
+ * boundary. `<input type="date">` emits this format directly.
+ */
+const toLocalISODate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/**
+ * Guards a decimal text field. These inputs are `type="text"` so a scroll
+ * wheel cannot silently mutate a weight read off a physical scale, which
+ * means they must reject non-numeric keystrokes themselves. Returns null for
+ * input that should not be accepted at all.
+ */
+const decimalOnly = (v: string): string | null =>
+  v === "" || /^\d*\.?\d*$/.test(v) ? v : null;
+
+/* ------------------------------------------------------------------ */
 /* Item Type Select (grouped, API-driven)                             */
 /* ------------------------------------------------------------------ */
 
@@ -50,224 +75,71 @@ function ItemTypeSelect({
   value,
   onChange,
   groups,
+  invalid,
+  describedBy,
 }: {
   value: string;
   onChange: (v: string) => void;
   groups: ItemTypeGroup;
+  invalid?: boolean;
+  describedBy?: string;
 }) {
   const [open, setOpen] = useState(false);
 
-  const renderGroup = (label: string, items: string[]) => (
+  const renderGroup = (label: string, items: string[]) =>
     items.length > 0 ? (
       <div key={label}>
-        <div className="px-4 py-1.5 text-[11px] font-semibold text-[#8C8F7A] uppercase tracking-wider bg-[#F0EFE9]">
+        <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground-subtle">
           {label}
         </div>
-        {items.map((opt) => (
-          <button
-            key={opt}
-            type="button"
-            onClick={() => { onChange(opt); setOpen(false); }}
-            className={`w-full text-left px-4 py-2.5 text-[14px] transition-colors ${opt === value
-                ? "bg-[#555B3F] text-white font-bold"
-                : "text-[#2C2C2C] font-medium hover:bg-[#ECEAE4]"
-              }`}
-          >
-            {opt}
-          </button>
-        ))}
+        <Sheet.List>
+          {items.map((opt) => (
+            <Sheet.Item
+              key={opt}
+              label={opt}
+              aria-pressed={opt === value}
+              trailing={opt === value ? <Check size={16} /> : undefined}
+              className={opt === value ? "bg-accent font-bold" : undefined}
+              onClick={() => {
+                onChange(opt);
+                setOpen(false);
+              }}
+            />
+          ))}
+        </Sheet.List>
       </div>
-    ) : null
-  );
+    ) : null;
 
   return (
-    <div className="relative">
+    <>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-4 py-3 rounded-[12px] border border-[#ECEAE4] bg-[#FAFAF8] text-[14px] text-[#2C2C2C] outline-none hover:border-[#555B3F] focus:border-[#555B3F] transition-colors"
+        onClick={() => setOpen(true)}
+        /* A button that opens a dialog — not a combobox: the listbox lives in
+           a portal that exists only while open, so aria-controls could never
+           point at anything. The invalid state reaches assistive tech through
+           the error text referenced by aria-describedby. */
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-describedby={describedBy}
+        className={`w-full min-h-11 flex items-center justify-between px-4 py-3 rounded-[12px] border bg-[var(--card-alt)] text-[14px] text-foreground outline-none transition-colors hover:border-primary focus-visible:border-primary ${
+          invalid ? "border-destructive" : "border-border"
+        }`}
       >
-        <span>{value || "Select type"}</span>
-        <ChevronDown
-          size={16}
-          className={`text-[#9E9E9E] transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-        />
+        <span className={value ? "" : "text-muted-foreground-subtle"}>{value || "Select type"}</span>
+        <ChevronDown size={16} className="text-muted-foreground-subtle shrink-0" />
       </button>
 
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full mt-1.5 z-50 w-full bg-[#F5F4EF] border border-[#ECEAE4] rounded-[16px] shadow-[0_8px_32px_rgba(0,0,0,0.08)] overflow-hidden py-1">
-            {renderGroup("Standard Types", groups.defaults)}
-            {renderGroup("Custom Types", groups.custom)}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Calendar Helpers                                                   */
-/* ------------------------------------------------------------------ */
-
-function getCalendarDays(year: number, month: number) {
-  const firstDayOfMonth = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const daysInPrevMonth = new Date(year, month, 0).getDate();
-
-  const startDayIndex = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
-
-  const days = [];
-  for (let i = startDayIndex - 1; i >= 0; i--) {
-    days.push({ day: daysInPrevMonth - i, isCurrentMonth: false, isPrevMonth: true });
-  }
-  for (let i = 1; i <= daysInMonth; i++) {
-    days.push({ day: i, isCurrentMonth: true });
-  }
-  const remaining = 42 - days.length;
-  for (let i = 1; i <= remaining; i++) {
-    days.push({ day: i, isCurrentMonth: false, isPrevMonth: false });
-  }
-
-  // Truncate to 35 if last row is empty
-  if (days.length === 42 && !days[35].isCurrentMonth) {
-    return days.slice(0, 35);
-  }
-  return days;
-}
-
-function CustomDatePicker({ value, onChange }: { value: string; onChange: (val: string) => void }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentView, setCurrentView] = useState(() => {
-    if (value) {
-      const d = new Date(value);
-      if (!isNaN(d.getTime())) return new Date(d.getFullYear(), d.getMonth(), 1);
-    }
-    const today = new Date();
-    return new Date(today.getFullYear(), today.getMonth(), 1);
-  });
-
-  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-
-  const handleSelect = (day: number, isCurrentMonth: boolean, isPrevMonth?: boolean) => {
-    let year = currentView.getFullYear();
-    let month = currentView.getMonth();
-    if (!isCurrentMonth) {
-      if (isPrevMonth) {
-        month -= 1;
-        if (month < 0) { month = 11; year -= 1; }
-      } else {
-        month += 1;
-        if (month > 11) { month = 0; year += 1; }
-      }
-    }
-    const newDate = new Date(year, month, day);
-    onChange(newDate.toISOString().split("T")[0]);
-    setIsOpen(false);
-  };
-
-  let displayValue = "";
-  if (value) {
-    const d = new Date(value);
-    if (!isNaN(d.getTime())) {
-      const dd = String(d.getDate()).padStart(2, '0');
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      displayValue = `${dd}-${mm}-${d.getFullYear()}`;
-    }
-  }
-
-  return (
-    <div className="relative">
-      <div
-        className="w-full pl-11 pr-4 py-3 rounded-[12px] border border-[#ECEAE4] bg-[#FAFAF8] text-[14px] text-[#2C2C2C] outline-none cursor-pointer hover:border-[#555B3F] transition-colors flex items-center"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        <div className="absolute left-4 text-[#9E9E9E]">
-          <Calendar size={16} />
-        </div>
-        {displayValue || "DD-MM-YYYY"}
-      </div>
-
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute top-full left-0 mt-2 z-50 bg-[#F5F4EF] rounded-[24px] p-5 shadow-[0_10px_40px_rgba(0,0,0,0.08)] border border-[#ECEAE4] w-[340px]">
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-              <button
-                onClick={(e) => { e.stopPropagation(); setCurrentView(new Date(currentView.getFullYear(), currentView.getMonth() - 1, 1)); }}
-                className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm hover:bg-[#FAFAF8] transition-colors text-[#2C2C2C]"
-              >
-                <ChevronLeft size={20} strokeWidth={3} />
-              </button>
-
-              <div className="flex gap-2">
-                <button className="bg-white px-4 py-2 rounded-[8px] font-bold text-[#2C2C2C] shadow-sm flex items-center gap-1.5 text-[15px] hover:bg-[#FAFAF8] transition-colors">
-                  {monthNames[currentView.getMonth()]}
-                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" className="mt-1">
-                    <path d="M0 8H8V0L0 8Z" fill="#555B3F" />
-                  </svg>
-                </button>
-                <button className="bg-white px-4 py-2 rounded-[8px] font-bold text-[#2C2C2C] shadow-sm flex items-center gap-1.5 text-[15px] hover:bg-[#FAFAF8] transition-colors">
-                  {currentView.getFullYear()}
-                  <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" className="mt-1">
-                    <path d="M0 8H8V0L0 8Z" fill="#555B3F" />
-                  </svg>
-                </button>
-              </div>
-
-              <button
-                onClick={(e) => { e.stopPropagation(); setCurrentView(new Date(currentView.getFullYear(), currentView.getMonth() + 1, 1)); }}
-                className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm hover:bg-[#FAFAF8] transition-colors text-[#2C2C2C]"
-              >
-                <ChevronRight size={20} strokeWidth={3} />
-              </button>
-            </div>
-
-            {/* Days Header */}
-            <div className="grid grid-cols-7 gap-2 mb-4">
-              {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map(d => (
-                <div key={d} className="text-center text-[13px] font-bold text-[#2C2C2C]">
-                  {d}
-                </div>
-              ))}
-            </div>
-
-            {/* Calendar Grid */}
-            <div className="grid grid-cols-7 gap-2">
-              {getCalendarDays(currentView.getFullYear(), currentView.getMonth()).map((item, idx) => {
-                let isSelected = false;
-                if (value && item.isCurrentMonth) {
-                  const d = new Date(value);
-                  if (d.getDate() === item.day && d.getMonth() === currentView.getMonth() && d.getFullYear() === currentView.getFullYear()) {
-                    isSelected = true;
-                  }
-                }
-
-                // Keep the exact styling matching the mockup (e.g. day 15 / 0 layout)
-                const displayText = item.day === 16 && item.isCurrentMonth ? "0" : item.day;
-
-                return (
-                  <button
-                    key={idx}
-                    onClick={(e) => { e.stopPropagation(); handleSelect(item.day, item.isCurrentMonth, item.isPrevMonth); }}
-                    className={`aspect-square rounded-[8px] flex items-center justify-center text-[14px] font-bold transition-all ${isSelected
-                      ? "bg-[#5D6345] text-white shadow-sm"
-                      : item.isCurrentMonth
-                        ? "bg-white text-[#2C2C2C] hover:bg-[#FAFAF8] shadow-sm border border-[#F4F3EE]"
-                        : "text-[#B8BDC6] bg-transparent hover:text-[#9E9E9E]"
-                      }`}
-                  >
-                    {displayText}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
+      {/* Sheet, not a popover: the old menu paired an absolutely-positioned
+          panel with a `fixed inset-0 z-40` click-catcher, which sat above a
+          z-30 action bar. Sheet is the one modal primitive and is responsive
+          in CSS (bottom sheet < lg, centred dialog at lg+), so there is no
+          media query and no hydration mismatch. */}
+      <Sheet open={open} onOpenChange={setOpen} title="Item type" size="sm">
+        {renderGroup("Standard types", groups.defaults)}
+        {renderGroup("Custom types", groups.custom)}
+      </Sheet>
+    </>
   );
 }
 
@@ -325,6 +197,10 @@ export default function AddPledgePage() {
 
   const [itemTypeGroups, setItemTypeGroups] = useState<ItemTypeGroup>({ defaults: [], custom: [] });
 
+  /* Which item's action sheet is open. One page-level Sheet keyed by id,
+     rather than one mounted Sheet per item card. */
+  const [menuItemId, setMenuItemId] = useState<string | null>(null);
+
   /* ---- Fetch Customer Summary ----------------------------------- */
   useEffect(() => {
     if (!customerId) return;
@@ -351,9 +227,8 @@ export default function AddPledgePage() {
     };
     load();
 
-    // Default date to today
-    const today = new Date().toISOString().split("T")[0];
-    setPledgeDate(today);
+    // Default date to today, in the shop's zone rather than UTC.
+    setPledgeDate(toLocalISODate(new Date()));
 
     // Fetch item types
     fetch("/api/item-types")
@@ -489,6 +364,15 @@ export default function AddPledgePage() {
     }
   };
 
+  /* Bounds for the pledge date. A pledge cannot be taken in the future, and
+     cannot predate the customer record it hangs off. NOTE: these are a UI
+     affordance only — the create route validates presence and nothing else,
+     so neither bound is enforced server-side. */
+  const todayISO = toLocalISODate(new Date());
+  const customerSinceISO = customer?.createdAt
+    ? toLocalISODate(new Date(customer.createdAt))
+    : undefined;
+
   /* ================================================================ */
 
   return (
@@ -560,8 +444,21 @@ export default function AddPledgePage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Pledge Date */}
                   <div>
-                    <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Pledge Date</label>
-                    <CustomDatePicker value={pledgeDate} onChange={setPledgeDate} />
+                    <label htmlFor="pledgeDate" className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Pledge Date</label>
+                    {/* Native picker. Replaced a bespoke calendar that stored
+                        every picked date a day early via toISOString, rendered
+                        month/year controls with no handlers behind them, and
+                        was the app's third date pattern. Native is already
+                        what seven other screens use. */}
+                    <input
+                      id="pledgeDate"
+                      type="date"
+                      value={pledgeDate}
+                      min={customerSinceISO}
+                      max={todayISO}
+                      onChange={(e) => setPledgeDate(e.target.value)}
+                      className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors"
+                    />
                   </div>
 
                   {/* Loan Amount */}
@@ -569,10 +466,11 @@ export default function AddPledgePage() {
                     <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Loan Amount (₹)</label>
                     <input
                       type="number"
+                      inputMode="numeric"
                       placeholder="e.g. 50000"
                       value={loanAmount}
                       onChange={(e) => setLoanAmount(e.target.value)}
-                      className="w-full px-4 py-3 rounded-[12px] border border-[#ECEAE4] bg-[#FAFAF8] text-[14px] text-[#2C2C2C] outline-none focus:border-[#555B3F] transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
                   </div>
 
@@ -580,11 +478,15 @@ export default function AddPledgePage() {
                   <div>
                     <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Interest Rate (% p.a.)</label>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       placeholder="e.g. 12"
                       value={interestRate}
-                      onChange={(e) => setInterestRate(e.target.value)}
-                      className="w-full px-4 py-3 rounded-[12px] border border-[#ECEAE4] bg-[#FAFAF8] text-[14px] text-[#2C2C2C] outline-none focus:border-[#555B3F] transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      onChange={(e) => {
+                        const v = decimalOnly(e.target.value);
+                        if (v !== null) setInterestRate(v);
+                      }}
+                      className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors"
                     />
                   </div>
 
@@ -596,7 +498,7 @@ export default function AddPledgePage() {
                         <button
                           key={opt}
                           onClick={() => setCompounding(opt)}
-                          className={`flex-1 py-2 text-[13px] font-bold rounded-[8px] transition-all ${compounding === opt
+                          className={`flex-1 min-h-11 py-3 text-[13px] font-bold rounded-[8px] transition-all ${compounding === opt
                             ? "bg-[#555B3F] shadow-sm text-[#F8FAD7] border border-[#E0DED6]"
                             : "text-[#6F6F6F] hover:text-[#2C2C2C] border border-transparent"
                             }`}
@@ -619,27 +521,20 @@ export default function AddPledgePage() {
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="text-[18px] font-bold text-[#2C2C2C]">Item {index + 1}</h3>
 
-                    {/* 3-Dot Menu */}
-                    <div className="relative group">
-                      <button className="p-2 text-[#9E9E9E] hover:text-[#2C2C2C] rounded-full hover:bg-[#FAFAF8] transition-colors">
-                        <MoreVertical size={18} />
-                      </button>
-                      <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-[#ECEAE4] rounded-[12px] shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 py-1">
-                        <button
-                          onClick={() => handleDuplicateItem(item)}
-                          className="w-full text-left px-4 py-2 text-[13px] font-medium text-[#2C2C2C] hover:bg-[#FAFAF8]"
-                        >
-                          Duplicate Item
-                        </button>
-                        <button
-                          onClick={() => handleRemoveItem(item.id)}
-                          disabled={items.length === 1}
-                          className="w-full text-left px-4 py-2 text-[13px] font-medium text-[#C94A4A] hover:bg-[#FCEAE9] disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Delete Item
-                        </button>
-                      </div>
-                    </div>
+                    {/* Opens a Sheet. This was a hover-revealed menu
+                        (`opacity-0 invisible group-hover:visible`), which on
+                        touch left Duplicate and Delete with no reachable path
+                        at all — an item entered by mistake could not be
+                        removed on a phone. */}
+                    <button
+                      type="button"
+                      onClick={() => setMenuItemId(item.id)}
+                      aria-haspopup="dialog"
+                      aria-label={`Actions for item ${index + 1}`}
+                      className="inline-flex size-11 shrink-0 items-center justify-center rounded-full text-muted-foreground-subtle transition-colors hover:bg-[var(--card-alt)] hover:text-foreground"
+                    >
+                      <MoreVertical size={18} />
+                    </button>
                   </div>
 
                   {/* Metal Type Segmented Control */}
@@ -650,7 +545,7 @@ export default function AddPledgePage() {
                         <button
                           key={metal}
                           onClick={() => updateItem(item.id, "metalType", metal)}
-                          className={`flex-1 py-2.5 text-[13px] font-bold rounded-full transition-all ${item.metalType === metal
+                          className={`flex-1 min-h-11 py-3 text-[13px] font-bold rounded-full transition-all ${item.metalType === metal
                             ? "bg-[#555B3F] text-white shadow-sm"
                             : "text-[#6F6F6F] hover:text-[#2C2C2C]"
                             }`}
@@ -691,40 +586,53 @@ export default function AddPledgePage() {
                       <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Quantity (pcs)</label>
                       <input
                         type="number"
+                        inputMode="numeric"
                         placeholder="1"
                         value={item.quantity}
                         onChange={(e) => updateItem(item.id, "quantity", e.target.value)}
-                        className="w-full px-4 py-3 rounded-[12px] border border-[#ECEAE4] bg-[#FAFAF8] text-[14px] text-[#2C2C2C] outline-none focus:border-[#555B3F] transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
                     <div>
                       <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Gross Weight (g)</label>
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         placeholder="e.g. 22.500"
                         value={item.grossWeight}
-                        onChange={(e) => updateItem(item.id, "grossWeight", e.target.value)}
-                        className="w-full px-4 py-3 rounded-[12px] border border-[#ECEAE4] bg-[#FAFAF8] text-[14px] text-[#2C2C2C] outline-none focus:border-[#555B3F] transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        onChange={(e) => {
+                          const v = decimalOnly(e.target.value);
+                          if (v !== null) updateItem(item.id, "grossWeight", v);
+                        }}
+                        className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors"
                       />
                     </div>
                     <div>
                       <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Net Weight (g)</label>
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         placeholder="e.g. 20.00"
                         value={item.netWeight}
-                        onChange={(e) => updateItem(item.id, "netWeight", e.target.value)}
-                        className="w-full px-4 py-3 rounded-[12px] border border-[#ECEAE4] bg-[#FAFAF8] text-[14px] text-[#2C2C2C] outline-none focus:border-[#555B3F] transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        onChange={(e) => {
+                          const v = decimalOnly(e.target.value);
+                          if (v !== null) updateItem(item.id, "netWeight", v);
+                        }}
+                        className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors"
                       />
                     </div>
                     <div>
                       <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Purity (%)</label>
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         placeholder="e.g. 91.6"
                         value={item.purity}
-                        onChange={(e) => updateItem(item.id, "purity", e.target.value)}
-                        className="w-full px-4 py-3 rounded-[12px] border border-[#ECEAE4] bg-[#FAFAF8] text-[14px] text-[#2C2C2C] outline-none focus:border-[#555B3F] transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        onChange={(e) => {
+                          const v = decimalOnly(e.target.value);
+                          if (v !== null) updateItem(item.id, "purity", v);
+                        }}
+                        className="w-full min-h-11 px-4 py-3 rounded-[12px] border border-border bg-[var(--card-alt)] text-[14px] text-foreground outline-none focus:border-primary transition-colors"
                       />
                     </div>
                   </div>
@@ -767,7 +675,10 @@ export default function AddPledgePage() {
                       <button
                         type="button"
                         onClick={clearPledgePhoto}
-                        className="absolute top-2 right-2 z-20 p-1.5 bg-black/50 hover:bg-black/70 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                        aria-label="Remove photo"
+                        /* Always visible: this was opacity-0 until hover, so
+                           on touch there was no way to clear a wrong photo. */
+                        className="absolute top-1 right-1 z-20 inline-flex size-11 items-center justify-center bg-black/55 hover:bg-black/75 text-white rounded-full transition-colors cursor-pointer"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -842,6 +753,45 @@ export default function AddPledgePage() {
         </div>
 
       </div>
+
+      {/* Item actions — one Sheet for the whole list, keyed by item id. */}
+      {(() => {
+        const target = items.find((i) => i.id === menuItemId) ?? null;
+        const onlyItem = items.length === 1;
+        return (
+          <Sheet
+            open={menuItemId !== null}
+            onOpenChange={(o) => !o && setMenuItemId(null)}
+            title={target ? `Item ${items.indexOf(target) + 1}` : "Item"}
+            description={target?.itemType || undefined}
+            size="sm"
+          >
+            <Sheet.List>
+              <Sheet.Item
+                icon={<Copy size={16} />}
+                label="Duplicate item"
+                onClick={() => {
+                  if (target) handleDuplicateItem(target);
+                  setMenuItemId(null);
+                }}
+              />
+              <Sheet.Item
+                icon={<Trash2 size={16} />}
+                label="Delete item"
+                disabled={onlyItem}
+                /* Disabled with the reason shown, rather than a row that
+                   silently does nothing on the last remaining item. */
+                trailing={onlyItem ? "Only item" : undefined}
+                className="text-destructive"
+                onClick={() => {
+                  if (target) handleRemoveItem(target.id);
+                  setMenuItemId(null);
+                }}
+              />
+            </Sheet.List>
+          </Sheet>
+        );
+      })()}
 
       {/* Success Modal */}
       {showSuccessModal && (
