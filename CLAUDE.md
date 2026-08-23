@@ -375,9 +375,27 @@ Deliberately tracked so reviews focus on real bugs rather than re-discovering th
 Full recon and running notes live in [MOBILE_AUDIT.md](MOBILE_AUDIT.md) — check its STATUS block before picking up this work.
 
 ### Current status
-- **Foundation complete**: token consolidation, nav shell, Sheet primitive (commits `8218e29`, `5296fb0`).
-- **Screen-by-screen redesign not yet started.**
-- **Known open issue:** the mobile view has been reported as "looks way off" — unresolved. Diagnose with screenshots (see Verification methodology below) before starting screen work.
+- **Phase 1 foundation complete**: token consolidation, nav shell, Sheet primitive (`8218e29`, `5296fb0`).
+- **Phase 2 in progress — page 1 of 6 done.**
+
+### Phase 2 handoff (picking this up cold)
+
+**Shared primitives — build on these, don't hand-roll.**
+- `components/ui/StickyActions.tsx` — bottom action bar. Wrap the buttons; it owns z-30, the offset above the bottom nav, and its own in-flow spacer (so the page needs no `pb-*`). Suppresses the FAB while mounted.
+- `components/ui/DataTable.tsx` — real `<table>` at `lg:`, card-per-row below. Columns declare a card role (`identity` / `primary` / `trailing` / `body` / `hidden`); pass `tableOrder` to keep a page's existing desktop column order. Also exports `StatusBadge` bound to `--status-*` / `--risk-*`. **Do not convert `/reports/pledges` or `/reports/customers`** — print-shaped, keep a scrolling table with an explicit `min-w-`.
+
+**Page 1 `/customers/[id]/pledges/add` — COMPLETE.**
+`c2d99a2` removed three fabricated header values (permanently-on price banner, hardcoded Risk Score 0, "Member since 2022"). `2d444f4` made it reachable on touch: item actions moved from a hover-only menu to a Sheet, `CustomDatePicker` + `getCalendarDays` deleted (158 lines) for a native date input, all targets >= 44px, weights moved to `type="text" inputMode="decimal"`. `0c3db42` added StickyActions, inline validation via a separate `validateForm()`, and killed all three `alert()` calls. `046cb73` tokenised the surfaces (82 hex -> 2).
+
+**Page queue, in priority order:** `/customers/[id]` (next) → `/customers/[id]/pledges/[pid]/release` → `/dashboard` → `/customers` → `/view/[token]`.
+
+**Per-page pattern:** `/impeccable adapt` with a page-specific recon first → build → verify at 380px in **both** themes → `/impeccable harden`.
+
+**Open backlog** (also in Known gaps above): server-side `pledgeDate` validation; remaining hex debt per page; deferred empty states (zero-pledge, no-metal-price, no-snapshot).
+
+**Will conflict on merge to main — all resolve as "take the branch":** the photo `FormData` fix, the `day === 16` calendar line, and the `handleSelect` timezone fix were hotfixed separately on main. The first lands in `handleSave` (branch keeps its own call-site change); the other two land inside `CustomDatePicker`, which this branch deletes outright.
+
+**Measuring gotcha:** a change to a token in `globals.css` needs `rm -rf .next` and a dev-server restart before any measurement of it is meaningful — Turbopack will otherwise serve the old value and the check silently passes against stale CSS.
 
 ### Architectural decisions locked in
 These were deliberately decided during Phase 1. Future sessions must respect them — don't rediscover or silently overturn; if one seems wrong, ask before changing it.
