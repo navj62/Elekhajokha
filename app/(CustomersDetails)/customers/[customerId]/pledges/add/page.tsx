@@ -443,6 +443,13 @@ export default function AddPledgePage() {
       formData.append("compoundingDuration", compoundingMap[compounding] || "MONTHLY");
       formData.append("items", JSON.stringify(apiItems));
       if (remarks) formData.append("remark", remarks);
+      /* The photo was picked, previewed and then dropped: this FormData is
+         built by hand, so the file input's own name never applied and the
+         file was never sent. Every pledge saved from this screen had a null
+         itemPhoto. "itemPhoto" is the key the create route reads and the
+         column it writes. */
+      const photoFile = pledgePhotoInputRef.current?.files?.[0];
+      if (photoFile) formData.append("itemPhoto", photoFile);
 
       const res = await fetch(`/api/customers/${customerId}/pledges`, {
         method: "POST",
@@ -848,7 +855,7 @@ export default function AddPledgePage() {
                   )}
                   <input
                     type="file"
-                    name="pledgePhoto"
+                    name="itemPhoto"
                     accept="image/*"
                     ref={pledgePhotoInputRef}
                     onChange={handlePledgePhotoChange}
