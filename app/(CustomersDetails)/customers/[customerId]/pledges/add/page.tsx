@@ -18,6 +18,7 @@ import {
 import SubscriptionGuard from "@/components/SubscriptionGuard";
 import Sheet from "@/components/ui/Sheet";
 import StickyActions from "@/components/ui/StickyActions";
+import { PLEDGE_FORM_REQUIRED_KEYS } from "@/lib/pledgeFormKeys";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                              */
@@ -450,6 +451,16 @@ export default function AddPledgePage() {
          column it writes. */
       const photoFile = pledgePhotoInputRef.current?.files?.[0];
       if (photoFile) formData.append("itemPhoto", photoFile);
+
+      // Drift guard: catches a future append that gets dropped (the exact
+      // class of bug that lost every pledge photo) before it reaches the
+      // network. See PLEDGE_FORM_REQUIRED_KEYS for the contract with the route.
+      if (process.env.NODE_ENV !== "production") {
+        const missing = PLEDGE_FORM_REQUIRED_KEYS.filter((key) => !formData.has(key));
+        if (missing.length) {
+          throw new Error(`[pledge-add] FormData missing required key(s): ${missing.join(", ")}`);
+        }
+      }
 
       const res = await fetch(`/api/customers/${customerId}/pledges`, {
         method: "POST",

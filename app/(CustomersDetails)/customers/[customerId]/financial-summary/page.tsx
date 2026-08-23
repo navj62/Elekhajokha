@@ -313,7 +313,7 @@ function Skeleton() {
   return (
     <div className="max-w-[1200px] mx-auto pb-16 mt-4 space-y-4">
       <div className="h-12 rounded-[18px] animate-pulse" style={pulse} />
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         {Array.from({ length: 3 }).map((_, i) => (
           <div key={i} className="h-72 rounded-[18px] animate-pulse" style={pulse} />
         ))}
@@ -440,8 +440,13 @@ export default function FinancialSummaryPage() {
 
       {/* ══════════════════════════════════════════════
           The three summary cards
+
+          3-up only at xl. Between lg and xl the sidebar leaves ~684px for
+          three cards, which is too narrow for a label and a figure on one
+          line: labels wrapped to three lines and the figure column, which
+          cannot shrink, pushed its qualifier outside the card border.
       ══════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
 
         {/* ── Risk ── */}
         <Card className="!p-6">
