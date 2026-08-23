@@ -333,7 +333,14 @@ body:has([data-slot="sticky-actions"]) [data-slot="bottom-nav-fab"] {
   --sidebar-border: #33362A;
   --sidebar-ring: #A0A68A;
 
-  --muted-foreground-subtle: #908D81;
+  /* Lightened from #908D81, which measured 4.21:1 on --card-alt and
+     --muted — below the 4.5:1 needed for the small uppercase labels this
+     level is used for. Now 4.85:1 there, 5.30:1 on --card, 5.96:1 on
+     --background. Still clearly dimmer than --muted-foreground (#A8A699),
+     so the three-level text ramp is preserved. Known remaining gap:
+     3.86:1 on --secondary; closing that would push this level up into
+     --muted-foreground and collapse the ramp. */
+  --muted-foreground-subtle: #9C988B;
   --card-alt: #2A2D24;
   --success: #8B9570;
   --success-foreground: #1A1C16;
