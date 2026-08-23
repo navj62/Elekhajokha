@@ -46,6 +46,9 @@ function friendlyMessage(err: unknown, stage: "request" | "reset"): string {
     case "verification_failed":
     case "verification_expired":
       return "That code is incorrect or has expired. Please try again.";
+    case "verification_not_sent":
+    case "verification_already_verified":
+      return "Your code was already verified \u2014 just choose your new password and submit again.";
     case "form_password_pwned":
       return "That password has appeared in a data breach. Please choose a different one.";
     case "form_password_length_too_short":
@@ -171,14 +174,23 @@ export default function ForgotPasswordPage() {
 
     setSubmitting(true);
     try {
-      // Core 3 splits this into two calls: verifyCode() only takes the code and
-      // moves status to "needs_new_password"; submitPassword() then completes.
-      const { error: verifyError } = await signIn!.resetPasswordEmailCode.verifyCode({
-        code: otpCode,
-      });
-      if (verifyError) {
-        setError(friendlyMessage(verifyError, "reset"));
-        return;
+      // A reset code is single-use: once verifyCode() succeeds the factor is
+      // consumed and status moves to "needs_new_password". If submitPassword()
+      // then fails (a pwned/short password, or a network blip), the user is
+      // returned to this same form — and a second click must NOT re-verify, or
+      // Clerk rejects it with "verification_not_sent" and the flow dead-ends.
+      // So resume at the password step whenever the code is already verified.
+      const statusBeforeVerify = signIn!.status;
+      if (statusBeforeVerify !== "needs_new_password") {
+        // Core 3 splits this into two calls: verifyCode() only takes the code and
+        // moves status to "needs_new_password"; submitPassword() then completes.
+        const { error: verifyError } = await signIn!.resetPasswordEmailCode.verifyCode({
+          code: otpCode,
+        });
+        if (verifyError) {
+          setError(friendlyMessage(verifyError, "reset"));
+          return;
+        }
       }
 
       // `signIn.status` is a readonly getter that Clerk mutates across awaits, so
