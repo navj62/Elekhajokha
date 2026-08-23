@@ -483,9 +483,7 @@ export default function AddPledgePage() {
 
           {/* Header Summary Card */}
           {customer && (
-            <div className="bg-white rounded-[24px] p-6 lg:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 border border-[#ECEAE4] mb-6 relative border-l-4 border-l-[#555B3F] transition-all">
-              {/* Olive Ledger Rail */}
-              {/* <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[5px] h-[85%] bg-[#5D6345] rounded-r-full" /> */}
+            <div className="bg-card rounded-[24px] p-6 lg:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 border border-border mb-6 relative border-l-4 border-l-primary transition-all">
 
               <div className="flex items-center gap-5">
                 {/* Avatar */}
@@ -536,11 +534,9 @@ export default function AddPledgePage() {
             <div className="flex flex-col gap-6">
 
               {/* Loan Details Section */}
-              <div className="bg-white rounded-[24px] p-6 lg:p-8 border border-[#ECEAE4] relative border-l-4 border-l-[#555B3F] transition-all">
-                {/* Olive Ledger Rail */}
-                {/* <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[5px] h-[85%] bg-[#5D6345] rounded-r-full" /> */}
+              <div className="bg-card rounded-[24px] p-6 lg:p-8 border border-border relative border-l-4 border-l-primary transition-all">
 
-                <h3 className="text-[18px] font-bold text-[#2C2C2C] mb-6">Loan Details</h3>
+                <h3 className="text-[18px] font-bold text-foreground mb-6">Loan Details</h3>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Pledge Date */}
@@ -613,15 +609,15 @@ export default function AddPledgePage() {
 
                   {/* Compounding Duration */}
                   <div>
-                    <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Compounding Duration</label>
-                    <div className="flex items-center bg-[#FAFAF8] p-1 rounded-[12px] border border-[#ECEAE4]">
+                    <label className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Compounding Duration</label>
+                    <div className="flex items-center bg-card-alt p-1 rounded-[12px] border border-border">
                       {(["Monthly", "Half-Yearly", "Yearly"] as const).map((opt) => (
                         <button
                           key={opt}
                           onClick={() => setCompounding(opt)}
                           className={`flex-1 min-h-11 py-3 text-[13px] font-bold rounded-[8px] transition-all ${compounding === opt
-                            ? "bg-[#555B3F] shadow-sm text-[#F8FAD7] border border-[#E0DED6]"
-                            : "text-[#6F6F6F] hover:text-[#2C2C2C] border border-transparent"
+                            ? "bg-primary shadow-sm text-primary-foreground border border-border"
+                            : "text-muted-foreground-subtle hover:text-foreground border border-transparent"
                             }`}
                         >
                           {opt}
@@ -634,13 +630,11 @@ export default function AddPledgePage() {
 
               {/* Item Sections */}
               {items.map((item, index) => (
-                <div key={item.id} className="bg-white rounded-[24px] p-6 lg:p-8 border border-[#ECEAE4] relative border-l-4 border-l-[#555B3F] transition-all">
-                  {/* Olive Ledger Rail */}
-                  {/* <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[5px] h-[85%] bg-[#5D6345] rounded-r-full" /> */}
+                <div key={item.id} className="bg-card rounded-[24px] p-6 lg:p-8 border border-border relative border-l-4 border-l-primary transition-all">
 
                   {/* Item Header */}
                   <div className="flex items-center justify-between mb-6">
-                    <h3 className="text-[18px] font-bold text-[#2C2C2C]">Item {index + 1}</h3>
+                    <h3 className="text-[18px] font-bold text-foreground">Item {index + 1}</h3>
 
                     {/* Opens a Sheet. This was a hover-revealed menu
                         (`opacity-0 invisible group-hover:visible`), which on
@@ -660,15 +654,15 @@ export default function AddPledgePage() {
 
                   {/* Metal Type Segmented Control */}
                   <div className="mb-6">
-                    <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Metal Type</label>
-                    <div className="flex items-center bg-[#EBE9E0] p-1 rounded-full max-w-[400px]">
+                    <label className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Metal Type</label>
+                    <div className="flex items-center bg-muted p-1 rounded-full max-w-[400px]">
                       {(["Gold", "Silver"] as const).map((metal) => (
                         <button
                           key={metal}
                           onClick={() => updateItem(item.id, "metalType", metal)}
                           className={`flex-1 min-h-11 py-3 text-[13px] font-bold rounded-full transition-all ${item.metalType === metal
-                            ? "bg-[#555B3F] text-white shadow-sm"
-                            : "text-[#6F6F6F] hover:text-[#2C2C2C]"
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "text-muted-foreground-subtle hover:text-foreground"
                             }`}
                         >
                           {metal}
@@ -680,7 +674,7 @@ export default function AddPledgePage() {
                   {/* Item Details Row 1 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                     <div>
-                      <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Item Type</label>
+                      <label className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Item Type</label>
                       <ItemTypeSelect
                         value={item.itemType}
                         onChange={(v) => updateItem(item.id, "itemType", v)}
@@ -688,15 +682,15 @@ export default function AddPledgePage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">
-                        Item Name <span className="font-normal text-[#9E9E9E]">(optional)</span>
+                      <label className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">
+                        Item Name <span className="font-normal text-muted-foreground-subtle">(optional)</span>
                       </label>
                       <input
                         type="text"
                         placeholder="e.g. Gold Necklace"
                         value={item.itemName}
                         onChange={(e) => updateItem(item.id, "itemName", e.target.value)}
-                        className="w-full px-4 py-3 rounded-[12px] border border-[#ECEAE4] bg-[#FAFAF8] text-[14px] text-[#2C2C2C] outline-none focus:border-[#555B3F] transition-colors"
+                        className="w-full px-4 py-3 rounded-[12px] border border-border bg-card-alt text-[14px] text-foreground outline-none focus:border-primary transition-colors"
                       />
                     </div>
                   </div>
@@ -704,7 +698,7 @@ export default function AddPledgePage() {
                   {/* Item Details Row 2 */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-6">
                     <div>
-                      <label className="block text-[12px] font-bold tracking-wide text-[#6F6F6F] mb-2">Quantity (pcs)</label>
+                      <label className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Quantity (pcs)</label>
                       <input
                         type="number"
                         inputMode="numeric"
@@ -798,9 +792,9 @@ export default function AddPledgePage() {
                   </div>
 
                   {/* Net Metal Weight Summary */}
-                  <div className="bg-[#FAFAF8] rounded-[12px] px-6 py-4 flex items-center justify-between border border-[#ECEAE4]">
-                    <span className="text-[13px] font-bold text-[#6F6F6F]">Net Metal Weight</span>
-                    <span className="text-[16px] font-bold text-[#2C2C2C]">
+                  <div className="bg-card-alt rounded-[12px] px-6 py-4 flex items-center justify-between border border-border">
+                    <span className="text-[13px] font-bold text-muted-foreground-subtle">Net Metal Weight</span>
+                    <span className="text-[16px] font-bold text-foreground">
                       {item.netWeight && item.purity
                         ? `${((Number(item.netWeight) * Number(item.purity)) / 100).toFixed(2)} g`
                         : "- g"}
@@ -813,7 +807,7 @@ export default function AddPledgePage() {
               <div>
                 <button
                   onClick={handleAddItem}
-                  className="flex items-center gap-2 px-6 py-3 rounded-full text-[13px] font-bold transition-all bg-white text-[#2C2C2C] border border-[#ECEAE4] hover:bg-[#FAFAF8] hover:border-[#D8D6CD]"
+                  className="flex items-center gap-2 px-6 py-3 rounded-full text-[13px] font-bold transition-all bg-card text-foreground border border-border hover:bg-card-alt hover:border-border"
                 >
                   <Plus size={16} /> Add Another Item
                 </button>
@@ -825,10 +819,10 @@ export default function AddPledgePage() {
             <div className="flex flex-col gap-6">
 
               {/* Pledge Photo Section */}
-              <div className="bg-white rounded-[24px] p-6 lg:p-8 border border-[#ECEAE4]">
-                <h3 className="text-[18px] font-bold text-[#2C2C2C] mb-6">Pledge Photo</h3>
+              <div className="bg-card rounded-[24px] p-6 lg:p-8 border border-border">
+                <h3 className="text-[18px] font-bold text-foreground mb-6">Pledge Photo</h3>
 
-                <div className="relative w-full h-[200px] bg-[#EBE9E0] rounded-[16px] flex flex-col items-center justify-center border border-[#D8D6CD] transition-colors hover:bg-[#E4E2D8] overflow-hidden group">
+                <div className="relative w-full h-[200px] bg-muted rounded-[16px] flex flex-col items-center justify-center border border-border transition-colors hover:bg-accent overflow-hidden group">
                   {pledgePhotoPreview ? (
                     <>
                       <img src={pledgePhotoPreview} alt="Pledge" className="absolute inset-0 w-full h-full object-cover z-0 pointer-events-none" />
@@ -845,11 +839,11 @@ export default function AddPledgePage() {
                     </>
                   ) : (
                     <>
-                      <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-3 shadow-sm group-hover:scale-105 transition-transform z-0 pointer-events-none">
-                        <Camera size={20} className="text-[#555B3F]" />
+                      <div className="w-12 h-12 bg-card rounded-full flex items-center justify-center mb-3 shadow-sm group-hover:scale-105 transition-transform z-0 pointer-events-none">
+                        <Camera size={20} className="text-primary" />
                       </div>
-                      <p className="text-[13px] font-bold text-[#2C2C2C] mb-1 z-0 pointer-events-none">Upload or drag photo</p>
-                      <p className="text-[11px] text-[#6F6F6F] z-0 pointer-events-none">JPG, PNG up to 5MB</p>
+                      <p className="text-[13px] font-bold text-foreground mb-1 z-0 pointer-events-none">Upload or drag photo</p>
+                      <p className="text-[11px] text-muted-foreground-subtle z-0 pointer-events-none">JPG, PNG up to 5MB</p>
                     </>
                   )}
                   <input
@@ -865,14 +859,14 @@ export default function AddPledgePage() {
               </div>
 
               {/* Remarks Section */}
-              <div className="bg-white rounded-[24px] p-6 lg:p-8 border border-[#ECEAE4]">
-                <h3 className="text-[18px] font-bold text-[#2C2C2C] mb-6">Remarks</h3>
+              <div className="bg-card rounded-[24px] p-6 lg:p-8 border border-border">
+                <h3 className="text-[18px] font-bold text-foreground mb-6">Remarks</h3>
 
                 <textarea
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
                   placeholder="Add any notes about condition, special instructions, or valuer comments..."
-                  className="w-full h-[180px] px-4 py-4 rounded-[16px] border border-[#ECEAE4] bg-[#EBE9E0] text-[14px] text-[#2C2C2C] outline-none focus:border-[#555B3F] transition-colors resize-none placeholder:text-[#8C8F7A]"
+                  className="w-full h-[180px] px-4 py-4 rounded-[16px] border border-border bg-muted text-[14px] text-foreground outline-none focus:border-primary transition-colors resize-none placeholder:text-muted-foreground-subtle"
                 />
               </div>
 
