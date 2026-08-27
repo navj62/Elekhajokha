@@ -40,7 +40,8 @@ These are hard rules. When editing or reviewing code, treat any violation as a b
 npm run dev       # Next dev server on http://localhost:3000
 npm run build     # prisma generate && next build
 npm run start     # production server
-npm run lint      # eslint (flat config, eslint-config-next)
+npm run lint      # eslint (flat config, eslint-config-next) — strict local config
+npx eslint . --config eslint.config.ci.mjs   # the config CI actually runs
 npx tsc --noEmit  # typecheck — the PRIMARY verification gate
 npm test          # vitest — unit tests for interest / LTV / customer-risk pure logic
 
@@ -52,6 +53,15 @@ npx prisma db seed           # runs tsx prisma/seed-defaults.ts (idempotently se
 ```
 
 A test runner IS configured: `npm test` runs **vitest** (`vitest run`) over three unit-test files in `tests/` — `interest.test.ts`, `calculateLTV.test.ts`, `customerRiskScore.test.ts` — covering the pure financial/risk logic. There is no integration/E2E coverage for API routes or DB flows. After any change, run `npx tsc --noEmit` (the PRIMARY gate), `npm run lint`, and `npm test`; for build-time issues (dynamic imports, server/client boundaries) run `npm run build`. For flows that touch payment or the DB, verify manually in `prisma studio` — typecheck + unit tests passing is necessary but not sufficient.
+
+### CI ([.github/workflows/ci.yml](.github/workflows/ci.yml))
+Runs on push and PR to `main`. Header comment states the scope plainly: *"Correctness gate only: typecheck + test + lint. No build, deploy, or secrets."* Steps: checkout → Node 22 (npm cache keyed off `package-lock.json`) → `npm ci` → `npx prisma generate` → `npx tsc --noEmit` → `npm test` → `npx eslint . --config eslint.config.ci.mjs`.
+
+Two things to know before editing it:
+- **`prisma generate` needs a `DATABASE_URL` present even though it never connects.** The step passes a throwaway localhost value, because `prisma.config.ts` resolves `DATABASE_URL` at module load. Prisma Client isn't committed, so without this step `tsc --noEmit` fails on a clean checkout.
+- **CI lints with `eslint.config.ci.mjs`, not `eslint.config.mjs`.** The CI config is identical to the strict local one except the three new-in-Next-16 react-hooks preview rules are disabled (19 tracked sites). Local `npm run lint` stays strict — so a clean CI run does not mean a clean local lint. Fix lint against the local config; the CI config exists only to keep the gate green on those 19 known sites.
+
+CI deliberately does not run `next build` — see Known gaps.
 
 ### Prisma datasource gotcha
 The runtime client and the CLI read their connection string from **different files**, but both currently point at `DATABASE_URL`:
@@ -99,7 +109,7 @@ Prisma's generated `CREATE INDEX` / `DROP INDEX` are NOT `CONCURRENTLY`, so on l
 ## Middleware lives in `proxy.ts`
 
 Next.js 16 renamed `middleware.ts` to **[proxy.ts](proxy.ts)**. This is the auth/onboarding gate (Clerk `clerkMiddleware`). Key behaviour:
-- Public routes: `/`, `/sign-in`, `/sign-up`, `/view/*` (customer portal), `/api/webhook/*`, `/api/portal-status/*`, `/api/cron/*`.
+- Public routes: `/`, `/sign-in`, `/sign-up`, `/forgot-password`, `/view/*` (customer portal), `/api/webhook/*`, `/api/portal-status/*`, `/api/cron/*`. (The matchers are prefix patterns — `/sign-in(.*)`, `/forgot-password(.*)`, etc.)
 - `/api/webhook/*` short-circuits before any auth (webhooks verify their own signatures).
 - For **API routes**, the proxy only enforces sign-in — it does NOT enforce onboarding. Each API handler re-resolves the user itself.
 - For **page routes**, unonboarded users are redirected to `/onboarding`; onboarding state is read from Clerk session claims `metadata.onboardingComplete`.
@@ -125,9 +135,21 @@ The access/subscription state machine spans the frontend checkout, two API route
 ### The full flow (synchronous-first, webhook-backup)
 1. **[app/subscription/page.tsx](app/subscription/page.tsx)** — `handleSubscribe()` POSTs to `/api/create-subscription`, then opens the Razorpay modal. On payment success, the Razorpay `handler(response)` callback POSTs the three response fields (`razorpay_payment_id`, `razorpay_subscription_id`, `razorpay_signature`) to `/api/verify-payment`. It redirects to `/dashboard` ONLY on confirmed success (and calls `router.refresh()`); on verification failure it shows an error and does NOT redirect. **The handler MUST capture and forward `response` — a handler that ignores it and just redirects leaves the user stuck at `created` forever.**
 2. **[app/api/create-subscription/route.ts](app/api/create-subscription/route.ts)** — creates the Razorpay subscription, writes `subscriptionStatus = created` + `subscriptionCreatedAt = now` + `subscriptionPlan` + `razorpaySubscriptionId`. Eligibility: rejects `active`; reuses an existing `created` subscription without resetting the timestamp. **Every code path that sets `created` MUST also set `subscriptionCreatedAt` (Invariant 10).**
-3. **[app/api/verify-payment/route.ts](app/api/verify-payment/route.ts)** — the PRIMARY path to access. Verifies the HMAC signature with `constantTimeEqual` (tries both `payment|subscription` and `subscription|payment` orderings), confirms the user owns the subscription, fetches the subscription server-side from Razorpay and requires `status ∈ {active, authenticated}`, then writes `subscriptionStatus = active` + `subscriptionEndDate = sub.current_end` + `razorpayPaymentId`, and clears `lastGraceExpiredAt`. Returns distinct error codes or `{ success: true, status: "active" }`.
-4. **[app/api/webhook/razorpay/route.ts](app/api/webhook/razorpay/route.ts)** — the BACKUP/renewal path. HMAC-verifies `x-razorpay-signature`, then flips `subscriptionStatus` on `subscription.activated`/`charged` (→ active), `halted` (→ halted), `completed`/`cancelled` (→ expired). **Cannot reach localhost** — in local dev the webhook path is dead, so `verify-payment` is the only thing that grants access. In production it handles renewals.
+3. **[app/api/verify-payment/route.ts](app/api/verify-payment/route.ts)** — the PRIMARY path to access. Verifies the HMAC signature with `constantTimeEqual` (tries both `payment|subscription` and `subscription|payment` orderings), confirms the user owns the subscription, fetches the subscription server-side from Razorpay and requires `subscriptionGrantsAccess(sub)` (see below — `active`, `authenticated`, OR `completed` with `paid_count >= 1`), then writes `subscriptionStatus = active` + `subscriptionEndDate = sub.current_end` + `razorpayPaymentId`, and clears `lastGraceExpiredAt`. Returns distinct error codes or `{ success: true, status: "active" }`.
+4. **[app/api/webhook/razorpay/route.ts](app/api/webhook/razorpay/route.ts)** — the BACKUP/renewal path. HMAC-verifies `x-razorpay-signature`, then switches on `event.event`. Exactly four cases are handled — everything else, **`subscription.cancelled` included**, falls through to `default:` and only logs `"Unhandled:"`, writing no status:
+   - `subscription.activated` / `subscription.charged` → `active` + `subscriptionEndDate = current_end`. **Short-circuits when the user is already `active`** (`if (user.subscriptionStatus === active) break;`) — so a renewal charge on an already-active user does NOT extend `subscriptionEndDate`. Renewal-extension is currently handled by `/api/access` self-heal and `verify-payment`, not by this branch.
+   - `subscription.halted` → `halted`.
+   - `subscription.completed` → **branches on `subscriptionGrantsAccess(subscription)`**, it does NOT unconditionally expire. A `total_count: 1` one-time plan settles to `completed` seconds after the charge, so a paid `completed` (`paid_count >= 1`) writes `active` + `subscriptionEndDate = current_end` and lets `/api/access` downgrade to expired once that date passes. Only an unpaid `completed` (`paid_count` 0) writes `expired` + `subscriptionEndDate = now`.
+
+   **Cannot reach localhost** — in local dev the webhook path is dead, so `verify-payment` is the only thing that grants access. In production it handles renewals.
 5. **[hooks/useAccess.ts](hooks/useAccess.ts)** — client hook that polls `/api/access` with `cache: "no-store"`, refetches on mount and tab focus, preserves previous `hasAccess` on network error. **[components/SubscriptionGuard.tsx](components/SubscriptionGuard.tsx)** consumes it and handles every status string (`processing`, `payment_timeout`, `payment_required`, `trial_expired`, etc.); add a new branch when introducing a new status.
+
+### `lib/razorpaySubscription.ts` — the paid/unpaid decision
+Two tiny exported helpers, deliberately shared so the four call sites can never disagree:
+- `subscriptionGrantsAccess(sub)` — true when `status` is `active` or `authenticated`, **or** `status === "completed"` with `paid_count >= 1`. That last clause is the load-bearing one: the product sells one-time access via a Razorpay Subscription with `total_count: 1`, which settles to `completed` right after collecting money and never rests at `active`. Treating `completed` as an expiry would lock out every paying customer.
+- `subscriptionEndDate(sub)` — `current_end` (Unix seconds) → `Date`, or `null`.
+
+Both take a permissive structural type so a typed SDK object and raw webhook JSON can be passed straight through. Consumed by [verify-payment](app/api/verify-payment/route.ts), the [`/api/access` self-heal](app/api/access/route.ts), the [webhook](app/api/webhook/razorpay/route.ts), and [scripts/reconcile-subscriptions.ts](scripts/reconcile-subscriptions.ts). Do not inline a status check at any of these sites.
 
 ### Access rules in `/api/access`
 Grants `hasAccess: true` for: `trial` (not expired), `active` (not expired), and `created` within a **10-minute grace window** (`status: "processing"`). After the window, `created` flips to `payment_timeout` and stamps `lastGraceExpiredAt`. Anti-farming: `lastGraceExpiredAt` within 24h blocks re-grant (`payment_required`) and blocks new mint in create-subscription (`GRACE_LIMIT` 429). Cleared when subscription becomes `active`.
@@ -159,7 +181,7 @@ API: `GET /api/item-types` returns `{ defaults, custom }`; `POST /api/item-types
 `Pledge.status` is one of `ACTIVE | RELEASED | OVERDUE | SOLD` (the Prisma `PledgeStatus` enum has all four — do not assume a 3-value enum):
 - **ACTIVE** — customer has the loan, item in shop.
 - **RELEASED** — customer paid back, item returned. Terminal.
-- **OVERDUE** — an open loan past its expected term. It is an **open, non-terminal** status: like ACTIVE, an OVERDUE pledge can still be released (single + bulk) OR sold to inventory. Every code path that accepts ACTIVE for a closure/transition MUST also accept OVERDUE (`status: { in: ["ACTIVE", "OVERDUE"] }`), and the customer-page bulk-selection checkboxes enable both. Treat ACTIVE-only guards on a closure path as a bug.
+- **OVERDUE** — an open loan past its expected term. **Nothing in the codebase ever writes this status** — a repo-wide grep finds only read filters, UI badge maps, and the `filterBy=OVERDUE` search parameter. It is declared, read everywhere, and set nowhere (see Known gaps). The handling below is therefore defensive, and correct to keep: it is an **open, non-terminal** status, so like ACTIVE, an OVERDUE pledge can still be released (single + bulk) OR sold to inventory. Every code path that accepts ACTIVE for a closure/transition MUST also accept OVERDUE (`status: { in: ["ACTIVE", "OVERDUE"] }`), and the customer-page bulk-selection checkboxes enable both. Treat ACTIVE-only guards on a closure path as a bug.
 - **SOLD** — item acquired by the shop via the "Add to Inventory" flow (customer sold it OR owner forfeited). Terminal. SOLD pledges must never inflate at-risk/overdue metrics or the customer risk score. Display as "Sold to Shop" badge on the customer page.
 
 ### Per-customer financial summary
@@ -179,7 +201,15 @@ Two POST routes under `app/api/customers/[customerId]/pledges/bulk-release/`. Ad
 Confirm UI (`release-bulk/page.tsx`): stateless on refresh (ids from `?ids=` query string). Preflight on mount + debounced date change. Per-pledge compounding toggles compute locally. Binary success/failure. Requires `<Suspense>` wrapper for `useSearchParams`. Per-row and select-all checkboxes enabled for ACTIVE **and** OVERDUE (`activePledges` helper: `status === "ACTIVE" || status === "OVERDUE"`).
 
 ### Pledge delete safety
-Hard delete, blocked for RELEASED/SOLD pledges. `Transaction` rows trigger `409 PENDING_TRANSACTIONS` (with count) unless `?confirmDelete=true`. Real DELETE endpoint: `/api/customers/[customerId]/pledges/[pledgeId]` — there is no `/api/pledges/[pledgeId]` DELETE.
+Hard delete. Real DELETE endpoint: `/api/customers/[customerId]/pledges/[pledgeId]` — there is no `/api/pledges/[pledgeId]` DELETE. The guard chain runs in this order, and the ordering matters:
+
+1. `auth()` → user resolution → `findFirst` scoped `{ id, customerId, customer: { userId: user.id } }` → 404.
+2. `status === "RELEASED"` → 400.
+3. `status === "SOLD"` → 400.
+4. **Audit guard — unconditional.** `pledgeAudit.count({ where: { pledgeId } })` > 0 → 400 `AUDIT_RECORDS_EXIST` (with `auditCount`). This is **deliberately NOT behind `confirmDelete`**: an audit row is the permanent financial record of a release or sale, not a user-overridable acknowledgement.
+5. `transaction.count` > 0 → 409 `PENDING_TRANSACTIONS` (with count), **unless** `?confirmDelete=true`.
+
+`confirmDelete` gates step 5 and nothing else — it cannot bypass the status blocks or the audit guard. Backstop: `PledgeAudit.pledge` is `onDelete: Restrict` at the DB level (migration `20260825190943_pledge_audit_restrict_on_delete`), so even a code path that skipped step 4 would get an FK failure rather than silently destroying the record. Step 4 exists to turn that into a clean, typed error. `PledgeItem` and `Transaction` still cascade-delete with the pledge.
 
 ## Inventory module
 
@@ -233,7 +263,14 @@ The sell page shows a three-line breakdown: Amount Owed / Acquisition Cost / Cas
 - `GET /api/inventory/analytics` — live aggregation across all InventoryItem rows for this user. Returns `{ stock: { count, goldWeightGrams, silverWeightGrams, acquiredCost, marketValue, isMarketValuePartial }, sold: { count, goldWeightGrams, silverWeightGrams, moneyCollected, costBasis, realizedProfit }, total: { itemCount }, rates: { goldPerGram, silverPerGram, updatedAt } }`. All values computed live — nothing stored in FinancialSnapshot. `marketValue = SUM(netWeightOfGold × goldPpg + netWeightOfSilver × silverPpg)` for IN_STOCK items; null if both prices missing. Fetches MetalPrice directly (not via /api/market-rates internally).
 
 ### Inventory page (`app/(UserDetails)/inventory/page.tsx`)
-Client component. Summary strip (4 KPI cards): In Stock count, Total Acquired Value, Sold count, Total Sold Revenue. Below the summary strip: **Portfolio Metals section** (self-contained component with its own fetch from `/api/inventory/analytics`) showing: Net Gold Weight in stock, Net Silver Weight in stock, current Market Value, Acquired Cost, Unrealized P&L (green/red); Sold sub-section when `sold.count > 0` (gold/silver sold, total collected, realized profit); rate footnote (Gold ₹X/g · Silver ₹Y/g · Updated {relative time}). Empty state when `total.itemCount === 0`: section hidden entirely. The `MetalRateStrip` component was removed from the inventory page itself (redundant with the Portfolio Metals rate footnote); it remains on the sidebar and buy page.
+Client component. Page header (title, subtitle, `MetalRateStrip variant="full"`, "Add Item" CTA), then a summary strip of 4 KPI cards: In Stock count, Total Acquired Value, Sold count, Total Sold Revenue.
+
+**There is no "Portfolio Metals" section on this page**, and this page does not call `/api/inventory/analytics`. A prior version of this doc described such a section (net gold/silver weight, unrealized P&L, sold sub-section, rate footnote) — no such component exists. What does exist:
+- `MetalRateStrip variant="full"` renders in this page's header.
+- `MetalPortfolio` is a **dashboard** component ([app/(UserDetails)/dashboard/page.tsx](app/(UserDetails)/dashboard/page.tsx)), fed by `dashboard.portfolio` from the dashboard route — not by inventory analytics.
+- `/api/inventory/analytics` has exactly one consumer: the dashboard, which reads only `stock.marketValue` and `stock.count` from it.
+
+The analytics route still returns the full payload documented above; most of it is currently unconsumed. Don't assume a UI exists for a field just because the route returns it.
 
 Filter pills: status / source / metal. Sort dropdown. Table columns: Photo | Item | Type | Metal+Purity | Weight (gross + net subtitle) | Acquired date | Cost | Status. Row action: "Sell" button for IN_STOCK items (Sell modal). "Add Item" navigates to `/inventory/buy`.
 
@@ -241,7 +278,7 @@ Filter pills: status / source / metal. Sort dropdown. Table columns: Photo | Ite
 Client page showing on-screen receipt after a direct purchase. Fetches from `GET /api/inventory/[id]/receipt`. "Download PDF" triggers `?format=pdf` → `generateInventoryPurchasePDF` (olive header `#565C3F`, A4 portrait, shop letterhead, item details including gross weight + net weight, metal rate at acquisition, seller info, two signature lines, short reference ID from last 8 chars of item id).
 
 ### MetalRateStrip (`components/inventory/MetalRateStrip.tsx`)
-Client component. `variant: "full"` — inline row with TrendingUp icon, "Gold ₹X/g · Silver ₹Y/g · Updated N min ago." `variant: "compact"` — two stacked lines at text-[11px] for the sidebar. Fetches `/api/market-rates` on mount. Graceful loading/error/null-rate states. Used on: sidebar (compact), buy-item page (full). NOT used on the inventory list page (replaced by Portfolio Metals rate footnote).
+Client component. `variant: "full"` — inline row with TrendingUp icon, "Gold ₹X/g · Silver ₹Y/g · Updated N min ago." `variant: "compact"` — two stacked lines at text-[11px] for the sidebar. Fetches `/api/market-rates` on mount. Graceful loading/error/null-rate states. Used in three places: sidebar shell [components/layout/AppShell.tsx](components/layout/AppShell.tsx) (compact), the buy-item page (full), and the inventory list page header (full).
 
 ## Tasks module
 
@@ -308,13 +345,13 @@ Each `Customer` has an unguessable `viewToken` (UUID, unique index). `/view/[tok
 
 ## Data model notes
 
-Full schema in [prisma/schema.prisma](prisma/schema.prisma). Cascade on delete: `User → Customer → Pledge → {PledgeItem, Transaction, PledgeAudit, PledgeAlert}`. `User → InventoryItem` cascades. `User → PledgeItemType` (custom types) cascades. `User → Task` cascades. `Pledge → InventoryItem` uses `onDelete: SetNull`. Soft-deletes: `deletedAt` on `User`/`Customer` only (NOT on `Pledge`). Money: `Decimal`. `FinancialSnapshot` unique on `userId + snapshotDate`. `Transaction` types: REPAYMENT_PRINCIPAL / REPAYMENT_INTEREST / TOPUP.
+Full schema in [prisma/schema.prisma](prisma/schema.prisma). Cascade on delete: `User → Customer → Pledge → {PledgeItem, Transaction, PledgeAlert}`. **`PledgeAudit` is the exception — `onDelete: Restrict`, not Cascade** (migration `20260825190943_pledge_audit_restrict_on_delete`); a pledge with audit rows cannot be deleted at all. `User → InventoryItem` cascades. `User → PledgeItemType` (custom types) cascades. `User → Task` cascades. `Pledge → InventoryItem` uses `onDelete: SetNull`. Soft-deletes: `deletedAt` is declared on `User` and `Customer` only (NOT on `Pledge`) — but only `User.deletedAt` is ever written, by the Clerk `user.deleted` webhook. `Customer.deletedAt` is read as a filter throughout and written nowhere, because no customer DELETE route exists (see Known gaps). Money: `Decimal`. `FinancialSnapshot` unique on `userId + snapshotDate`. `Transaction` types: REPAYMENT_PRINCIPAL / REPAYMENT_INTEREST / TOPUP.
 
 Key `InventoryItem` fields: `grossWeight` (physical), `netWeightOfGold` / `netWeightOfSilver` (server-derived, immutable after creation), `purity` (nullable), `acquiredCost` (cost basis — NOT cash paid to customer for pledge-sourced items), `amountOwedAt` (snapshotted at sale time, null for direct purchases), `acquiredMetalRate` (INR/gram at acquisition, null for OTHER or no price data — read-only after creation).
 
-`FinancialSnapshot` contains **pledge-system metrics only** (LTV, risk tiers, loan amounts, weight of pledged gold/silver). Inventory data is **never stored here** — it is always computed live from `InventoryItem` rows via `/api/inventory/analytics`. Do not add inventory fields to `FinancialSnapshot`.
+`FinancialSnapshot` contains **pledge-system metrics only** (LTV, risk tiers, loan amounts, weight of pledged gold/silver). Its `mtdNewPledges` / `mtdReleasedPledges` / `mtdLoanAmount` columns are declared but **never populated** — the evaluate-risk upsert payload has no `mtd*` key, and the same-named identifiers in [app/api/dashboard/snapshot/route.ts](app/api/dashboard/snapshot/route.ts) are local variables computed live per request, not reads of these columns. Inventory data is **never stored here** — it is always computed live from `InventoryItem` rows via `/api/inventory/analytics`. Do not add inventory fields to `FinancialSnapshot`.
 
-Cascade caveat: `PledgeAudit`/`Transaction` are financial records but currently cascade-delete with parent. Known gap: `onDelete: Restrict` or soft-delete + snapshot.
+Cascade caveat — **half closed.** `PledgeAudit` is now `onDelete: Restrict` (migration `20260825190943_pledge_audit_restrict_on_delete`) and is additionally guarded in the delete route (`AUDIT_RECORDS_EXIST`), so release/sale audit records survive any pledge delete attempt. `Transaction` is still `onDelete: Cascade` — a part-payment ledger is still destroyed with its pledge, mitigated only by the `PENDING_TRANSACTIONS` 409 that `?confirmDelete=true` can override.
 
 ### Indexes
 `Customer(userId, deletedAt)`, `Pledge(customerId, status)`, `Pledge(status, createdAt)`, `PledgeAudit(pledgeId, createdAt)`, `Transaction(pledgeId, createdAt desc)`, `MetalPrice(metal, createdAt desc)`, `PledgeAlert(userId, isRead)`, `PledgeAlert(userId, createdAt desc)`, `ExchangeRate(from, to, createdAt desc)`, `Customer.viewToken @unique`, `FinancialSnapshot @@unique(userId, snapshotDate)`, `FinancialSnapshot(userId, calculatedAt desc)`, `InventoryItem(ownerId, status)`, `InventoryItem(ownerId, sourceType)`, `InventoryItem(ownerId, createdAt)`, `InventoryItem(sourcePledgeId) @unique`, `PledgeItemType(userId)`, `PledgeItemType(isDefault)`, `Task(userId)`. Add composite indexes for any new hot query path.
@@ -326,7 +363,7 @@ Cascade caveat: `PledgeAudit`/`Transaction` are financial records but currently 
 - API errors: client-facing error bodies are ALWAYS generic (`{ error: "Server Error" }` or a similar generic string), with an optional stable code, logged server-side. NEVER return `err.message`, `err.stack`, the raw error object, or a Prisma error's `.meta` (which can carry table/column/constraint names) in a response body.
   - `err.message` MAY be used **server-side only** — for control flow via sentinel comparison (e.g. `err.message === "ALREADY_RELEASED"` → 409) and in bounded `console.error` logs. Never in a response body.
   - **Server logs must not contain customer PII, full request bodies, secrets, or unbounded error dumps** (no `console.dir(err, { depth: null })`). Logs persist to disk on a VPS.
-- Image uploads: Cloudinary via `lib/upload.ts`. No server-side MIME/size validation yet (known gap).
+- Image uploads: Cloudinary via `lib/upload.ts`, which passes `resource_type: "image"` — Cloudinary rejects non-images server-side. No size cap anywhere (known gap).
 - PDF: `pdfkit` ([lib/generatePDF.ts](lib/generatePDF.ts)), four exports. In `serverExternalPackages`.
 - UI: shadcn primitives under `components/ui/` (Radix + `class-variance-authority` + `tailwind-merge`, Tailwind v4). Hindi terms in `lib/defaultTerms.ts`.
 - Route groups: `(auth)`, `(UserDetails)`, `(CustomersDetails)`.
@@ -355,20 +392,33 @@ Deliberately tracked so reviews focus on real bugs rather than re-discovering th
 - **No request validation layer.** No Zod. Hand-parsed inputs. Planned: `lib/validations/` Zod layer shared across both customer-create paths.
 - **Divergent customer-create validation.** `add-customer` (FormData) enforces 10-digit mobile regex; `customers` POST (JSON) does not.
 - **No rate limiting.** No limiter on any route — including unauthenticated surfaces (`/view/[token]`, `/api/portal-status/[token]`, `/api/cron/*`).
-- **No webhook replay/idempotency protection.** Razorpay events not deduped by event id. Planned: `ProcessedWebhook(eventId unique)` table.
+- **No webhook replay/idempotency protection.** Razorpay events are not deduped by event id, in either webhook. Signature verification proves authenticity, not freshness, so a replayed valid payload is reprocessed. Blast radius is small by construction — the handlers are near-idempotent (`activated`/`charged` short-circuits when already `active`; every branch writes a status derived from the payload rather than incrementing anything) — which is why this has not been prioritised. Planned if it does become a problem: `ProcessedWebhook(eventId unique)` table.
 - **`verify-payment` replay-after-refund not handled.**
 - **`create-subscription` can orphan Razorpay subscriptions** on repeated mints by expired/halted users.
-- **Cascade-delete of `PledgeAudit`/`Transaction`** destroys financial history on hard delete.
+- **Cascade-delete of `Transaction`** destroys part-payment history on hard pledge delete. (`PledgeAudit` no longer does — `onDelete: Restrict` + the `AUDIT_RECORDS_EXIST` route guard.)
 - **`pledgeDate` bounds not enforced** on create (future/far-past dates allowed).
-- **Cloudinary uploads have no server-side MIME/size validation** — applies to pledge item photos AND inventory direct-purchase photos.
+- **No server-side upload SIZE cap** — applies to pledge item photos AND inventory direct-purchase photos. The whole file is read into a Buffer (`await file.arrayBuffer()`) before it is streamed to Cloudinary, so an oversized upload is unbounded decode and storage cost. MIME is *partially* covered: `lib/upload.ts` passes `resource_type: "image"`, so Cloudinary rejects non-images server-side rather than storing arbitrary files.
 - ~~Part-payment flow has no UI.~~ **Implemented.** `POST /api/customers/[customerId]/pledges/[pledgeId]/transactions` records a `Transaction` (standard auth + ownership scoping; validates positive amount, type ∈ {REPAYMENT_PRINCIPAL, REPAYMENT_INTEREST, TOPUP}, optional note ≤1000 chars, optional transactionDate). The pledge detail page (`app/(CustomersDetails)/customers/[customerId]/pledges/[pledgeId]/page.tsx`) has the form — type dropdown, amount, date, submit — plus read-only history. Note: the route stores `amount` as `new Prisma.Decimal(Number(amount))`; it does not adjust the pledge balance (Transactions are a ledger, not applied to accrual).
 - **Inventory reports not built.** Future: a Reports tab reading `action: "SOLD"` audits + `InventoryItem` rows.
 - **No error monitoring** (no Sentry; `console.*` only). **No structured logging.** **Security headers** — the four base headers (X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, HSTS) ARE implemented in `next.config.ts`, plus `Permissions-Policy` and a `Content-Security-Policy-Report-Only` header. Enforcing CSP is still deferred: Next.js App Router, Clerk, and Razorpay all inject inline scripts, so a strict nonce-based policy needs nonce plumbing first — the Report-Only header collects violations in the meantime. **Before switching Report-Only → enforcing (`Content-Security-Policy`), violations must be collected across a real Clerk sign-in flow AND a real Razorpay checkout, and the Clerk origin must change from `*.clerk.accounts.dev` to the production Clerk Frontend API host.** **Backup/DR: Neon defaults only.** **Cron: no retry/dead-letter/alerting on missed runs.**
-- **Dev/ops scripts tracked in git.** Three one-off scripts ship in a clone: [scripts/check-db-state.ts](scripts/check-db-state.ts), [scripts/migrate-item-types.ts](scripts/migrate-item-types.ts), [scripts/reconcile-subscriptions.ts](scripts/reconcile-subscriptions.ts). They contain no secrets and no injection surface, but they are DB-mutating tooling. **Accepted for now** given a private repo with few collaborators — documented here so it is a decision, not an oversight.
+- **Dev/ops scripts tracked in git.** Three one-off scripts are tracked and ship in a clone: [scripts/check-db-state.ts](scripts/check-db-state.ts), [scripts/migrate-item-types.ts](scripts/migrate-item-types.ts), [scripts/reconcile-subscriptions.ts](scripts/reconcile-subscriptions.ts). They contain no secrets and no injection surface, but they are DB-mutating tooling. **Accepted for now** given a private repo with few collaborators — documented here so it is a decision, not an oversight. (A fourth, `scripts/backfill-released-audits.ts`, currently exists in the working tree **untracked** — it does not ship in a clone. Decide tracked-or-deleted before it drifts.)
 - **Customer PII in git history.** Two ledger-import scripts (`prisma/seed.ts`, `prisma/seed-ledger-entries-batch2.ts`) contained real customer PII (names, regions, loan amounts transcribed from a physical ledger) and used `new PrismaClient()` in violation of Invariant 9. They were **removed from the working tree** so they no longer ship to future clones, but they **remain in git history** — a history purge (`git filter-repo`/BFG + force-push) was **deliberately not performed**. The repo must stay private. `prisma db seed` now runs the PII-free `prisma/seed-defaults.ts`.
 - **No `.env.example`.** Onboarding a new developer means reconstructing the env-var list from the checklist below. Optional: add a `.env.example` with placeholder values only (no real secrets) for developer onboarding.
 - **`pledgeDate` is not validated server-side.** [app/api/customers/[customerId]/pledges/route.ts](app/api/customers/[customerId]/pledges/route.ts) checks the field is present and nothing else — no upper bound (future dates), no lower bound, no format check. `compoundingDuration` gets an allowlist and the money fields get explicit bounds; dates were missed. A malformed value reaches `new Date(pledgeDate)` as `Invalid Date` and surfaces as a Prisma 500 where it should be a clean 400. The `min`/`max` on the pledge-add date input are a **UI affordance only** and enforce nothing. The route is authed and tenant-scoped, so the realistic case is a malformed request from our own client — robustness, not security.
 - **`--muted-foreground-subtle` on `--secondary` (dark) is 3.86:1.** The dark value was lightened to `#9C988B`, which clears 4.5:1 on `--background` (5.96), `--card` (5.30), `--card-alt` and `--muted` (4.85). It remains below target on `--secondary` (`#3A3D2E`); closing that would raise this level into `--muted-foreground` and collapse the three-level text ramp, so it is left as a known gap. Light mode was never affected.
+
+### Declared-but-unused schema (deliberate)
+
+Verified by grep, not assumed. Each of these is a schema field the code reads or never touches but never writes. They are listed so a future session doesn't "discover" one and treat it as a bug or wire it up speculatively.
+
+- **`Pledge.status = OVERDUE` is never written.** No maturity-date concept exists in the domain, so nothing can compute overdue-ness — the status is redundant by design, not unfinished. The enum value is retained rather than migrated off a live DB (an enum removal is a destructive migration for zero benefit), and every read path handles it correctly. **Keep writing OVERDUE into accept-lists** — the four-spot ACTIVE/OVERDUE contract stays as-is, so the day a maturity concept lands nothing has to be re-audited.
+- **`Customer.deletedAt` is never written.** No customer DELETE route exists — [app/api/customers/[customerId]/route.ts](app/api/customers/[customerId]/route.ts) exports `GET` and `PATCH` only. The `deletedAt: null` filters throughout are correct and should stay; they cost nothing and are already right for the day a delete route is added. `User.deletedAt` *is* written, by the Clerk `user.deleted` webhook.
+- **`FinancialSnapshot.mtd*` columns are never populated.** `mtdNewPledges` / `mtdReleasedPledges` / `mtdLoanAmount` are declared with defaults of 0 and absent from the evaluate-risk upsert payload. Month-to-date figures are computed live per request in [app/api/dashboard/snapshot/route.ts](app/api/dashboard/snapshot/route.ts) instead — the same names there are local variables, not column reads. Do not read these columns; do not assume the same-named dashboard values came from them.
+
+### Accepted operational trade-offs (deliberate)
+
+- **No server-side subscription enforcement on mutating routes.** `SubscriptionGuard` is a client component and `proxy.ts` enforces sign-in only, so a lapsed user holding a valid Clerk session can still call mutating endpoints. Every such route remains correctly tenant-scoped, so this is **revenue leakage, not data exposure**. If it becomes a product requirement it belongs in one shared server-side guard, not per-route. (Restated from Security posture below — same decision, recorded in both places on purpose.)
+- **CI does not run `next build`.** The workflow is scoped to a correctness gate — typecheck, test, lint — with no build, deploy, or secrets. A build would need real env values in CI to get past config load, which is exactly what this workflow is designed to avoid. The consequence is real and accepted: build-time-only breakage (dynamic imports, server/client boundary violations) will pass CI. Run `npm run build` locally when a change touches those, per the Commands section.
 
 ## Mobile-First Redesign — In Progress
 
