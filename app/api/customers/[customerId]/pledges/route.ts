@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { uploadImage } from "@/lib/upload";
+import { metalContent } from "@/lib/weights";
 import { Prisma, MetalType, CompoundingDuration } from "@prisma/client";
 
 type RouteContext = {
@@ -158,20 +159,18 @@ export async function POST(req: NextRequest, context: RouteContext) {
       itemPhoto = await uploadImage(imageFile, `ELEKHAJOKHA/pledges/${customerId}`);
     }
 
-    // Derive pure-metal content server-side instead of trusting the client.
-    // Round each item to 3 dp BEFORE summing — matches the client's toFixed(3)
-    // then-sum order exactly, so untampered submissions stay byte-identical.
-    const metalContent = (item: { netWeight: unknown; purity: unknown }): number =>
-      Math.round(Number(item.netWeight) * (Number(item.purity) / 100) * 1000) / 1000;
+    // Derive pure-metal content server-side instead of trusting the client
+    // (Invariant 3). metalContent rounds each item to 3 dp BEFORE summing, and
+    // is the same helper the create-pledge form previews with.
 
     // ── Compute totals from items ─────────────────────────────────
     const netWeightOfGold = rawItems
       .filter(i => i.metalType === "GOLD")
-      .reduce((sum, i) => sum + metalContent(i), 0);
+      .reduce((sum, i) => sum + metalContent(i.netWeight, i.purity), 0);
 
     const netWeightOfSilver = rawItems
       .filter(i => i.metalType === "SILVER")
-      .reduce((sum, i) => sum + metalContent(i), 0);
+      .reduce((sum, i) => sum + metalContent(i.netWeight, i.purity), 0);
 
     // ── Create pledge + items in one transaction ──────────────────
     const pledge = await prisma.pledge.create({
@@ -195,7 +194,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
             grossWeight:      toDecimal(item.grossWeight),
             netWeight:        toDecimal(item.netWeight),
             purity:           toDecimal(item.purity),
-            netWeightOfMetal: new Prisma.Decimal(metalContent(item).toFixed(3)),
+            netWeightOfMetal: new Prisma.Decimal(metalContent(item.netWeight, item.purity).toFixed(3)),
           })),
         },
       },

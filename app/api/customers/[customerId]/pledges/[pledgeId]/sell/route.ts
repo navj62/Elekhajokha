@@ -3,12 +3,15 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { calculateHybridInterest } from "@/lib/interest";
+import {
+  CALCULATION_VERSION,
+  OPEN_PLEDGE_STATUSES,
+  isOpenPledgeStatus,
+} from "@/lib/pledgeConstants";
 
 type RouteContext = {
   params: Promise<{ customerId: string; pledgeId: string }>;
 };
-
-const CALCULATION_VERSION = 1;
 
 export async function POST(req: Request, context: RouteContext) {
   try {
@@ -41,7 +44,7 @@ export async function POST(req: Request, context: RouteContext) {
     if (!pledge)
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
 
-    if (pledge.status !== "ACTIVE" && pledge.status !== "OVERDUE") {
+    if (!isOpenPledgeStatus(pledge.status)) {
       return NextResponse.json(
         { error: "NOT_ACTIVE", message: "Only active or overdue pledges can be added to inventory." },
         { status: 409 }
@@ -126,7 +129,7 @@ export async function POST(req: Request, context: RouteContext) {
       await prisma.$transaction(async (tx) => {
         // Double-status guard — accepts ACTIVE or OVERDUE
         const result = await tx.pledge.updateMany({
-          where: { id: pledgeId, status: { in: ["ACTIVE", "OVERDUE"] } },
+          where: { id: pledgeId, status: { in: [...OPEN_PLEDGE_STATUSES] } },
           data: {
             status:             "SOLD",
             releaseDate:        saleDateObj,

@@ -10,6 +10,33 @@ export function getRiskTier(ltv: number): RiskTier {
   return "UNDERWATER";
 }
 
+/**
+ * Days until an open pledge's amount owed overtakes its market value.
+ *
+ * NOTE: simple-interest approximation; understates time-to-underwater
+ * for compounding pledges by 5-15% typically. Display-only — the
+ * canonical interest engine (calculateHybridInterest) is the source
+ * of truth for amounts owed.
+ *
+ * Returns null when there is no market value or no accrual to project from,
+ * and 0 when the pledge is already underwater.
+ */
+export function daysToUnderwater(
+  loanAmount: number,
+  interestRate: number, // annual %
+  amountOwed: number,
+  marketValue: number | null
+): number | null {
+  if (marketValue === null) return null;
+  if (amountOwed >= marketValue) return 0;
+
+  const dailyRate = interestRate / 100 / 365;
+  const dailyAccrual = loanAmount * dailyRate;
+  if (dailyAccrual <= 0) return null;
+
+  return Math.ceil((marketValue - amountOwed) / dailyAccrual);
+}
+
 interface LTVInput {
   principal:           number;
   rate:                number;

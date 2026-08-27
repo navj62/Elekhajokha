@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, AlertCircle, Inbox } from "lucide-react";
+import { isOpenPledgeStatus } from "@/lib/pledgeConstants";
 
 /* ─────────────────────────────────────────────
    Helpers
@@ -385,7 +386,7 @@ export default function FinancialSummaryPage() {
   const tierConf = TIER_CONFIG[risk.tier] ?? TIER_CONFIG.WATCH;
 
   const openPledges = data.pledges.filter(
-    (p) => p.status === "ACTIVE" || p.status === "OVERDUE"
+    (p) => isOpenPledgeStatus(p.status)
   );
 
   // Weights read as one line under the collateral figure rather than as two

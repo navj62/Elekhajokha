@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { OPEN_PLEDGE_STATUSES } from "@/lib/pledgeConstants";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,9 @@ export async function GET(req: NextRequest) {
       const limit = clampLimit(searchParams.get("limit"));
       const cursor = clampCursor(searchParams.get("cursor"));
 
+      // The open-status pair below is spelled out as SQL literals: a TS const
+      // cannot be interpolated into raw SQL safely. Keep it in sync with
+      // OPEN_PLEDGE_STATUSES in lib/pledgeConstants.ts.
       const regions = await prisma.$queryRaw<
         { name: string; customerCount: number; activePledges: number }[]
       >`
@@ -105,6 +109,8 @@ export async function GET(req: NextRequest) {
           totalLoanAmount: number;
         }[]
       >`
+        -- Open-status pair as SQL literals; sync with OPEN_PLEDGE_STATUSES
+        -- in lib/pledgeConstants.ts (a TS const cannot be interpolated here).
         SELECT c.id, c.name, c.mobile, c."customerImg" AS "customerImg",
                INITCAP(LOWER(TRIM(c.region))) AS region,
                COUNT(p.id) FILTER (WHERE p.status IN ('ACTIVE', 'OVERDUE'))::int AS "activePledges",
@@ -132,6 +138,9 @@ export async function GET(req: NextRequest) {
       }
 
       // Matched regions (folded), same substring-match convention as region-search.
+      // The open-status pair below is spelled out as SQL literals: a TS const
+      // cannot be interpolated into raw SQL safely. Keep it in sync with
+      // OPEN_PLEDGE_STATUSES in lib/pledgeConstants.ts.
       const matchedRegionRows = await prisma.$queryRaw<
         { name: string; customerCount: number; activePledges: number }[]
       >`
@@ -164,6 +173,8 @@ export async function GET(req: NextRequest) {
               rn: number;
             }[]
           >`
+            -- Open-status pair as SQL literals (3 occurrences below); sync with
+            -- OPEN_PLEDGE_STATUSES in lib/pledgeConstants.ts.
             WITH ranked AS (
               SELECT c.id, c.name, c.mobile, c."customerImg" AS "customerImg",
                      INITCAP(LOWER(TRIM(c.region))) AS region,
@@ -225,7 +236,7 @@ export async function GET(req: NextRequest) {
           customerImg: true,
           region: true,
           pledges: {
-            where: { status: { in: ["ACTIVE", "OVERDUE"] } },
+            where: { status: { in: [...OPEN_PLEDGE_STATUSES] } },
             select: { loanAmount: true },
           },
         },

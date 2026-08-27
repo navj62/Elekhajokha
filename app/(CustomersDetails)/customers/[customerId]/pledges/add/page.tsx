@@ -19,6 +19,7 @@ import SubscriptionGuard from "@/components/SubscriptionGuard";
 import Sheet from "@/components/ui/Sheet";
 import StickyActions from "@/components/ui/StickyActions";
 import { PLEDGE_FORM_REQUIRED_KEYS } from "@/lib/pledgeFormKeys";
+import { metalContent } from "@/lib/weights";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                              */
@@ -418,22 +419,19 @@ export default function AddPledgePage() {
     };
 
     // Build items array for the API
-    const apiItems = items.map((item) => {
-      const nw = Number(item.netWeight) || 0;
-      const purity = Number(item.purity) || 0;
-      const netWeightOfMetal = (nw * purity) / 100;
-
-      return {
-        itemType: item.itemType,
-        metalType: item.metalType.toUpperCase(),
-        itemName: item.itemName || null,
-        quantity: Number(item.quantity) || 1,
-        grossWeight: item.grossWeight || "0",
-        netWeight: item.netWeight || "0",
-        purity: item.purity || "0",
-        netWeightOfMetal: netWeightOfMetal.toFixed(3),
-      };
-    });
+    // netWeightOfMetal is deliberately NOT sent: the route derives it
+    // server-side from netWeight × purity and never reads a client-supplied
+    // value (Invariant 3). The preview below uses the same metalContent helper
+    // the route uses, so what the owner sees is what gets stored.
+    const apiItems = items.map((item) => ({
+      itemType: item.itemType,
+      metalType: item.metalType.toUpperCase(),
+      itemName: item.itemName || null,
+      quantity: Number(item.quantity) || 1,
+      grossWeight: item.grossWeight || "0",
+      netWeight: item.netWeight || "0",
+      purity: item.purity || "0",
+    }));
 
     setSaving(true);
     try {
@@ -814,7 +812,7 @@ export default function AddPledgePage() {
                     <span className="text-[13px] font-bold text-muted-foreground-subtle">Net Metal Weight</span>
                     <span className="text-[16px] font-bold text-foreground">
                       {item.netWeight && item.purity
-                        ? `${((Number(item.netWeight) * Number(item.purity)) / 100).toFixed(2)} g`
+                        ? `${metalContent(item.netWeight, item.purity).toFixed(3)} g`
                         : "- g"}
                     </span>
                   </div>

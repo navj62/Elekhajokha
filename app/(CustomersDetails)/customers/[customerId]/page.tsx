@@ -11,6 +11,7 @@ import {
 
 import { QRCodeCanvas } from "qrcode.react";
 import { Switch } from "@/components/ui/switch";
+import { isOpenPledgeStatus } from "@/lib/pledgeConstants";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -114,7 +115,7 @@ export default function CustomerDetailPage() {
 
     // 1. Show-released toggle (default OFF → active + overdue; ON → all)
     if (!showReleased) {
-      result = result.filter((p) => p.status === "ACTIVE" || p.status === "OVERDUE");
+      result = result.filter((p) => isOpenPledgeStatus(p.status));
     }
 
     // 2. Search — asset label + formatted pledge date (case-insensitive)
@@ -285,7 +286,7 @@ export default function CustomerDetailPage() {
   const progressValue = totalLoan > 0 ? (repaid / totalLoan) * 100 : 0;
 
   /* ---- Bulk selection (ACTIVE or OVERDUE pledges) ------------- */
-  const activePledges = customer?.pledges.filter((p) => p.status === "ACTIVE" || p.status === "OVERDUE") ?? [];
+  const activePledges = customer?.pledges.filter((p) => isOpenPledgeStatus(p.status)) ?? [];
   const allActiveSelected =
     activePledges.length > 0 && activePledges.every((p) => selectedIds.has(p.id));
 
@@ -871,7 +872,7 @@ export default function CustomerDetailPage() {
                               type="checkbox"
                               aria-label="Select pledge"
                               checked={selectedIds.has(pledge.id)}
-                              disabled={pledge.status !== "ACTIVE" && pledge.status !== "OVERDUE"}
+                              disabled={!isOpenPledgeStatus(pledge.status)}
                               onChange={() => toggleOne(pledge.id)}
                               className="h-4 w-4 accent-[#555B3F] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                             />

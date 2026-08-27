@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 
 import { calculateHybridInterest } from "@/lib/interest";
+import { isOpenPledgeStatus } from "@/lib/pledgeConstants";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                                */
@@ -141,7 +142,7 @@ export default function SellPledgePage() {
 
   const canSell =
     pledge !== null &&
-    (pledge.status === "ACTIVE" || pledge.status === "OVERDUE") &&
+    isOpenPledgeStatus(pledge.status) &&
     calc !== null &&
     !isBeforeSale;
 

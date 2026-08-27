@@ -5,6 +5,8 @@ import { generateCustomerPDF } from "@/lib/generatePDF";
 import { auth } from "@clerk/nextjs/server";
 import { calculateHybridInterest } from "@/lib/interest";
 import { computeCustomerRiskScore } from "@/lib/customerRiskScore";
+import { daysToUnderwater } from "@/lib/calculateLTV";
+import { OPEN_PLEDGE_STATUSES, isOpenPledgeStatus } from "@/lib/pledgeConstants";
 import type { CompoundingDuration } from "@prisma/client";
 
 function istBoundary(dateStr: string, endOfDay: boolean): Date | null {
@@ -15,19 +17,6 @@ function istBoundary(dateStr: string, endOfDay: boolean): Date | null {
   const suffix = endOfDay ? "T23:59:59.999+05:30" : "T00:00:00.000+05:30";
   const d = new Date(`${dateStr}${suffix}`);
   return isNaN(d.getTime()) ? null : d;
-}
-
-function computeDaysToUnderwater(
-  loanAmount: number,
-  interestRate: number,
-  amountOwed: number,
-  marketValue: number | null
-): number | null {
-  if (marketValue === null) return null;
-  if (amountOwed >= marketValue) return 0;
-  const dailyAccrual = (loanAmount * interestRate) / 100 / 365;
-  if (dailyAccrual <= 0) return null;
-  return Math.ceil((marketValue - amountOwed) / dailyAccrual);
 }
 
 export async function GET(req: NextRequest) {
@@ -85,7 +74,7 @@ export async function GET(req: NextRequest) {
         userId: user.id,
         deletedAt: null,
         ...(activeOnly
-          ? { pledges: { some: { status: { in: ["ACTIVE", "OVERDUE"] } } } }
+          ? { pledges: { some: { status: { in: [...OPEN_PLEDGE_STATUSES] } } } }
           : {}),
         ...(startBoundary || endBoundary
           ? {
@@ -126,7 +115,7 @@ export async function GET(req: NextRequest) {
       // Only open pledges — count and current loan outstanding.
       // OVERDUE is open (non-terminal) like ACTIVE; RELEASED and SOLD are terminal.
       const activePledges = c.pledges.filter(
-        (p) => p.status === "ACTIVE" || p.status === "OVERDUE"
+        (p) => isOpenPledgeStatus(p.status)
       );
       const pledgeCount = activePledges.length;
       const totalLoan = activePledges.reduce((s, p) => s + Number(p.loanAmount), 0);
@@ -163,7 +152,7 @@ export async function GET(req: NextRequest) {
         if (marketValue !== null) {
           totalMarketValue += marketValue;
           if (marketValue > largestPledgeMarketValue) largestPledgeMarketValue = marketValue;
-          const dtu = computeDaysToUnderwater(loanAmount, interestRate, receivableAmount, marketValue);
+          const dtu = daysToUnderwater(loanAmount, interestRate, receivableAmount, marketValue);
           if (dtu !== null) {
             if (dtu === 0 || daysToUnderwaterWorst === null || dtu < daysToUnderwaterWorst) {
               daysToUnderwaterWorst = dtu;

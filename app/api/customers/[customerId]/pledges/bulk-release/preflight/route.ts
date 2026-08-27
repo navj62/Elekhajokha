@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { calculateHybridInterest } from "@/lib/interest";
+import { isOpenPledgeStatus } from "@/lib/pledgeConstants";
 
 type RouteContext = {
   params: Promise<{ customerId: string }>;
@@ -101,7 +102,7 @@ export async function POST(req: Request, context: RouteContext) {
 
     /* ---- STEP 3: STATUS (all ACTIVE or OVERDUE) ------------------ */
     const offendingIds = pledges
-      .filter((p) => p.status !== "ACTIVE" && p.status !== "OVERDUE")
+      .filter((p) => !isOpenPledgeStatus(p.status))
       .map((p) => p.id);
 
     if (offendingIds.length > 0) {

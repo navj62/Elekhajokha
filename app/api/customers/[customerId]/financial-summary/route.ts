@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { calculateHybridInterest } from "@/lib/interest";
-import { calculateLTV, getRiskTier } from "@/lib/calculateLTV";
+import { calculateLTV, getRiskTier, daysToUnderwater } from "@/lib/calculateLTV";
+import { isOpenPledgeStatus } from "@/lib/pledgeConstants";
 import { computeCustomerRiskScore } from "@/lib/customerRiskScore";
 import type { CompoundingDuration } from "@prisma/client";
 
@@ -20,25 +21,8 @@ type RouteContext = {
 // Do NOT redefine risk thresholds here — they previously diverged from the
 // canonical ≤65 SAFE / ≤75 WATCH / ≤90 AT_RISK / else UNDERWATER tiers.
 
-// NOTE: simple-interest approximation; understates time-to-underwater
-// for compounding pledges by 5-15% typically. Display-only — the
-// canonical interest engine (calculateHybridInterest) is the source
-// of truth for amounts owed.
-function daysToUnderwater(
-  loanAmount: number,
-  interestRate: number, // annual %
-  amountOwed: number,
-  marketValue: number | null
-): number | null {
-  if (marketValue === null) return null;
-  if (amountOwed >= marketValue) return 0;
-
-  const dailyRate = interestRate / 100 / 365;
-  const dailyAccrual = loanAmount * dailyRate;
-  if (dailyAccrual <= 0) return null;
-
-  return Math.ceil((marketValue - amountOwed) / dailyAccrual);
-}
+// NOTE: daysToUnderwater is imported from lib/calculateLTV (single source of
+// truth). It previously had a byte-identical twin in the customers report.
 
 const DAY_MS = 1000 * 60 * 60 * 24;
 
@@ -280,7 +264,7 @@ export async function GET(_req: Request, context: RouteContext) {
     // processed is a 1:1 map of pledges, so index alignment holds. The rate
     // lives only on the raw row, which is why this reads from both.
     pledges.forEach((p, i) => {
-      if (p.status !== "ACTIVE" && p.status !== "OVERDUE") return;
+      if (!isOpenPledgeStatus(p.status)) return;
       const row = processed[i];
       const { days } = buildTimeToUnderwater(
         p.status,
@@ -296,7 +280,7 @@ export async function GET(_req: Request, context: RouteContext) {
     });
 
     /* ── Portfolio aggregates ──────────────────────────────────── */
-    const activePledges = processed.filter((p) => p.status === "ACTIVE" || p.status === "OVERDUE");
+    const activePledges = processed.filter((p) => isOpenPledgeStatus(p.status));
     const releasedPledges = processed.filter((p) => p.status === "RELEASED");
 
     const totalLoanAmount = activePledges.reduce((s, p) => s + p.loanAmount, 0);
@@ -421,7 +405,7 @@ export async function GET(_req: Request, context: RouteContext) {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     let totalAmountOwed30dAgo = 0;
-    for (const rawPledge of pledges.filter((p) => p.status === "ACTIVE" || p.status === "OVERDUE")) {
+    for (const rawPledge of pledges.filter((p) => isOpenPledgeStatus(p.status))) {
       const pledgeDate = new Date(rawPledge.pledgeDate);
       const endDate30 = pledgeDate > thirtyDaysAgo ? pledgeDate : thirtyDaysAgo;
       const interest30 = calculateHybridInterest(

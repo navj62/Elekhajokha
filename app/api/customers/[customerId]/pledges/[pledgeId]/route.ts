@@ -3,6 +3,11 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { calculateHybridInterest } from "@/lib/interest";
+import {
+  CALCULATION_VERSION,
+  OPEN_PLEDGE_STATUSES,
+  isOpenPledgeStatus,
+} from "@/lib/pledgeConstants";
 
 type RouteContext = {
   params: Promise<{
@@ -11,7 +16,6 @@ type RouteContext = {
   }>;
 };
 
-const CALCULATION_VERSION = 1;
 const VALID_COMPOUNDING = ["MONTHLY", "HALFYEARLY", "YEARLY"] as const;
 type CompoundingDuration = typeof VALID_COMPOUNDING[number];
 
@@ -43,7 +47,7 @@ export async function PATCH(req: Request, context: RouteContext) {
     });
     if (!pledge)
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
-    if (pledge.status !== "ACTIVE" && pledge.status !== "OVERDUE")
+    if (!isOpenPledgeStatus(pledge.status))
       return NextResponse.json({ error: "Only active or overdue pledges can be released" }, { status: 400 });
 
     const body = await req.json();
@@ -105,7 +109,7 @@ export async function PATCH(req: Request, context: RouteContext) {
     try {
       updated = await prisma.$transaction(async (tx) => {
         const result = await tx.pledge.updateMany({
-          where: { id: pledgeId, status: { in: ["ACTIVE", "OVERDUE"] } }, // ✅ guard against double-release
+          where: { id: pledgeId, status: { in: [...OPEN_PLEDGE_STATUSES] } }, // ✅ guard against double-release
           data: {
             status:              "RELEASED",
             releaseDate:         releaseDateObj,

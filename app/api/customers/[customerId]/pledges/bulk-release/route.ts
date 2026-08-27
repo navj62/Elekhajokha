@@ -3,13 +3,17 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma, CompoundingDuration } from "@prisma/client";
 import { calculateHybridInterest } from "@/lib/interest";
+import {
+  CALCULATION_VERSION,
+  OPEN_PLEDGE_STATUSES,
+  isOpenPledgeStatus,
+} from "@/lib/pledgeConstants";
 
 type RouteContext = {
   params: Promise<{ customerId: string }>;
 };
 
 const VALID_COMPOUNDING = ["MONTHLY", "HALFYEARLY", "YEARLY"] as const;
-const CALCULATION_VERSION = 1; // ← MUST match single-release (route.ts:14)
 
 type InputPledge = {
   id: string;
@@ -114,7 +118,7 @@ export async function POST(req: Request, context: RouteContext) {
     }
 
     /* ---- STEP: STATUS (all ACTIVE or OVERDUE) -------------------- */
-    const offendingIds = pledges.filter((p) => p.status !== "ACTIVE" && p.status !== "OVERDUE").map((p) => p.id);
+    const offendingIds = pledges.filter((p) => !isOpenPledgeStatus(p.status)).map((p) => p.id);
     if (offendingIds.length > 0) {
       return NextResponse.json(
         {
@@ -187,7 +191,7 @@ export async function POST(req: Request, context: RouteContext) {
               },
             });
             if (!pledge) throw new Error("OWNERSHIP_VIOLATION:" + inputPledge.id);
-            if (pledge.status !== "ACTIVE" && pledge.status !== "OVERDUE") throw new Error("ALREADY_RELEASED:" + pledge.id);
+            if (!isOpenPledgeStatus(pledge.status)) throw new Error("ALREADY_RELEASED:" + pledge.id);
 
             const calc = calculateHybridInterest(
               Number(pledge.loanAmount),
@@ -212,7 +216,7 @@ export async function POST(req: Request, context: RouteContext) {
 
             // Double-release guard (MIRRORS single-release exactly).
             const result = await tx.pledge.updateMany({
-              where: { id: pledge.id, status: { in: ["ACTIVE", "OVERDUE"] } },
+              where: { id: pledge.id, status: { in: [...OPEN_PLEDGE_STATUSES] } },
               data: {
                 status:              "RELEASED",
                 releaseDate:         releaseDateObj,
