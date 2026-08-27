@@ -182,7 +182,7 @@ model PledgeAudit {
   receivableAmount     Decimal?            @db.Decimal(12, 2)
   releaseDate          DateTime?
   createdAt            DateTime            @default(now())
-  pledge               Pledge              @relation(fields: [pledgeId], references: [id], onDelete: Cascade)
+  pledge               Pledge              @relation(fields: [pledgeId], references: [id], onDelete: Restrict)
 
   @@index([pledgeId, createdAt])
   @@map("pledge_audits")

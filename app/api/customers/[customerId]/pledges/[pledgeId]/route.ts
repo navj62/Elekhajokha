@@ -263,6 +263,25 @@ export async function DELETE(req: Request, context: RouteContext) {
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
     if (pledge.status === "RELEASED")
       return NextResponse.json({ error: "Released pledges cannot be deleted" }, { status: 400 });
+    if (pledge.status === "SOLD")
+      return NextResponse.json({ error: "Sold pledges cannot be deleted" }, { status: 400 });
+
+    // Audit rows are the permanent financial record of a release or sale and are
+    // protected at the DB level (onDelete: Restrict). Block here for a clean error
+    // instead of an opaque FK failure. Deliberately NOT behind confirmDelete —
+    // this is not a user-overridable acknowledgement.
+    const auditCount = await prisma.pledgeAudit.count({ where: { pledgeId } });
+    if (auditCount > 0) {
+      return NextResponse.json(
+        {
+          error: "AUDIT_RECORDS_EXIST",
+          message:
+            "This pledge has a permanent financial audit record and cannot be deleted.",
+          auditCount,
+        },
+        { status: 400 }
+      );
+    }
 
     // Guard against silently erasing part-payment history. Deleting cascades to
     // Transaction rows, so require explicit confirmation when any exist.
@@ -285,6 +304,7 @@ export async function DELETE(req: Request, context: RouteContext) {
     }
 
     // PledgeItems + Transactions cascade-deleted via onDelete: Cascade
+    // (PledgeAudit rows are Restrict-protected and guarded above)
     await prisma.pledge.delete({ where: { id: pledgeId } });
     return NextResponse.json({ success: true });
 
