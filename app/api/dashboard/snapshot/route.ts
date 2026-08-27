@@ -153,7 +153,10 @@ export async function GET() {
       count: r._count.id,
     }));
 
-    // Tasks mapping (No Task model exists currently, so we return empty array)
+    // This dashboard snapshot always reports an empty tasks array. The real
+    // Task model and /api/tasks CRUD routes exist and work (see the Tasks
+    // module) — this field is simply disconnected from them, not a stub for
+    // a missing model.
     const tasks: { id: string, text: string, done: boolean, createdAt: string }[] = [];
 
     // Chart aggregations
@@ -177,12 +180,8 @@ export async function GET() {
     // In Loan charts, we can approximate disbursed from pledges if we don't have separate DISBURSEMENT transactions.
     // The spec said "Total Disbursed, Recovered Amount, Recovery Rate, from actual transactions."
     // Let's use pledges for disbursed and transactions for recovered.
-    pledgesThisYear.forEach(() => {
-      // Assuming we need actual amount. But graph needs concise numbers, we will pass raw numbers.
-      // Wait, we need the pledge amount for disbursed.
-    });
 
-    // Actually, let's fetch full pledges for loan amount
+    // Fetch full pledges for loan amount
     const fullPledgesThisYear = await prisma.pledge.findMany({
       where: { customer: { userId: user.id }, createdAt: { gte: yearStart } },
       select: { createdAt: true, loanAmount: true },

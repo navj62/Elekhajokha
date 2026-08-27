@@ -29,16 +29,6 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
       }),
     ]);
-    let cache: unknown = null;
-let lastFetch = 0;
-
-if (Date.now() - lastFetch < 60000 && cache) {
-  return NextResponse.json(cache);
-}
-
-const data = { gold, silver };
-cache = data;
-lastFetch = Date.now();
     return NextResponse.json(
       { gold, silver },
       {
