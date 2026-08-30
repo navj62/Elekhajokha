@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useUser } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import {
   Camera, Loader2, UserPlus, Mail, Briefcase,
   Shield, Check, ArrowLeft, HelpCircle,
@@ -68,6 +68,7 @@ function MobileField({
 
 export default function OnboardingPage() {
   const { user, isLoaded } = useUser();
+  const { getToken } = useAuth();
   const router = useRouter();
 
   const [form, setForm] = useState({
@@ -122,8 +123,28 @@ export default function OnboardingPage() {
         throw new Error(data.error || "Failed to save onboarding details");
       }
 
-      // 👇 THE CRITICAL FIX: Refresh Clerk session to get the new metadata
-      await user?.reload();
+      // Past this point the account IS saved server-side: the DB row is upserted
+      // and publicMetadata.onboardingComplete is written. Anything that fails
+      // below is a session-refresh problem, NOT a save problem.
+      //
+      // proxy.ts gates /dashboard on sessionClaims.metadata.onboardingComplete,
+      // which lives in the session JWT — not on the client User object. The token
+      // in hand was minted before the POST, so it still carries the old claim.
+      // Navigating on it bounces the user straight back to /onboarding.
+      try {
+        // Refreshes the client User resource (used for currentUser.imageUrl below)
+        // and, per the SDK, forces a session token refresh.
+        await user?.reload();
+        // Explicit forced re-mint: skipCache bypasses the token TTL cache so the
+        // new JWT is fetched from the server carrying onboardingComplete: true.
+        const refreshedToken = await getToken({ skipCache: true });
+        if (!refreshedToken) throw new Error("NO_REFRESHED_TOKEN");
+      } catch {
+        setError(
+          "Your account is set up, but we couldn't refresh your session. Please refresh this page to continue."
+        );
+        return;
+      }
 
       router.replace("/dashboard");
     } catch (err) {
