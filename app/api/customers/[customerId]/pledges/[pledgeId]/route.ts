@@ -309,7 +309,20 @@ export async function DELETE(req: Request, context: RouteContext) {
 
     // PledgeItems + Transactions cascade-deleted via onDelete: Cascade
     // (PledgeAudit rows are Restrict-protected and guarded above)
-    await prisma.pledge.delete({ where: { id: pledgeId } });
+    //
+    // Tenant guard: deleteMany, not delete, so the ownership predicate lives in
+    // the WHERE clause of the destructive write itself instead of in control
+    // flow. Mirrors the atomic updateMany guard on the release / sell paths.
+    const result = await prisma.pledge.deleteMany({
+      where: {
+        id:         pledgeId,
+        customerId,
+        customer: { userId: user.id },
+      },
+    });
+    if (result.count === 0)
+      return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
+
     return NextResponse.json({ success: true });
 
   } catch (err) {
