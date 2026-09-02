@@ -13,7 +13,10 @@
 //   - FinancialSnapshot upserts run with bounded concurrency at the end, after
 //     per-user totals are fully accumulated across all pages.
 //   - No mega-transaction: each page commits independently, so progress is
-//     durable and a mid-run failure doesn't roll everything back.
+//     durable and a mid-run failure doesn't roll everything back. Each page IS
+//     atomic in itself though — its metrics UPDATE and its alert insert share
+//     one transaction, so the tier cache can never advance without the alerts
+//     that depend on its previous value.
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
@@ -159,7 +162,17 @@ function tierToAlertType(tier: RiskTier): "CRITICAL" | "TIER_CHANGE" | "INFO" {
 // One `UPDATE … FROM (VALUES …)` for the whole page instead of N updates.
 // id/customerId are `text` columns (String @id, no @db.Uuid) → cast ::text.
 // risk_tier carried as text in VALUES, cast to the "RiskTier" enum on assignment.
-async function flushPledgeMetrics(rows: PledgeUpdate[]): Promise<void> {
+//
+// The client is passed IN, never taken from the module-level `prisma` singleton:
+// this runs inside the per-page transaction, and a raw statement issued on the
+// global client from within a `$transaction` callback executes on a DIFFERENT
+// pooled connection — i.e. OUTSIDE the transaction. That would silently restore
+// the bug this parameter exists to prevent (metrics committing while the alert
+// insert rolls back, permanently destroying the `oldTier !== newTier` signal).
+async function flushPledgeMetrics(
+  client: Prisma.TransactionClient,
+  rows: PledgeUpdate[],
+): Promise<void> {
   if (rows.length === 0) return;
 
   const tuples = rows.map(
@@ -173,7 +186,7 @@ async function flushPledgeMetrics(rows: PledgeUpdate[]): Promise<void> {
     )`
   );
 
-  await prisma.$executeRaw(Prisma.sql`
+  await client.$executeRaw(Prisma.sql`
     UPDATE "pledges" AS p SET
       "lastAmountOwed"    = v.amount_owed,
       "lastMarketValue"   = v.market_value,
@@ -356,12 +369,35 @@ async function handle(req: NextRequest) {
         });
       }
 
-      // ── Commit this page (durable; not wrapped in a run-wide transaction) ──
+      // ── Commit this page — ONE transaction per page, never run-wide ──
+      // The metrics UPDATE and the alert insert must land together or not at
+      // all. The metrics write advances `lastRiskTier`, which is the ONLY
+      // record of the tier we last notified on; the alert condition upstream is
+      // `oldTier !== riskTier`. Committing the metrics without the alerts is
+      // therefore not a retriable loss — the next run reads the already-advanced
+      // tier, the comparison matches, and that crossing can NEVER be announced.
+      //
+      // Scope is deliberately tight: the page fetch, the per-pledge compute and
+      // the cross-page accumulator all stay OUTSIDE, so the connection is held
+      // only for the two writes (which have zero work between them).
+      //
+      // Page granularity preserves resumability exactly as before: a page either
+      // commits both writes or neither, and a rolled-back page leaves
+      // `lastRiskTier` un-advanced, so the next run re-derives it unchanged.
+      //
+      // Explicit 30s timeout (matching the sell / bulk-release transactions):
+      // Prisma's 5s default would ABORT a slow 500-row UPDATE that today merely
+      // runs long, trading a rare lost alert for a common failed page.
       if (!dryRun) {
-        await flushPledgeMetrics(pledgeUpdates);
-        if (batchAlerts.length > 0) {
-          await prisma.pledgeAlert.createMany({ data: batchAlerts as Prisma.PledgeAlertCreateManyInput[] });
-        }
+        await prisma.$transaction(
+          async (tx) => {
+            await flushPledgeMetrics(tx, pledgeUpdates);
+            if (batchAlerts.length > 0) {
+              await tx.pledgeAlert.createMany({ data: batchAlerts as Prisma.PledgeAlertCreateManyInput[] });
+            }
+          },
+          { timeout: 30000 }
+        );
       }
 
       batchNumber++;
