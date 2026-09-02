@@ -98,6 +98,14 @@ export async function PATCH(req: Request, context: RouteContext) {
       (goldPpg   !== null ? goldPpg   * netWeightOfGold   : 0) +
       (silverPpg !== null ? silverPpg * netWeightOfSilver : 0);
 
+    // Market-value convention - must match every closure path (single release,
+    // bulk release, sell) and the bulk preview. Store null unless the value is
+    // POSITIVE: a computed 0 means "could not value" (no price for the metal
+    // actually held), never "worth nothing" - pledge items are always GOLD or
+    // SILVER with server-validated positive weight. Audit rows are immutable,
+    // so a 0 written here could never be corrected. Revisit if MetalType ever
+    // gains OTHER on the pledge side: "priced at zero" and "unpriceable" would
+    // then be genuinely different states.
     const marketValueAtRelease = marketValueRaw > 0 ? marketValueRaw : null;
     const ltvAtRelease =
       marketValueAtRelease && marketValueAtRelease > 0

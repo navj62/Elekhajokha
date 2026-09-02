@@ -205,10 +205,16 @@ export async function POST(req: Request, context: RouteContext) {
             const ngold   = Number(pledge.netWeightOfGold);
             const nsilver = Number(pledge.netWeightOfSilver);
 
-            let marketValue: number | null = null;
-            if (goldPpg !== null || silverPpg !== null) {
-              marketValue = ((goldPpg ?? 0) * ngold) + ((silverPpg ?? 0) * nsilver);
-            }
+            // Market-value convention - must match every closure path (single release,
+            // bulk release, sell) and the bulk preview. Store null unless the value is
+            // POSITIVE: a computed 0 means "could not value" (no price for the metal
+            // actually held), never "worth nothing" - pledge items are always GOLD or
+            // SILVER with server-validated positive weight. Audit rows are immutable,
+            // so a 0 written here could never be corrected. Revisit if MetalType ever
+            // gains OTHER on the pledge side: "priced at zero" and "unpriceable" would
+            // then be genuinely different states.
+            const marketValueRaw = ((goldPpg ?? 0) * ngold) + ((silverPpg ?? 0) * nsilver);
+            const marketValue = marketValueRaw > 0 ? marketValueRaw : null;
             const ltvAtRelease =
               marketValue !== null && marketValue > 0
                 ? Math.round((calc.receivableAmount / marketValue) * 10000) / 100
