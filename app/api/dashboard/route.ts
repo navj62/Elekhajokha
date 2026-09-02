@@ -54,7 +54,15 @@ export async function GET() {
       0
     );
 
-    // Balance = total loan for active pledges + accrued interest (simplified)
+    // Sum of loanAmount over ACTIVE pledges — PRINCIPAL ONLY, no accrued
+    // interest. Pledge.receivableAmount is written only at closure (release /
+    // bulk-release / sell), so it is null for every open pledge and the ternary
+    // below always falls through to loanAmount.
+    //
+    // stats.totalBalanceAmount has NO consumer today. Before wiring it to any
+    // UI: compute accrual via calculateHybridInterest (needs interestRate,
+    // allowCompounding and compoundingDuration added to the select above), and
+    // note the filter matches status === "ACTIVE" only, excluding OVERDUE.
     const totalBalanceAmount = activePledges.reduce((sum, p) => {
       const receivable = p.receivableAmount ? Number(p.receivableAmount) : 0;
       return sum + (receivable > 0 ? receivable : Number(p.loanAmount));
