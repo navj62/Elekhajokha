@@ -115,9 +115,18 @@ export async function GET(_req: Request, context: RouteContext) {
         // Settled releases. These are finalized financial records snapshotted
         // at release — never recomputed here. action:"RELEASED" excludes SOLD
         // audit rows, which are structurally identical but a different event.
+        // Ordered by releaseDate — EVENT time (when the settlement happened),
+        // not createdAt (RECORDING time, when the audit row was written). The
+        // list below is labelled with `settledOn`, which is releaseDate, so
+        // sorting on the other clock would visibly mis-order a backdated
+        // release: the release date is owner-chosen and unbounded above, so the
+        // two can differ by months. `nulls: "last"` is explicit because Postgres
+        // defaults DESC to NULLS FIRST — a row with no event time would
+        // otherwise head the list. It is excluded from the ordering rather than
+        // coalesced onto createdAt.
         prisma.pledgeAudit.findMany({
           where: { pledge: { customerId }, action: "RELEASED" },
-          orderBy: { createdAt: "desc" },
+          orderBy: { releaseDate: { sort: "desc", nulls: "last" } },
           select: {
             id: true,
             createdAt: true,

@@ -8,6 +8,8 @@
 //   totalAmountReceived   → PledgeAudit.receivableAmount (action=RELEASED), null→0
 //   newCustomers          → Customer.createdAt           (deletedAt: null)
 //   totalInterestReceived → PledgeAudit.totalInterest    (action=RELEASED), null→0
+// Both audit money series are keyed on PledgeAudit.releaseDate (event time),
+// NOT PledgeAudit.createdAt (recording time) — see the comment on query C.
 //
 // All four queries are tenant-scoped to the internal user.id (Invariant 1).
 // Money is read-only display aggregation, so Number(Decimal) is acceptable here
@@ -80,15 +82,16 @@ export async function GET() {
           },
           select: { releaseDate: true },
         }),
-        // C) Release audits — settlement money snapshotted at release.
+        // C) Release audits — settlement money snapshotted at release, keyed by
+        // releaseDate (business date) so the window matches query B's.
         prisma.pledgeAudit.findMany({
           where: {
             pledge: { customer: { userId: user.id } },
             action: "RELEASED",
-            createdAt: { gte: twelveMonthsAgo },
+            releaseDate: { gte: twelveMonthsAgo },
           },
           select: {
-            createdAt: true,
+            releaseDate: true,
             receivableAmount: true,
             totalInterest: true,
           },
@@ -142,11 +145,25 @@ export async function GET() {
       months[i].pledgesReleased += 1;
     }
 
-    // C → totalAmountReceived + totalInterestReceived, by createdAt. The audit's
-    // createdAt is the wall-clock release time (≈ the business release date — close
-    // enough for monthly bucketing). receivableAmount/totalInterest null-coalesce to 0.
+    // C → totalAmountReceived + totalInterestReceived, by releaseDate.
+    //
+    // releaseDate is EVENT time (when the settlement actually happened);
+    // createdAt is RECORDING time (when the audit row was written). This chart
+    // answers "when did this happen", so it must bucket on releaseDate. The two
+    // are not interchangeable: the release date is owner-chosen at release with
+    // no upper bound and a lower bound only of the pledge date, so a backdated
+    // release can put them months — or years — apart. The date-range filter on
+    // query C above moves with this bucketer on purpose; filtering on one clock
+    // while bucketing on the other is worse than consistently using either.
+    //
+    // A null releaseDate has no event time, so it cannot be bucketed and is
+    // skipped rather than falling back to createdAt — coalescing would silently
+    // reintroduce recording time into an event-time series. (Every closure path
+    // writes releaseDate, so this is defensive: the column is merely nullable.)
+    // receivableAmount/totalInterest null-coalesce to 0.
     for (const a of releaseAudits) {
-      const i = idx.get(toMonthKey(a.createdAt));
+      if (!a.releaseDate) continue;
+      const i = idx.get(toMonthKey(a.releaseDate));
       if (i === undefined) continue;
       months[i].totalAmountReceived += Number(a.receivableAmount ?? 0);
       months[i].totalInterestReceived += Number(a.totalInterest ?? 0);
