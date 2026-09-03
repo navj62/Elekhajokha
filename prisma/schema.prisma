@@ -118,6 +118,25 @@ model PledgeItemType {
   user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
+  // Custom item-type labels are unique per owner. This is the GUARANTEE behind
+  // the case-insensitive duplicate check in POST /api/item-types: that check is
+  // check-then-act and a double-submit can pass it twice, so the DB has to be
+  // the thing that actually holds the line (same two-layer shape as the
+  // pledge-delete audit guard — the DB enforces, the route explains).
+  //
+  // What it deliberately does NOT cover, so this is documented rather than
+  // silently assumed:
+  //   - It is CASE-SENSITIVE. "Ring" and "ring" are two distinct rows to
+  //     Postgres. The app check is case-insensitive (ILIKE) and stays stricter.
+  //   - It does NOT prevent duplicate SYSTEM DEFAULTS. Those rows have
+  //     userId = NULL, and Postgres treats NULLs as DISTINCT in a unique index,
+  //     so ("Ring", NULL) can repeat. Defaults are written only by
+  //     prisma/seed-defaults.ts, which is itself idempotent check-then-create
+  //     and operator-run — not a user-reachable path.
+  //   - It does NOT stop a custom label from shadowing a system default
+  //     (different userId ⇒ different key). Only the app check blocks that,
+  //     and 5 such rows already exist in production from a one-off import.
+  @@unique([userId, label])
   @@index([userId])
   @@index([isDefault])
   @@map("pledge_item_types")
