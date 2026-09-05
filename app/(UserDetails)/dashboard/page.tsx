@@ -97,7 +97,8 @@ interface DashboardData {
     totalActivePledges: number;
     totalActiveLoanAmount: number;
     totalReleasedLoanAmount: number;
-    totalBalanceAmount: number;
+    // null = nothing to total (no ACTIVE pledges). Renders as "—", never ₹0.
+    totalBalanceAmount: number | null;
   };
   recentPledges?: {
     id: string;
@@ -773,7 +774,9 @@ export default function DashboardPage() {
     totalActivePledges: 0,
     totalActiveLoanAmount: 0,
     totalReleasedLoanAmount: 0,
-    totalBalanceAmount: 0,
+    // Not 0: the snapshot fetch has not landed (or failed), so the balance is
+    // unknown, not zero. Same convention as INVENTORY VALUE — render "—".
+    totalBalanceAmount: null,
   };
 
   const pledgesToUse = dashboard?.recentPledges || [];
@@ -969,10 +972,9 @@ export default function DashboardPage() {
                 </span>
               </div>
               <span className="text-[24px] font-bold" style={{ color: "var(--foreground)" }}>
-                <AnimatedCounter
-                  value={statsToUse.totalBalanceAmount || 0}
-                  format={formatRupees}
-                />
+                {statsToUse.totalBalanceAmount !== null
+                  ? formatRupees(statsToUse.totalBalanceAmount)
+                  : "—"}
               </span>
               {/* Right divider */}
               <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border)]" />
