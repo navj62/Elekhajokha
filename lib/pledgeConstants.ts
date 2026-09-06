@@ -40,3 +40,18 @@ export type OpenPledgeStatus = (typeof OPEN_PLEDGE_STATUSES)[number];
 export function isOpenPledgeStatus(status: string): boolean {
   return (OPEN_PLEDGE_STATUSES as readonly string[]).includes(status);
 }
+
+/**
+ * Ceilings for the LTV-percentage columns, matched to their declared Decimal
+ * precision. A stored LTV is a RATIO (receivable ÷ market value), which is
+ * unbounded above — a tiny/mispriced market value against a large receivable
+ * can exceed either ceiling, and Postgres raises "numeric field overflow" on
+ * an unclamped write, rolling back the whole closure transaction. Clamp
+ * before every write to one of these columns; do not write the raw ratio.
+ *
+ * A clamped value is a floor lie, not a precise figure: read a stored value
+ * at the ceiling as "at or above", never as exact.
+ */
+export const LTV_MAX_8_2 = 999999.99; // ceiling for Pledge.lastCalculatedLtv  Decimal(8,2)
+export const LTV_MAX_5_2 = 999.99;    // ceiling for PledgeAudit.ltvAtRelease and
+                                       // FinancialSnapshot.overallLtv, both Decimal(5,2)

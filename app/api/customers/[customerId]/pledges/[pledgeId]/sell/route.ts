@@ -7,6 +7,7 @@ import {
   CALCULATION_VERSION,
   OPEN_PLEDGE_STATUSES,
   isOpenPledgeStatus,
+  LTV_MAX_5_2,
 } from "@/lib/pledgeConstants";
 
 type RouteContext = {
@@ -110,9 +111,15 @@ export async function POST(req: Request, context: RouteContext) {
     // gains OTHER on the pledge side: "priced at zero" and "unpriceable" would
     // then be genuinely different states.
     const marketValueAtRelease = marketValueRaw > 0 ? marketValueRaw : null;
+    // ltvAtRelease is a ratio, not a bounded percentage — a tiny/mispriced
+    // marketValueAtRelease against a large receivableAmount can exceed the
+    // column's Decimal(5,2) ceiling. Clamp before writing, or Postgres throws
+    // "numeric field overflow" and rolls back the whole sale transaction,
+    // including the InventoryItem creation. A value AT the ceiling means
+    // "at or above 999.99%", never a precise figure.
     const ltvAtRelease =
       marketValueAtRelease && marketValueAtRelease > 0
-        ? Math.round((calc.receivableAmount / marketValueAtRelease) * 10000) / 100
+        ? Math.min(LTV_MAX_5_2, Math.round((calc.receivableAmount / marketValueAtRelease) * 10000) / 100)
         : null;
 
     // ── Derive inventory item details from first pledge item ──────────

@@ -22,6 +22,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { calculateLTV, type RiskTier } from "@/lib/calculateLTV";
 import { constantTimeEqual } from "@/lib/constantTimeEqual";
+import { LTV_MAX_8_2, LTV_MAX_5_2 } from "@/lib/pledgeConstants";
 
 // Vercel: allow up to the Pro ceiling.
 export const maxDuration = 60;
@@ -32,8 +33,6 @@ export const dynamic = "force-dynamic";
 // ─────────────────────────────────────────────
 const BATCH_SIZE = 500;                 // pledges per page (take BATCH_SIZE + 1)
 const SNAPSHOT_UPSERT_CONCURRENCY = 50; // bounded fan-out for the end-of-run upserts
-const LTV_MAX_8_2 = 999999.99;          // ceiling for Pledge.lastCalculatedLtv  Decimal(8,2)
-const LTV_MAX_5_2 = 999.99;             // ceiling for FinancialSnapshot.overallLtv Decimal(5,2)
 
 // ─────────────────────────────────────────────
 // TYPES

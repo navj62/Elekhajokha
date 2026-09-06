@@ -7,6 +7,7 @@ import {
   CALCULATION_VERSION,
   OPEN_PLEDGE_STATUSES,
   isOpenPledgeStatus,
+  LTV_MAX_5_2,
 } from "@/lib/pledgeConstants";
 
 type RouteContext = {
@@ -215,9 +216,14 @@ export async function POST(req: Request, context: RouteContext) {
             // then be genuinely different states.
             const marketValueRaw = ((goldPpg ?? 0) * ngold) + ((silverPpg ?? 0) * nsilver);
             const marketValue = marketValueRaw > 0 ? marketValueRaw : null;
+            // ltvAtRelease is a ratio, not a bounded percentage — a tiny/mispriced
+            // marketValue against a large receivableAmount can exceed the column's
+            // Decimal(5,2) ceiling. Clamp before writing, or Postgres throws
+            // "numeric field overflow" and rolls back the WHOLE batch, not just
+            // this pledge. A value AT the ceiling means "at or above 999.99%".
             const ltvAtRelease =
               marketValue !== null && marketValue > 0
-                ? Math.round((calc.receivableAmount / marketValue) * 10000) / 100
+                ? Math.min(LTV_MAX_5_2, Math.round((calc.receivableAmount / marketValue) * 10000) / 100)
                 : null;
 
             // Double-release guard (MIRRORS single-release exactly).
