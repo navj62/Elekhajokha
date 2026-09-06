@@ -110,6 +110,13 @@ export default function NotificationsPage() {
     try {
       const params = new URLSearchParams({ take: "20" });
       if (filterUnread === "unread") params.set("unreadOnly", "true");
+      // `cursor` is an OPAQUE server token — currently "<ISO timestamp>|<id>",
+      // a keyset pair over the alert ordering. Round-trip it verbatim; never
+      // parse, split, or reconstruct it here. It must carry both ordering
+      // columns: alerts written by one cron sweep share an identical
+      // createdAt, so a timestamp-only cursor silently skipped every tied row
+      // past the page boundary. The server ignores an unparseable cursor and
+      // serves the first page, so a stale one degrades rather than erroring.
       if (!reset && nextCursor)      params.set("cursor", nextCursor);
 
       const res  = await fetch(`/api/notifications?${params}`);

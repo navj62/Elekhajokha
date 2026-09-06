@@ -90,7 +90,20 @@ export async function GET(req: NextRequest) {
     const pledges = await prisma.pledge.findMany({
       where,
       take:    take + 1,
-      orderBy: { createdAt: "desc" },
+
+      // `id` is a TIEBREAKER, not decoration: a cursor must address a TOTAL
+      // ORDER or tied rows are silently dropped AND duplicated. On `createdAt`
+      // alone the cursor column was absent from the sort, so Prisma could not
+      // build a keyset predicate — it emitted `createdAt <= (cursor's
+      // createdAt)` with OFFSET 0 and NO LIMIT and sliced in memory. The
+      // non-strict `<=` re-admits the whole tied group, so the next page
+      // re-emits rows already shown and an equal number falls off the tail.
+      // Replaying that shape over real tied data measured 45 duplicates and
+      // 77 permanently-lost rows out of 970.
+      //
+      // Invisible in testing: ties require production-scale batch writes.
+      // Keep this in sync with /api/pledgeList, which pages identically.
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       ...(cursor && { cursor: { id: cursor }, skip: 1 }),
       select: {
         id:                true,

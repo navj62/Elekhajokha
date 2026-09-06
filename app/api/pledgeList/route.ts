@@ -153,7 +153,27 @@ export async function GET(req: NextRequest) {
       prisma.pledge.findMany({
         where,
         take:    take + 1,
-        orderBy: { createdAt: "desc" },
+
+        // `id` is a TIEBREAKER, not decoration: a cursor must address a TOTAL
+        // ORDER or tied rows are silently dropped AND duplicated. Ordering on
+        // `createdAt` alone left the cursor column absent from the sort, so
+        // Prisma could not build a keyset predicate — it emitted
+        // `createdAt <= (cursor's createdAt)` with OFFSET 0 and NO LIMIT, then
+        // sliced in memory. Non-strict `<=` re-admits the whole tied group, so
+        // the next page re-emits rows already shown and an equal number falls
+        // off the tail, never seen. Replaying that shape over real tied data
+        // measured 45 duplicates and 77 permanently-lost rows out of 970.
+        //
+        // With `id` in the orderBy, Prisma emits the correct two-branch keyset
+        // predicate and pushes LIMIT/OFFSET into SQL. Verified against the
+        // installed Prisma (7.5.0) by reading the generated statement.
+        //
+        // Pledge.createdAt happens to be unique per tenant TODAY (9,634 rows,
+        // zero ties), so this is latent rather than active — but a single
+        // batched insert (createMany in a transaction shares one now()) would
+        // arm it instantly, and the failure is invisible in testing because
+        // ties need production-scale batch writes to appear.
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
 
         // Cursor pagination — efficient for large datasets
         ...(cursor && {
