@@ -3,9 +3,8 @@ import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { generateCustomerPDF } from "@/lib/generatePDF";
 import { auth } from "@clerk/nextjs/server";
-import { calculateHybridInterest } from "@/lib/interest";
 import { computeCustomerRiskScore } from "@/lib/customerRiskScore";
-import { daysToUnderwater } from "@/lib/calculateLTV";
+import { calculateLTV, daysToUnderwater } from "@/lib/calculateLTV";
 import { OPEN_PLEDGE_STATUSES, isOpenPledgeStatus } from "@/lib/pledgeConstants";
 import type { CompoundingDuration } from "@prisma/client";
 
@@ -131,23 +130,25 @@ export async function GET(req: NextRequest) {
         const goldW = Number(p.netWeightOfGold);
         const silverW = Number(p.netWeightOfSilver);
 
-        const { receivableAmount } = calculateHybridInterest(
-          loanAmount,
-          interestRate,
-          new Date(p.pledgeDate),
-          now,
-          p.allowCompounding,
-          p.compoundingDuration as CompoundingDuration
-        );
+        const ltvResult = calculateLTV({
+          principal: loanAmount,
+          rate: interestRate,
+          pledgeDate: new Date(p.pledgeDate),
+          currentDate: now,
+          allowCompounding: p.allowCompounding,
+          compoundingDuration: p.compoundingDuration as CompoundingDuration,
+          goldWeight: goldW,
+          silverWeight: silverW,
+          goldPrice: goldPpg,
+          silverPrice: silverPpg,
+        });
+        const receivableAmount = ltvResult.amountOwed;
         totalAmountOwed += receivableAmount;
 
         // Prefer live prices; fall back to cached lastMarketValue
         const marketValue =
-          goldPpg !== null || silverPpg !== null
-            ? goldW * (goldPpg ?? 0) + silverW * (silverPpg ?? 0)
-            : p.lastMarketValue != null
-            ? Number(p.lastMarketValue)
-            : null;
+          ltvResult.marketValue ??
+          (p.lastMarketValue != null ? Number(p.lastMarketValue) : null);
 
         if (marketValue !== null) {
           totalMarketValue += marketValue;
