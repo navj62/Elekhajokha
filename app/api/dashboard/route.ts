@@ -59,11 +59,23 @@ export async function GET() {
     // bulk-release / sell), so it is null for every open pledge and the ternary
     // below always falls through to loanAmount.
     //
-    // stats.totalBalanceAmount has NO consumer today. Before wiring it to any
-    // UI: compute accrual via calculateHybridInterest (needs interestRate,
-    // allowCompounding and compoundingDuration added to the select above), and
-    // note the filter matches status === "ACTIVE" only, excluding OVERDUE.
-    const totalBalanceAmount = activePledges.reduce((sum, p) => {
+    // NAMED `totalActivePrincipalAmount`, deliberately not "balance". It was
+    // called `totalBalanceAmount` — the SAME key, in the SAME `stats` object,
+    // that /api/dashboard/snapshot returns as a live-accrued `number | null`
+    // where null means "unknown, render an em-dash". Two different quantities
+    // under one name, and swapping the routes would have shown principal where
+    // interest was meant with no type error to catch it. The name now states
+    // what the number is.
+    //
+    // Still has NO consumer: app/reports/page.tsx is the only reader of this
+    // route and destructures totalCustomers, totalActivePledges and
+    // totalActiveLoanAmount only. Before wiring it to any UI: compute accrual
+    // via calculateHybridInterest (needs interestRate, allowCompounding and
+    // compoundingDuration added to the select above), and note the filter
+    // matches status === "ACTIVE" only, excluding OVERDUE. If what you actually
+    // want is the accrued figure, read /api/dashboard/snapshot instead of
+    // growing a second implementation here.
+    const totalActivePrincipalAmount = activePledges.reduce((sum, p) => {
       const receivable = p.receivableAmount ? Number(p.receivableAmount) : 0;
       return sum + (receivable > 0 ? receivable : Number(p.loanAmount));
     }, 0);
@@ -123,7 +135,7 @@ export async function GET() {
         totalActivePledges: activePledges.length,
         totalActiveLoanAmount,
         totalReleasedLoanAmount,
-        totalBalanceAmount,
+        totalActivePrincipalAmount,
       },
       recentPledges: recentPledges.map((p) => ({
         id: p.id,

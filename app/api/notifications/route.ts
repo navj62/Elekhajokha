@@ -55,6 +55,32 @@ function encodeCursor(row: { createdAt: Date; id: string }): string {
   return `${row.createdAt.toISOString()}${CURSOR_SEP}${row.id}`;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Tier filter                                                        */
+/*                                                                     */
+/*  The tier pill used to filter the LOADED PAGE in the browser, which  */
+/*  made the answer depend on how many times "Load more" had been       */
+/*  pressed first: a matching alert sitting past the first 20 rows was  */
+/*  simply invisible, and the list read as complete when it wasn't.     */
+/*  Filtering belongs here, next to the tenant scope, so a tier query   */
+/*  walks the WHOLE alert history through the same keyset pagination.   */
+/*                                                                     */
+/*  Degrades rather than 400s, exactly like `unreadOnly`: anything that */
+/*  is not one of the four RiskTier values — "all", a typo, garbage, a  */
+/*  tier removed in some future migration — yields null, and null means */
+/*  "no tier filter". A filter pill must never be able to error the     */
+/*  page out.                                                          */
+/* ------------------------------------------------------------------ */
+const TIER_VALUES = ["SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as const;
+type TierFilter = (typeof TIER_VALUES)[number];
+
+function parseTier(raw: string | null): TierFilter | null {
+  if (!raw) return null;
+  return (TIER_VALUES as readonly string[]).includes(raw)
+    ? (raw as TierFilter)
+    : null;
+}
+
 export async function GET(req: NextRequest) {
   const { userId: clerkUserId } = await auth();
   if (!clerkUserId) {
@@ -71,6 +97,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl;
   const unreadOnly = searchParams.get("unreadOnly") === "true";
+  const tier = parseTier(searchParams.get("tier"));
   const take = Math.min(Number(searchParams.get("take") ?? 20), 50);
   const cursor = parseCursor(searchParams.get("cursor"));
 
@@ -78,6 +105,11 @@ export async function GET(req: NextRequest) {
     where: {
       userId: user.id,
       ...(unreadOnly ? { isRead: false } : {}),
+      // A SIBLING key, like isRead above — it ANDs with the tenant scope and
+      // is never a member of the keyset OR below. Putting it inside that OR
+      // would let a tier match widen the cursor comparison and resurrect rows
+      // the cursor had already passed.
+      ...(tier ? { newTier: tier } : {}),
       // Keyset comparison over the full ordering tuple, descending:
       // strictly-older, OR same instant and a strictly-smaller id. Tied rows
       // are thus ORDERED and walked through rather than skipped. A sibling
@@ -129,6 +161,9 @@ export async function GET(req: NextRequest) {
     },
   });
 
+  // Deliberately NOT scoped by `tier` (nor by the cursor): this is the global
+  // unread badge shown in the header and on the Unread pill, and it must keep
+  // reporting the whole book regardless of which tier is being viewed.
   const unreadCount = await prisma.pledgeAlert.count({
     where: { userId: user.id, isRead: false },
   });

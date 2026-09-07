@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Bell, CheckCheck, ChevronDown, Trash2 } from "lucide-react";
@@ -103,13 +103,45 @@ export default function NotificationsPage() {
   const [filterTier,   setFilterTier]   = useState<FilterTier>("all");
   const [deletingAll, setDeletingAll]   = useState(false);
 
+  // Toast — the same shape the inventory page uses (message + 4s auto-dismiss,
+  // timer cleared on re-fire so a second message doesn't inherit the first
+  // one's countdown). This page previously had NO way to report a failure:
+  // deleteOne resynced silently and deleteAll rolled back silently, so a
+  // failed write looked identical to a successful one.
+  const [toast, setToast] = useState<string | null>(null);
+  const toastRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    if (toastRef.current) clearTimeout(toastRef.current);
+    toastRef.current = setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  useEffect(() => () => {
+    if (toastRef.current) clearTimeout(toastRef.current);
+  }, []);
+
   const fetchAlerts = useCallback(async (reset = true) => {
-    if (reset) setLoading(true);
-    else setLoadingMore(true);
+    if (reset) {
+      setLoading(true);
+      // Drop the previous query's paging state up front. The response below
+      // overwrites both anyway, but until it lands a stale cursor belongs to
+      // the PREVIOUS tier — and paging from it would splice another tier's
+      // rows into this list.
+      setHasMore(false);
+      setNextCursor(null);
+    } else {
+      setLoadingMore(true);
+    }
 
     try {
       const params = new URLSearchParams({ take: "20" });
       if (filterUnread === "unread") params.set("unreadOnly", "true");
+      // Tier is a SERVER filter, exactly like unreadOnly. It used to be applied
+      // in the browser over whatever happened to be loaded, so a match living
+      // past the first page was unreachable. "all" sends no param; the server
+      // ignores any value that isn't one of the four tiers.
+      if (filterTier !== "all") params.set("tier", filterTier);
       // `cursor` is an OPAQUE server token — currently "<ISO timestamp>|<id>",
       // a keyset pair over the alert ordering. Round-trip it verbatim; never
       // parse, split, or reconstruct it here. It must carry both ordering
@@ -129,9 +161,13 @@ export default function NotificationsPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [filterUnread, nextCursor]);
+  }, [filterUnread, filterTier, nextCursor]);
 
-  useEffect(() => { fetchAlerts(true); }, [filterUnread]);
+  // Both filters are server params, so BOTH must retrigger the fetch. Listing
+  // only filterUnread here was the bug: changing the tier pill re-rendered
+  // against the rows already in memory and never asked the server.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchAlerts(true); }, [filterUnread, filterTier]);
 
   const markAllRead = async () => {
     setMarkingRead(true);
@@ -141,15 +177,32 @@ export default function NotificationsPage() {
     setMarkingRead(false);
   };
 
+  // Mark ONE alert read. This is `map`, not `filter`: reading a notification
+  // must drop its unread styling, not delete the row. The card already renders
+  // a read state (no stripe, no shadow, 0.75 opacity) that the old `filter`
+  // made unreachable — the row vanished instead.
+  //
+  // Optimistic, but awaited and reverted: a failed PATCH used to leave the row
+  // gone from the UI and still unread on the server, with nothing shown.
   const markOneRead = async (id: string) => {
     if (alerts.find((a) => a.id === id)?.isRead) return;
-    setAlerts((prev) => prev.filter((a) => a.id !== id));
+
+    setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, isRead: true } : a)));
     setUnreadCount((c) => Math.max(0, c - 1));
-    fetch("/api/notifications/read", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids: [id] }),
-    });
+
+    try {
+      const res = await fetch("/api/notifications/read", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: [id] }),
+      });
+      if (!res.ok) throw new Error("mark read failed");
+    } catch {
+      // Revert to unread and say so — the row is still here to revert.
+      setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, isRead: false } : a)));
+      setUnreadCount((c) => c + 1);
+      showToast("Couldn't mark as read. Please try again.");
+    }
   };
 
   // Delete a single notification — optimistic, refetch on failure to resync.
@@ -190,12 +243,38 @@ export default function NotificationsPage() {
     }
   };
 
-  const visible = filterTier === "all"
-    ? alerts
-    : alerts.filter((a) => a.newTier === filterTier);
+  // `alerts` is already tier-filtered by the server, across the whole history
+  // rather than the loaded page. No client-side narrowing here — that is what
+  // made "Load more" change the answer.
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--background)" }}>
+
+      {/* Toast — same behaviour as the inventory page's, written with this
+          page's inline-style convention rather than importing its classes. */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: "fixed",
+            bottom: "24px",
+            right: "24px",
+            zIndex: 50,
+            padding: "12px 16px",
+            borderRadius: "12px",
+            background: "#565C3F",
+            color: "#fff",
+            fontSize: "13px",
+            fontWeight: 600,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+            maxWidth: "320px",
+          }}
+        >
+          {toast}
+        </div>
+      )}
+
       <div style={{ maxWidth: "760px", margin: "0 auto", padding: "28px 24px 48px" }}>
 
         {/* ── Back Button ── */}
@@ -401,15 +480,15 @@ export default function NotificationsPage() {
         {/* ── List ── */}
         {loading ? (
           <SkeletonList />
-        ) : visible.length === 0 ? (
+        ) : alerts.length === 0 ? (
           <EmptyState filter={filterUnread} />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-            {visible.map((alert, i) => (
+            {alerts.map((alert, i) => (
               <AlertCard key={alert.id} alert={alert} onRead={markOneRead} onDelete={deleteOne} index={i} />
             ))}
 
-            {hasMore && filterTier === "all" && (
+            {hasMore && (
               <button
                 onClick={() => fetchAlerts(false)}
                 disabled={loadingMore}

@@ -742,6 +742,13 @@ export default function InventoryPage() {
   const [filterSource, setFilterSource] = useState<"all" | "pledge" | "direct">("all");
   const [filterMetal, setFilterMetal] = useState<"all" | "gold" | "silver" | "other">("all");
   const [filterType, setFilterType] = useState<string>("all");
+  // The item-type catalogue, from GET /api/item-types — the same source the
+  // pledge-create form and the pledgeList filter already use. This filter used
+  // to hardcode six labels (Pendant/Ring/Chain/Bracelet/Coin/Other) that never
+  // matched the seeded taxonomy: "Coin" is not a seeded type and matched
+  // nothing, while Necklace, Bangles, Earrings, Anklet and Bangle Set had no
+  // option at all and fell into "Other" alongside genuine Others.
+  const [catalogueTypes, setCatalogueTypes] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "value_high" | "value_low">("newest");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -785,21 +792,38 @@ export default function InventoryPage() {
     setCurrentPage(1);
   }, [searchQuery, filterStatus, filterSource, filterMetal, filterType, sortBy]);
 
+  // Fetch the item-type catalogue once. Defaults and custom types are merged
+  // into one flat list; the dropdown groups them again below. A failure leaves
+  // the list empty, and the union with the types actually present in inventory
+  // (see typeOptions) still keeps every stored value reachable.
+  useEffect(() => {
+    fetch("/api/item-types")
+      .then((r) => r.json())
+      .then((d) => {
+        const defaults: { label: string }[] = d.defaults ?? [];
+        const custom:   { label: string }[] = d.custom   ?? [];
+        setCatalogueTypes([...defaults.map((t) => t.label), ...custom.map((t) => t.label)]);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = () => setOpenMenuId(null);
     window.addEventListener("click", handleClickOutside);
     return () => window.removeEventListener("click", handleClickOutside);
   }, []);
 
-  // Filter items instantly by searchQuery and Type
+  // Filter items instantly by searchQuery and Type.
+  //
+  // Every type — "Other" included — is now an exact (case-insensitive) match on
+  // the stored label. "Other" previously meant "not one of five hardcoded
+  // names", which swept up five seeded types and every custom type; it now
+  // means the catalogue's actual "Other" and nothing else. Casing is compared
+  // insensitively because the label is a free-text String column, even though
+  // both write paths store a catalogue label verbatim.
   const filteredItems = items.filter((item) => {
     if (filterType !== "all") {
-      if (filterType === "Other") {
-        const standardTypes = ["pendant", "ring", "chain", "bracelet", "coin"];
-        if (standardTypes.includes(item.itemType.toLowerCase())) return false;
-      } else {
-        if (item.itemType.toLowerCase() !== filterType.toLowerCase()) return false;
-      }
+      if (item.itemType.toLowerCase() !== filterType.toLowerCase()) return false;
     }
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -814,6 +838,26 @@ export default function InventoryPage() {
       (item.sourcePledge && item.sourcePledge.customer.name.toLowerCase().includes(q))
     );
   });
+
+  // Options = the catalogue, PLUS any label actually present on an item that
+  // the catalogue doesn't contain. That second group is not cosmetic: a custom
+  // type can be DELETED via /api/item-types/[id] while inventory rows keep the
+  // string it stored, and legacy rows predate the validation entirely. Without
+  // the union those items would be filterable by no option at all — silently
+  // unreachable, which is the exact defect this fix exists to remove.
+  //
+  // The current selection is force-included so the select can never render
+  // blank: the present-labels half is derived from `items`, which the server
+  // has already narrowed by status/source/metal, so changing one of those
+  // filters can otherwise drop the selected type out of its own list.
+  const catalogueLower = new Set(catalogueTypes.map((t) => t.toLowerCase()));
+  const presentTypes = [...new Set(items.map((i) => i.itemType))]
+    .filter((t) => !catalogueLower.has(t.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
+  const selectionMissing =
+    filterType !== "all" &&
+    !catalogueLower.has(filterType.toLowerCase()) &&
+    !presentTypes.some((t) => t.toLowerCase() === filterType.toLowerCase());
 
   const pageSize = 10;
   const totalPages = Math.ceil(filteredItems.length / pageSize) || 1;
@@ -994,12 +1038,19 @@ export default function InventoryPage() {
                 className="pl-3.5 pr-8 h-[36px] rounded-full text-[13px] font-medium appearance-none outline-none focus:ring-2 focus:ring-[#565C3F] bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--foreground)] cursor-pointer transition-all hover:bg-[#EAE9DF]/50"
               >
                 <option value="all">All Types</option>
-                <option value="Pendant">Pendant</option>
-                <option value="Ring">Ring</option>
-                <option value="Chain">Chain</option>
-                <option value="Bracelet">Bracelet</option>
-                <option value="Coin">Coin</option>
-                <option value="Other">Other</option>
+                {catalogueTypes.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+                {presentTypes.length > 0 && (
+                  <optgroup label="Not in catalogue">
+                    {presentTypes.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {selectionMissing && (
+                  <option value={filterType}>{filterType}</option>
+                )}
               </select>
               <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--muted-foreground-subtle)]" />
             </div>
