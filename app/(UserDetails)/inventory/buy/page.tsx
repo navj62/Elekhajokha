@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -70,6 +70,46 @@ export default function BuyItemPage() {
       })
       .catch(() => { });
   }, []);
+
+  // The item-type options, built SOLELY from GET /api/item-types — the same
+  // source the pledge-add form and the pledgeList filter use.
+  //
+  // This dropdown used to prepend eight hardcoded labels under a "Standard
+  // Types" heading and append a ninth "Other". Six of the eight duplicated
+  // seeded defaults; the appended "Other" was a third copy of a label that is
+  // itself a seeded default. The remaining two were worse than redundant:
+  // "Coin" is not a seeded default (it only worked here because this owner
+  // happens to have created it as a custom type) and "Bangle" is in neither
+  // the defaults nor any custom list, so selecting it always produced a 400
+  // "Invalid item type" from POST /api/inventory. A create form must not offer
+  // a value its own create route rejects.
+  //
+  // Custom rows that merely SHADOW a seeded default are dropped, compared
+  // case-insensitively to match the create route's `equals … mode:
+  // "insensitive"`. Five such rows exist in production from a one-off import
+  // (the @@unique([userId, label]) comment on PledgeItemType documents them):
+  // they carry the same label as a default, resolve to the same stored value,
+  // and submit identically — so rendering both would show one choice twice and,
+  // because ThemedSelect marks selection by value, highlight two rows at once.
+  const itemTypeOptions = useMemo(() => {
+    const defaultLabels = new Set(
+      itemTypes.defaults.map((t) => t.label.toLowerCase())
+    );
+    return [
+      ...itemTypes.defaults.map((t) => ({
+        value: t.label,
+        label: t.label,
+        group: "Default Types",
+      })),
+      ...itemTypes.custom
+        .filter((t) => !defaultLabels.has(t.label.toLowerCase()))
+        .map((t) => ({
+          value: t.label,
+          label: t.label,
+          group: "Custom Types",
+        })),
+    ];
+  }, [itemTypes]);
 
   function set(key: string, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -311,24 +351,7 @@ export default function BuyItemPage() {
                       <ThemedSelect
                         value={form.itemType}
                         onChange={(val) => set("itemType", val)}
-                        options={[
-                          ...["Ring", "Pendant", "Chain", "Bracelet", "Coin", "Necklace", "Earrings", "Bangle"].map((t) => ({
-                            value: t,
-                            label: t,
-                            group: "Standard Types",
-                          })),
-                          ...itemTypes.defaults.map((t) => ({
-                            value: t.label,
-                            label: t.label,
-                            group: "Default Types",
-                          })),
-                          ...itemTypes.custom.map((t) => ({
-                            value: t.label,
-                            label: t.label,
-                            group: "Custom Types",
-                          })),
-                          { value: "Other", label: "Other" },
-                        ]}
+                        options={itemTypeOptions}
                         placeholder="Select type"
                       />
                       {errors.itemType && <p className="text-[13px] mt-1.5 text-red-600 font-medium">{errors.itemType}</p>}
