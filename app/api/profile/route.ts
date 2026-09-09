@@ -135,14 +135,26 @@ export async function PATCH(req: Request) {
       }
     }
 
-    /* ☁️ Upload image if present */
+    /* ☁️ Upload image if present — optional side effect. User.profileImageUrl
+       is nullable and display-only (never read by receipts/PDFs). A
+       Cloudinary outage must not block saving the rest of this PATCH (shop
+       name, address, terms). The photo CAN be re-attempted via another PATCH
+       to this same route, so this is the one site with a genuine retry path
+       — still surfaced via `warnings` so the owner isn't left thinking it
+       saved when it didn't. */
     let profileImageUrl: string | undefined;
+    const warnings: string[] = [];
 
     if (imageFile instanceof File && imageFile.size > 0) {
-      profileImageUrl = await uploadImage(
-        imageFile,
-        `ELEKHAJOKHA/profile/${user.id}`
-      );
+      try {
+        profileImageUrl = await uploadImage(
+          imageFile,
+          `ELEKHAJOKHA/profile/${user.id}`
+        );
+      } catch (e) {
+        console.error("PROFILE PHOTO UPLOAD FAILED:", e instanceof Error ? e.message : e);
+        warnings.push("Profile photo could not be uploaded — please try again.");
+      }
     }
 
     /* 💾 Update DB */
@@ -161,7 +173,10 @@ export async function PATCH(req: Request) {
       },
     });
 
-    return NextResponse.json(updated);
+    return NextResponse.json({
+      ...updated,
+      ...(warnings.length ? { warnings } : {}),
+    });
 
   } catch (err) {
     console.error("PROFILE PATCH ERROR:", err);

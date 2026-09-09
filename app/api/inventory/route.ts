@@ -192,9 +192,20 @@ export async function POST(req: NextRequest) {
       acquiredMetalRate = price ? parseFloat(price.inrPerGram.toString()) : null;
     }
 
+    // Optional side effect — InventoryItem.photoUrl is nullable and
+    // display-only (table thumbnail + purchase receipt). A Cloudinary outage
+    // must not block recording a purchase. No PATCH exists for this item
+    // ([id]/route.ts is GET-only), so this is the only chance to attach the
+    // photo — `warnings` tells the caller so the owner knows to re-attempt it.
     let photoUrl: string | null = null;
+    const warnings: string[] = [];
     if (photoFile instanceof File && photoFile.size > 0) {
-      photoUrl = await uploadImage(photoFile, "ELEKHAJOKHA/inventory");
+      try {
+        photoUrl = await uploadImage(photoFile, "ELEKHAJOKHA/inventory");
+      } catch (e) {
+        console.error("INVENTORY PHOTO UPLOAD FAILED:", e instanceof Error ? e.message : e);
+        warnings.push("Item photo could not be uploaded — please attach it again later.");
+      }
     }
 
     const item = await prisma.inventoryItem.create({
@@ -220,7 +231,10 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ item }, { status: 201 });
+    return NextResponse.json(
+      { item, ...(warnings.length ? { warnings } : {}) },
+      { status: 201 }
+    );
   } catch (err) {
     console.error("POST /api/inventory failed:", err);
     return NextResponse.json({ error: "Server Error" }, { status: 500 });

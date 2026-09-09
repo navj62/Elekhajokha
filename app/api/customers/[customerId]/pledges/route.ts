@@ -153,10 +153,23 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (itemErrors.length)
       return NextResponse.json({ error: "Invalid item data", details: itemErrors }, { status: 400 });
 
-    // ── Upload single pledge photo ────────────────────────────────
+    // ── Upload single pledge photo (optional side effect) ──────────
+    // Pledge.itemPhoto is nullable and nothing downstream — interest, LTV,
+    // receipts — reads it. A Cloudinary outage must not block recording a
+    // loan, so the upload is caught here, scoped to just this call, and a
+    // failure degrades to itemPhoto: null rather than failing the pledge.
+    // Pledges are write-once (no edit path), so this is the only chance to
+    // attach the photo — `warnings` tells the caller so the owner knows to
+    // re-photograph the item rather than assume it was saved.
     let itemPhoto: string | null = null;
+    const warnings: string[] = [];
     if (imageFile instanceof File && imageFile.size > 0) {
-      itemPhoto = await uploadImage(imageFile, `ELEKHAJOKHA/pledges/${customerId}`);
+      try {
+        itemPhoto = await uploadImage(imageFile, `ELEKHAJOKHA/pledges/${customerId}`);
+      } catch (e) {
+        console.error("PLEDGE PHOTO UPLOAD FAILED:", e instanceof Error ? e.message : e);
+        warnings.push("Pledge photo could not be uploaded — please attach it again later.");
+      }
     }
 
     // Derive pure-metal content server-side instead of trusting the client
@@ -201,7 +214,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
       include: { items: true },
     });
 
-    return NextResponse.json(pledge, { status: 201 });
+    return NextResponse.json(
+      { ...pledge, ...(warnings.length ? { warnings } : {}) },
+      { status: 201 }
+    );
 
   } catch (err) {
     console.error("PLEDGE CREATE ERROR:", err);

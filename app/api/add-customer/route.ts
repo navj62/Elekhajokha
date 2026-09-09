@@ -163,17 +163,32 @@ export async function POST(req: Request) {
       | string
       | null = null;
 
+    // Both photos are optional side effects — Customer.customerImg and
+    // .idProofImg are nullable and only ever used for display. A Cloudinary
+    // outage must not block adding a customer. Each upload is caught on its
+    // own so one failing doesn't take the other down with it. There is no
+    // edit path for either field (customer PATCH is JSON-body, name/address/
+    // region/mobile/aadharNo/remark only), so `warnings` is the only way the
+    // owner learns a photo needs to be attempted again.
+
+    const warnings: string[] = [];
+
     // Customer image
 
     if (
       customerImgFile instanceof File &&
       customerImgFile.size > 0
     ) {
-      customerImg =
-        await uploadImage(
-          customerImgFile,
-          `ELEKHAJOKHA/customers/${userId}`
-        );
+      try {
+        customerImg =
+          await uploadImage(
+            customerImgFile,
+            `ELEKHAJOKHA/customers/${userId}`
+          );
+      } catch (e) {
+        console.error("CUSTOMER PHOTO UPLOAD FAILED:", e instanceof Error ? e.message : e);
+        warnings.push("Customer photo could not be uploaded — please attach it again later.");
+      }
     }
 
     // ID proof image
@@ -182,11 +197,16 @@ export async function POST(req: Request) {
       idProofImgFile instanceof File &&
       idProofImgFile.size > 0
     ) {
-      idProofImg =
-        await uploadImage(
-          idProofImgFile,
-          `ELEKHAJOKHA/idProofs/${userId}`
-        );
+      try {
+        idProofImg =
+          await uploadImage(
+            idProofImgFile,
+            `ELEKHAJOKHA/idProofs/${userId}`
+          );
+      } catch (e) {
+        console.error("ID PROOF UPLOAD FAILED:", e instanceof Error ? e.message : e);
+        warnings.push("ID proof could not be uploaded — please attach it again later.");
+      }
     }
 
     /* ------------------------------------------------------------------ */
@@ -230,6 +250,7 @@ export async function POST(req: Request) {
       {
         success: true,
         customer,
+        ...(warnings.length ? { warnings } : {}),
       },
       { status: 201 }
     );
