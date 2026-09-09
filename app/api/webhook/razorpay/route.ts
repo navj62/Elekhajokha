@@ -55,7 +55,48 @@ export async function POST(req: NextRequest) {
     switch (event.event) {
       case "subscription.activated":
       case "subscription.charged": {
-        if (user.subscriptionStatus === SubscriptionStatus.active) break;
+        // MONOTONIC GUARD. This replaces a `status === active → break` guard
+        // that also swallowed renewals: a renewal charge on an already-active
+        // user wrote nothing, so subscriptionEndDate never moved forward and
+        // /api/access eventually paywalled a paying customer.
+        //
+        // Compare the payload's own period end against what we stored, and
+        // process only if it is STRICTLY LATER. One check, three properties:
+        //   · a renewal (current_end moved forward) extends the date;
+        //   · a duplicate delivery (same current_end) is a no-op;
+        //   · a stale/out-of-order event (older current_end) is rejected —
+        //     e.g. a retried `activated` landing after a `halted` can no
+        //     longer resurrect the subscription.
+        // The guard reads the same value the write uses, so guard and write
+        // agree by construction. Razorpay makes no ordering guarantee and the
+        // payload carries no version, so current_end is the only monotonic
+        // anchor available here.
+
+        // current_end is `number | null` and may be absent or malformed. Never
+        // fall back to the server clock for a paid period (Invariant 10) and
+        // never grant on an unverifiable one — log it and no-op. Still 200:
+        // a retry would carry the same unusable payload.
+        if (!endDate || Number.isNaN(endDate.getTime())) {
+          console.error(
+            "⚠️ No usable current_end — no status written →",
+            event.event,
+            subscriptionId
+          );
+          break;
+        }
+
+        // A null stored end date means we have nothing to compare against
+        // (a first activation) — process it.
+        const storedEnd = user.subscriptionEndDate;
+        if (storedEnd && endDate.getTime() <= storedEnd.getTime()) {
+          console.log(
+            "↩️ Stale/duplicate — ignored →",
+            event.event,
+            subscriptionId,
+            `payload current_end ${endDate.toISOString()} <= stored ${storedEnd.toISOString()}`
+          );
+          break;
+        }
 
         await prisma.user.update({
           where: { id: user.id },
@@ -65,7 +106,12 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        console.log("✅ Active →", subscriptionId);
+        console.log(
+          "✅ Active →",
+          subscriptionId,
+          `until ${endDate.toISOString()}`,
+          storedEnd ? `(extended from ${storedEnd.toISOString()})` : "(first activation)"
+        );
         break;
       }
 
