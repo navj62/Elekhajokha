@@ -38,7 +38,8 @@ export async function GET() {
       recentPledgesRaw,
       regionsDataRaw,
       unreadAlerts,
-      pledgesThisYear,
+      pledgesAddedThisYear,
+      pledgesReleasedThisYear,
       transactionsThisYear,
       customersThisYear,
     ] = await Promise.all([
@@ -47,14 +48,24 @@ export async function GET() {
         orderBy: { calculatedAt: "desc" },
         take: 2,
       }),
+      // MTD new pledges — keyed by pledgeDate (EVENT time: when the loan was
+      // booked), not createdAt (RECORDING time: when the row was written).
+      // The migration seed let createdAt default to now() on import, so every
+      // migrated pledge's createdAt is the 2026-07-26 import day regardless of
+      // when it was actually booked — bucketing on it would have shown ~9,630
+      // "new pledges this month" throughout that July. Not currently visible
+      // (September's MTD window post-dates the import on both clocks), but
+      // latent for any future bulk import.
       prisma.pledge.count({
-        where: { customer: { userId: user.id }, createdAt: { gte: startOfMonth } },
+        where: { customer: { userId: user.id }, pledgeDate: { gte: startOfMonth } },
       }),
       prisma.pledge.count({
         where: { customer: { userId: user.id }, status: "RELEASED", releaseDate: { gte: startOfMonth } },
       }),
+      // MTD loan amount — same pledgeDate-vs-createdAt reasoning as the count
+      // above; keep both MTD pledge queries on the same clock.
       prisma.pledge.aggregate({
-        where: { customer: { userId: user.id }, createdAt: { gte: startOfMonth } },
+        where: { customer: { userId: user.id }, pledgeDate: { gte: startOfMonth } },
         _sum: { loanAmount: true },
       }),
       prisma.customer.count({
@@ -112,15 +123,44 @@ export async function GET() {
         orderBy: { createdAt: "desc" },
         take: 5,
       }),
-      // Charts
+      // Charts — pledges added, keyed by pledgeDate (EVENT time), not
+      // createdAt (RECORDING time). This chart answers "when did this
+      // happen", and pledgeDate is the only column that answers that
+      // truthfully for migrated rows (see the MTD comment above).
+      //
+      // This used to be one query (`pledgesThisYear`, filtered on createdAt)
+      // feeding both the added and released series. It is now split in two,
+      // each filtered on the clock it buckets on — matching 75711dd's fix to
+      // monthly-performance. Filtering on one clock while bucketing on
+      // another is worse than consistently using either: today, filtering
+      // this on createdAt happens to also catch every 2026 release only
+      // because the entire ledger was imported in July 2026 — that accident
+      // reverses in 2027, when a createdAt-scoped filter would silently drop
+      // real releases from the chart.
       prisma.pledge.findMany({
-        where: { customer: { userId: user.id }, createdAt: { gte: yearStart } },
-        select: { createdAt: true, releaseDate: true, status: true },
+        where: { customer: { userId: user.id }, pledgeDate: { gte: yearStart } },
+        select: { pledgeDate: true },
+      }),
+      // Charts — pledges released. releaseDate is set on both RELEASED and
+      // SOLD closures (Invariant 12), and this series has always counted
+      // both — no status filter here, matching prior behavior exactly.
+      prisma.pledge.findMany({
+        where: { customer: { userId: user.id }, releaseDate: { gte: yearStart } },
+        select: { releaseDate: true },
       }),
       prisma.transaction.findMany({
         where: { pledge: { customer: { userId: user.id } }, createdAt: { gte: yearStart } },
         select: { amount: true, type: true, createdAt: true },
       }),
+      // Charts — new customers, keyed by createdAt. Customer has no
+      // event-time column other than createdAt — no acquisition date, no
+      // "signed up on" field — so for the 2,101 migrated customers this
+      // series reflects IMPORT date (2026-07-26), not true acquisition date.
+      // (MIN(pledgeDate) per customer was considered and rejected: it
+      // excludes the 14 migrated customers who have zero pledges and
+      // silently redefines "new customer" as "first-time borrower.") Same
+      // limitation 75711dd already accepted for monthly-performance's query
+      // D — left as-is here for the same reason, not an oversight.
       prisma.customer.findMany({
         where: { userId: user.id, createdAt: { gte: yearStart } },
         select: { createdAt: true },
@@ -211,27 +251,32 @@ export async function GET() {
     const chartLoans = Array.from({ length: currentMonthIdx + 1 }, (_, i) => ({ month: monthNames[i], disbursed: 0, recovered: 0 }));
     const chartCustomers = Array.from({ length: currentMonthIdx + 1 }, (_, i) => ({ month: monthNames[i], added: 0 }));
 
-    pledgesThisYear.forEach((p) => {
-      const mIdx = p.createdAt.getMonth();
+    pledgesAddedThisYear.forEach((p) => {
+      const mIdx = p.pledgeDate.getMonth();
       if (mIdx <= currentMonthIdx) chartPledges[mIdx].added++;
-      if (p.releaseDate) {
-        const rIdx = p.releaseDate.getMonth();
-        if (rIdx <= currentMonthIdx) chartPledges[rIdx].released++;
-      }
+    });
+
+    pledgesReleasedThisYear.forEach((p) => {
+      if (!p.releaseDate) return;
+      const rIdx = p.releaseDate.getMonth();
+      if (rIdx <= currentMonthIdx) chartPledges[rIdx].released++;
     });
 
     // In Loan charts, we can approximate disbursed from pledges if we don't have separate DISBURSEMENT transactions.
     // The spec said "Total Disbursed, Recovered Amount, Recovery Rate, from actual transactions."
     // Let's use pledges for disbursed and transactions for recovered.
 
-    // Fetch full pledges for loan amount
+    // Fetch full pledges for loan amount — keyed by pledgeDate (EVENT time),
+    // not createdAt (RECORDING time), for the same reason as the added-chart
+    // query above: this answers "how much was disbursed when", and createdAt
+    // says only "when was this row written".
     const fullPledgesThisYear = await prisma.pledge.findMany({
-      where: { customer: { userId: user.id }, createdAt: { gte: yearStart } },
-      select: { createdAt: true, loanAmount: true },
+      where: { customer: { userId: user.id }, pledgeDate: { gte: yearStart } },
+      select: { pledgeDate: true, loanAmount: true },
     });
 
     fullPledgesThisYear.forEach((p) => {
-      const mIdx = p.createdAt.getMonth();
+      const mIdx = p.pledgeDate.getMonth();
       if (mIdx <= currentMonthIdx) chartLoans[mIdx].disbursed += Number(p.loanAmount);
     });
 
