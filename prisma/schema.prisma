@@ -300,6 +300,24 @@ model Task {
   @@map("tasks")
 }
 
+// Run-state row for cron jobs — one row per job, keyed by name.
+// Serves two purposes for app/api/cron/evaluate-risk:
+//   1. Checkpoint: `cursor` is the last pledge id of the most recently
+//      COMMITTED page, written inside that page's transaction, so a restart
+//      resumes from the next page instead of redoing pages 1..k.
+//   2. Lock: `status = "running"` with a fresh `updatedAt` means another
+//      invocation is live; a new invocation skips. A "running" row whose
+//      `updatedAt` is older than the staleness window is an abandoned run.
+// `status` is "running" | "idle". Never dryRun-written.
+model CronCheckpoint {
+  jobName   String   @id
+  cursor    String?
+  status    String
+  updatedAt DateTime @updatedAt
+
+  @@map("cron_checkpoints")
+}
+
 enum AuditAction {
   CREATED
   UPDATED

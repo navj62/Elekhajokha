@@ -17,6 +17,11 @@
 //     atomic in itself though — its metrics UPDATE and its alert insert share
 //     one transaction, so the tier cache can never advance without the alerts
 //     that depend on its previous value.
+//   - Checkpoint + lock via one `CronCheckpoint` row (jobName "evaluate-risk"):
+//     the last committed page's cursor is written INSIDE that page's
+//     transaction, so a crash leaves an exact resume point; a "running" row
+//     with a fresh `updatedAt` is a live run and makes a concurrent invocation
+//     skip. See CHECKPOINT_* below and the "CHECKPOINT" section in handle().
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
@@ -33,6 +38,15 @@ export const dynamic = "force-dynamic";
 // ─────────────────────────────────────────────
 const BATCH_SIZE = 500;                 // pledges per page (take BATCH_SIZE + 1)
 const SNAPSHOT_UPSERT_CONCURRENCY = 50; // bounded fan-out for the end-of-run upserts
+
+// Checkpoint / lock row. A "running" row whose updatedAt is older than this is
+// an ABANDONED run (crash, platform kill) and is resumed; younger is a LIVE run
+// and a new invocation skips. updatedAt is bumped on every committed page, so
+// staleness is measured from the last commit, not the run start — a healthy
+// long run never looks stale. 5 min = 5× maxDuration = 10× the per-page
+// transaction timeout, with headroom for a VPS run that is slower than Vercel.
+const CHECKPOINT_JOB = "evaluate-risk";
+const CHECKPOINT_STALE_MS = 5 * 60 * 1000;
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -224,12 +238,94 @@ async function handle(req: NextRequest) {
   let pledgesProcessed = 0;
   let alertsCreated = 0;
 
+  // Set when this run picks up an abandoned run's cursor. Drives the snapshot
+  // skip (partial accumulator) and the `complete` figure in the response.
+  let resumedFromCursor: string | null = null;
+  let pledgesBeforeCursor = 0;
+
   try {
+    // ── CHECKPOINT: read run state, then claim the lock ──
+    // dryRun never reads or writes the row: it performs no real writes, so it
+    // neither holds the lock nor resumes — it always previews the whole book.
+    if (!dryRun) {
+      const checkpoint = await prisma.cronCheckpoint.findUnique({
+        where: { jobName: CHECKPOINT_JOB },
+      });
+      const staleBefore = new Date(Date.now() - CHECKPOINT_STALE_MS);
+
+      if (checkpoint?.status === "running") {
+        const ageMs = Date.now() - checkpoint.updatedAt.getTime();
+        if (checkpoint.updatedAt > staleBefore) {
+          // LIVE run: its last page committed within the window. This is the lock.
+          console.log(
+            `[evaluate-risk] SKIPPED — another run is in progress ` +
+            `(checkpoint updated ${ageMs}ms ago, cursor=${checkpoint.cursor ?? "none"}, ` +
+            `stale after ${CHECKPOINT_STALE_MS}ms)`
+          );
+          return NextResponse.json({
+            success: true,
+            skipped: true,
+            reason: "ALREADY_RUNNING",
+            checkpointAgeMs: ageMs,
+          });
+        }
+        // ABANDONED run: resume after its last committed page (or from the
+        // start if it died before committing any page).
+        resumedFromCursor = checkpoint.cursor;
+        if (resumedFromCursor) {
+          console.log(
+            `[evaluate-risk] RESUMING from cursor ${resumedFromCursor} — ` +
+            `abandoned run last committed ${ageMs}ms ago (> ${CHECKPOINT_STALE_MS}ms stale window)`
+          );
+        } else {
+          console.log(
+            `[evaluate-risk] starting fresh — abandoned run (${ageMs}ms ago) ` +
+            `committed no page`
+          );
+        }
+      } else {
+        console.log(
+          `[evaluate-risk] starting fresh — checkpoint ${checkpoint ? "idle" : "absent"}`
+        );
+      }
+
+      // Claim atomically: compare-and-set on (idle OR stale-running) so two
+      // invocations that both read the same row a moment ago cannot both
+      // proceed — only one updateMany wins, the other sees count 0. The
+      // create path is guarded the same way by the primary key. `cursor` is
+      // deliberately NOT touched here: it is the resume point.
+      const claimed = checkpoint
+        ? (await prisma.cronCheckpoint.updateMany({
+            where: {
+              jobName: CHECKPOINT_JOB,
+              OR: [{ status: "idle" }, { status: "running", updatedAt: { lte: staleBefore } }],
+            },
+            data: { status: "running" },
+          })).count === 1
+        : await prisma.cronCheckpoint
+            .create({ data: { jobName: CHECKPOINT_JOB, status: "running", cursor: null } })
+            .then(() => true)
+            .catch((e: unknown) => {
+              if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return false;
+              throw e;
+            });
+      if (!claimed) {
+        console.log(`[evaluate-risk] SKIPPED — another run claimed the checkpoint first`);
+        return NextResponse.json({ success: true, skipped: true, reason: "ALREADY_RUNNING" });
+      }
+    }
+
     // ── Total active pledges up front, so per-batch progress is meaningful ──
     // Same status filter as the batch loop below — do not diverge.
     totalPledges = await prisma.pledge.count({ where: { status: "ACTIVE" } });
+    if (resumedFromCursor) {
+      pledgesBeforeCursor = await prisma.pledge.count({
+        where: { status: "ACTIVE", id: { lte: resumedFromCursor } },
+      });
+    }
     console.log(
-      `[evaluate-risk] START — ${totalPledges} active pledges to process` +
+      `[evaluate-risk] START — ${totalPledges} active pledges` +
+      (resumedFromCursor ? ` (${pledgesBeforeCursor} already committed by the abandoned run)` : "") +
       (dryRun ? " [dryRun]" : "")
     );
     // ── Latest metal prices — fetched ONCE (hoisted), never per pledge ──
@@ -286,16 +382,23 @@ async function handle(req: NextRequest) {
     const ALERT_PREVIEW_CAP = 100;
 
     // ── Page through ACTIVE pledges by id cursor ──
-    let cursor: string | undefined = undefined;
+    // `cursor` is the last pledge id of the most recently committed page; the
+    // next page is everything strictly after it. Starts at the checkpoint's
+    // stored cursor on a resumed run (see CHECKPOINT above), else undefined.
+    let cursor: string | undefined = resumedFromCursor ?? undefined;
 
     while (true) {
       const batchStart = Date.now();
 
+      // `id > cursor` rather than Prisma `cursor:`+`skip: 1`: the latter resolves
+      // the cursor ROW and offsets past it, so if that pledge was released or
+      // deleted between pages (a wide window on a resumed run) it would silently
+      // drop the first real row, or return an empty page and end the run early.
+      // Same result set when the cursor row is still ACTIVE; robust when it isn't.
       const page: PledgeRow[] = await prisma.pledge.findMany({
-        where: { status: "ACTIVE" },
+        where: { status: "ACTIVE", ...(cursor ? { id: { gt: cursor } } : {}) },
         orderBy: { id: "asc" },
         take: BATCH_SIZE + 1, // +1 sentinel to detect a next page
-        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
         select: PLEDGE_SELECT,
       });
 
@@ -387,6 +490,13 @@ async function handle(req: NextRequest) {
       // Explicit 30s timeout (matching the sell / bulk-release transactions):
       // Prisma's 5s default would ABORT a slow 500-row UPDATE that today merely
       // runs long, trading a rare lost alert for a common failed page.
+      //
+      // The checkpoint write is the third statement in this SAME transaction
+      // (via `tx`, never the global client — see flushPledgeMetrics). The stored
+      // cursor therefore always names a page whose metrics AND alerts committed:
+      // a crash between pages leaves it pointing at the last durable page, and
+      // a rolled-back page leaves it un-advanced.
+      const lastIdOnPage = items[items.length - 1].id;
       if (!dryRun) {
         await prisma.$transaction(
           async (tx) => {
@@ -394,6 +504,11 @@ async function handle(req: NextRequest) {
             if (batchAlerts.length > 0) {
               await tx.pledgeAlert.createMany({ data: batchAlerts as Prisma.PledgeAlertCreateManyInput[] });
             }
+            await tx.cronCheckpoint.upsert({
+              where: { jobName: CHECKPOINT_JOB },
+              create: { jobName: CHECKPOINT_JOB, status: "running", cursor: lastIdOnPage },
+              update: { status: "running", cursor: lastIdOnPage },
+            });
           },
           { timeout: 30000 }
         );
@@ -424,7 +539,7 @@ async function handle(req: NextRequest) {
       }
 
       if (!hasNext) break;
-      cursor = items[items.length - 1].id;
+      cursor = lastIdOnPage;
     }
 
     // ── Build snapshots from fully-accumulated per-user totals ──
@@ -466,7 +581,20 @@ async function handle(req: NextRequest) {
     });
 
     // ── Upsert snapshots with bounded concurrency (idempotent on userId+snapshotDate) ──
-    if (!dryRun) {
+    // NOT on a resumed run: `accByUser` only saw the pages after the stored
+    // cursor, so every total in `snapshotData` is a partial sum for any user
+    // whose pledges span the skipped pages. A missing day is a visible gap the
+    // next fresh run's upsert heals; a partial day is an invisible wrong number.
+    const snapshotsSkipped = resumedFromCursor !== null;
+    if (!dryRun && snapshotsSkipped) {
+      console.log(
+        `[evaluate-risk] snapshot write SKIPPED — resumed run from cursor ` +
+        `${resumedFromCursor}: accumulator covers ${pledgesProcessed} of ` +
+        `${totalPledges} pledges (${accByUser.size} users), so per-user totals ` +
+        `are partial. Next fresh run writes today's snapshot.`
+      );
+    }
+    if (!dryRun && !snapshotsSkipped) {
       for (let i = 0; i < snapshotData.length; i += SNAPSHOT_UPSERT_CONCURRENCY) {
         const chunk = snapshotData.slice(i, i + SNAPSHOT_UPSERT_CONCURRENCY);
         await Promise.all(
@@ -479,6 +607,19 @@ async function handle(req: NextRequest) {
           )
         );
       }
+    }
+
+    // ── Run complete: release the lock and clear the resume point ──
+    // Only reached after every page committed (and snapshots, unless skipped).
+    // A throw anywhere above leaves the row "running" with the last committed
+    // cursor, which is exactly the resume point the next invocation needs.
+    if (!dryRun) {
+      await prisma.cronCheckpoint.upsert({
+        where: { jobName: CHECKPOINT_JOB },
+        create: { jobName: CHECKPOINT_JOB, status: "idle", cursor: null },
+        update: { status: "idle", cursor: null },
+      });
+      console.log(`[evaluate-risk] run complete, checkpoint cleared (status=idle, cursor=null)`);
     }
 
     const elapsedMs = Date.now() - runStart;
@@ -523,24 +664,31 @@ async function handle(req: NextRequest) {
       pledgesProcessed,
       batches: batchNumber,
       alertsCreated,
-      snapshotsCreated: snapshotData.length,
+      snapshotsCreated: snapshotsSkipped ? 0 : snapshotData.length,
+      snapshotsSkipped,
+      resumedFromCursor,
       elapsedMs,
       run: {
         totalPledges,
         processed: pledgesProcessed,
         batches: batchNumber,
         durationMs: elapsed(),
-        complete: pledgesProcessed >= totalPledges,
+        // On a resumed run `processed` counts only the pages after the stored
+        // cursor, so it is compared against the remaining count, not the book.
+        complete: pledgesProcessed >= totalPledges - pledgesBeforeCursor,
         nearTimeout: elapsed() > TIMEOUT_WARN_MS,
       },
     });
   } catch (error) {
-    // Pages already flushed are committed; this run just stops here.
+    // Pages already flushed are committed; this run just stops here. The
+    // checkpoint row is left "running" at the last committed cursor — the
+    // next invocation after CHECKPOINT_STALE_MS resumes from there.
     console.error(
       `[evaluate-risk] FAILED after ${elapsed()}ms — ` +
       `${pledgesProcessed}/${totalPledges} processed on batch ${batchNumber + 1}; ` +
       `${pledgesProcessed} pledges across ${batchNumber} batch(es) were already committed; ` +
-      `snapshots for this run were NOT written.`,
+      `snapshots for this run were NOT written. Checkpoint left at status=running ` +
+      `for resume after ${CHECKPOINT_STALE_MS}ms.`,
       error instanceof Error ? error.message : error
     );
     return NextResponse.json(
