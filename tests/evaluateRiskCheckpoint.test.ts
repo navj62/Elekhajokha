@@ -39,6 +39,12 @@ const db = vi.hoisted(() => ({
   failOnTx: null as number | null,      // throw before staging the Nth transaction
   txGate: null as null | ((n: number) => Promise<void>),
   findUniqueGate: null as null | (() => Promise<void>),
+  // Pledge ids to treat as no-longer-ACTIVE at page-WRITE time, simulating a
+  // release that landed between the page read and the page write. The real
+  // UPDATE carries `AND p.status = 'ACTIVE' ... RETURNING p.id`, so these ids
+  // are excluded from what $queryRaw returns — no cache write, and the caller
+  // drops their alerts.
+  releasedBeforeWrite: new Set<string>(),
 }));
 
 vi.mock("@/lib/prisma", () => {
@@ -121,8 +127,16 @@ vi.mock("@/lib/prisma", () => {
       const staged = { ids: [] as string[], alerts: 0, checkpoint: null as null | Parameters<typeof applyUpsert>[0] };
       const ids = idSet();
       const tx = {
-        $executeRaw: async (sql: Prisma.Sql) => {
-          staged.ids = sql.values.filter((v): v is string => typeof v === "string" && ids.has(v));
+        // The metrics write is $queryRaw (not $executeRaw) because it RETURNs
+        // the ids it actually updated. Mirrors the real statement's
+        // `AND p.status = 'ACTIVE'`: ids marked released-before-write match no
+        // row, so they are neither staged nor returned.
+        $queryRaw: async (sql: Prisma.Sql) => {
+          const targeted = sql.values.filter(
+            (v): v is string => typeof v === "string" && ids.has(v)
+          );
+          staged.ids = targeted.filter((id) => !db.releasedBeforeWrite.has(id));
+          return staged.ids.map((id) => ({ id }));
         },
         pledgeAlert: { createMany: async ({ data }: { data: unknown[] }) => { staged.alerts = data.length; } },
         cronCheckpoint: {
@@ -179,6 +193,7 @@ beforeEach(() => {
   db.metricsWrites = []; db.alertWrites = []; db.snapshotUpserts = []; db.checkpointOps = [];
   db.findManyCursors = []; db.txCount = 0;
   db.failOnTx = null; db.txGate = null; db.findUniqueGate = null;
+  db.releasedBeforeWrite = new Set();
   logs = [];
   vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => { logs.push(a.join(" ")); });
   vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -390,5 +405,68 @@ describe("(vi) dryRun", () => {
     const body = await (await POST(req("?dryRun=true"))).json();
     expect(body).toMatchObject({ dryRun: true, pledgesProcessed: 600 });
     expect(db.checkpointOps).toEqual([]);
+  });
+});
+
+// The page read is a plain findMany — no SELECT ... FOR UPDATE — so a pledge can
+// be released or sold in the window between that read and the page write, which
+// for a 500-row page is seconds wide. The metrics UPDATE carries
+// `AND p.status = 'ACTIVE' ... RETURNING p.id`, and the caller inserts alerts
+// only for the ids that came back.
+describe("(vii) pledge released between page read and page write", () => {
+  it("gets no cache write and no alert, while the rest of the page commits normally", async () => {
+    seedPledges(10);
+    // Every seeded pledge crosses null → AT_RISK, so each one drafts an alert;
+    // that is what makes the suppression observable rather than vacuous.
+    db.releasedBeforeWrite = new Set([pid(4)]);
+
+    const res = await POST(req());
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+
+    // The pledge WAS read and processed — only its write was skipped.
+    expect(body).toMatchObject({ success: true, pledgesProcessed: 10, batches: 1 });
+
+    // 1. NO cache-column write for the released pledge; the other 9 all land.
+    expect(db.metricsWrites).toEqual([[...ids(1, 3), ...ids(5, 10)]]);
+    expect(flushed()).not.toContain(pid(4));
+    expect(flushed()).toHaveLength(9);
+
+    // 2. NO alert for it — 9 inserted on the page, not 10.
+    expect(db.alertWrites).toEqual([9]);
+
+    // 3. Not counted in the reported total.
+    expect(body.alertsCreated).toBe(9);
+
+    // The page still committed: checkpoint advanced to the page's last id.
+    expect(db.checkpointOps).toEqual([
+      "findUnique", "create", `tx-upsert:running:${pid(10)}`, "upsert:idle:null",
+    ]);
+  });
+
+  it("a whole page released mid-flight writes nothing and alerts nothing, but still commits the checkpoint", async () => {
+    seedPledges(5);
+    db.releasedBeforeWrite = new Set(ids(1, 5));
+
+    const body = await (await POST(req())).json();
+
+    expect(body).toMatchObject({ success: true, pledgesProcessed: 5 });
+    expect(flushed()).toEqual([]);
+    expect(db.alertWrites).toEqual([0]);
+    expect(body.alertsCreated).toBe(0);
+    // Checkpoint still advances — the page is done, there is nothing to retry.
+    expect(checkpoint()).toMatchObject({ status: "idle", cursor: null });
+  });
+
+  it("dryRun still reports the full draft count — it commits nothing, so nothing is suppressed", async () => {
+    seedPledges(10);
+    db.releasedBeforeWrite = new Set([pid(4)]);
+
+    const body = await (await POST(req("?dryRun=true"))).json();
+
+    expect(body).toMatchObject({ dryRun: true, pledgesProcessed: 10 });
+    expect(body.alertsWouldCreate).toBe(10);
+    expect(writeCount()).toBe(0);
   });
 });

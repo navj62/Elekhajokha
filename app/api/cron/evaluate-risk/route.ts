@@ -81,6 +81,16 @@ interface StatusCounts {
   overdue: number;
 }
 
+interface PledgeAlertDraft {
+  userId: string;
+  pledgeId: string;
+  customerId: string;
+  oldTier: RiskTier | null;
+  newTier: RiskTier;
+  alertType: "CRITICAL" | "TIER_CHANGE" | "INFO";
+  message: string;
+}
+
 // Explicit select — only what calculateLTV + the metric write need. Drops
 // transactions (unused), itemPhoto, remark, and every other column.
 // `items` (first one only) is fetched so the alert message can name the
@@ -182,11 +192,28 @@ function tierToAlertType(tier: RiskTier): "CRITICAL" | "TIER_CHANGE" | "INFO" {
 // pooled connection — i.e. OUTSIDE the transaction. That would silently restore
 // the bug this parameter exists to prevent (metrics committing while the alert
 // insert rolls back, permanently destroying the `oldTier !== newTier` signal).
+//
+// No row lock is taken on the page read (a plain `findMany`, not `SELECT ...
+// FOR UPDATE`) — pledges can be released or sold between that read and this
+// write, which for a 500-row page can be seconds later. Rather than locking,
+// this re-checks `status = 'ACTIVE'` in the UPDATE itself and returns only the
+// ids that were actually still ACTIVE (and thus actually written), mirroring
+// the atomic `updateMany` + `count === 0` guard every other state-transition
+// route in this codebase already uses. A pledge released mid-page is left with
+// its cache columns exactly as the release route last touched them, and the
+// caller uses the returned id set to suppress the alert for it too — closing
+// a loan should never spawn a "moved to AT_RISK" notification for it.
+//
+// Such a pledge DOES still count in this run's FinancialSnapshot, deliberately:
+// the per-user status counts are sampled once at run start, so excluding it
+// from the in-memory accumulator alone would leave `activePledges` one lower
+// while `releasedPledges` stayed put — both halves of the snapshot must
+// describe the same moment, and that moment is run start.
 async function flushPledgeMetrics(
   client: Prisma.TransactionClient,
   rows: PledgeUpdate[],
-): Promise<void> {
-  if (rows.length === 0) return;
+): Promise<Set<string>> {
+  if (rows.length === 0) return new Set();
 
   const tuples = rows.map(
     (r) => Prisma.sql`(
@@ -199,7 +226,7 @@ async function flushPledgeMetrics(
     )`
   );
 
-  await client.$executeRaw(Prisma.sql`
+  const updated = await client.$queryRaw<{ id: string }[]>(Prisma.sql`
     UPDATE "pledges" AS p SET
       "lastAmountOwed"    = v.amount_owed,
       "lastMarketValue"   = v.market_value,
@@ -208,8 +235,10 @@ async function flushPledgeMetrics(
       "lastEvaluatedAt"   = v.evaluated_at
     FROM (VALUES ${Prisma.join(tuples)})
       AS v(id, amount_owed, market_value, ltv, risk_tier, evaluated_at)
-    WHERE p.id = v.id
+    WHERE p.id = v.id AND p.status = 'ACTIVE'
+    RETURNING p.id
   `);
+  return new Set(updated.map((r) => r.id));
 }
 
 // ─────────────────────────────────────────────
@@ -408,7 +437,7 @@ async function handle(req: NextRequest) {
       const items = hasNext ? page.slice(0, BATCH_SIZE) : page;
 
       const pledgeUpdates: PledgeUpdate[] = [];
-      const batchAlerts: object[] = [];
+      const batchAlerts: PledgeAlertDraft[] = [];
 
       for (const pledge of items) {
         const userId = pledge.customer.userId;
@@ -447,7 +476,7 @@ async function handle(req: NextRequest) {
         //    is a good thing and stays silent. ──
         if (riskTier !== null && oldTier !== riskTier && NOTIFY_TIERS.has(riskTier)) {
           const itemLabel = firstItemLabel(pledge.items);
-          const alert = {
+          const alert: PledgeAlertDraft = {
             userId,
             pledgeId: pledge.id,
             customerId: pledge.customerId,
@@ -497,12 +526,25 @@ async function handle(req: NextRequest) {
       // a crash between pages leaves it pointing at the last durable page, and
       // a rolled-back page leaves it un-advanced.
       const lastIdOnPage = items[items.length - 1].id;
+
+      // Alerts actually inserted for this page — only pledges whose metrics
+      // write landed, i.e. that were still ACTIVE at write time. Assigned
+      // inside the transaction and read after it so the run total counts
+      // written alerts, never drafted ones. dryRun commits nothing, so it keeps
+      // reporting the full draft count below.
+      let alertsWrittenOnPage = 0;
+
       if (!dryRun) {
         await prisma.$transaction(
           async (tx) => {
-            await flushPledgeMetrics(tx, pledgeUpdates);
-            if (batchAlerts.length > 0) {
-              await tx.pledgeAlert.createMany({ data: batchAlerts as Prisma.PledgeAlertCreateManyInput[] });
+            // A pledge released between this page's read and this write is
+            // absent from `written`, so its drafted alert is dropped here
+            // rather than announcing a tier change on a closed loan.
+            const written = await flushPledgeMetrics(tx, pledgeUpdates);
+            const alertsToInsert = batchAlerts.filter((a) => written.has(a.pledgeId));
+            alertsWrittenOnPage = alertsToInsert.length;
+            if (alertsToInsert.length > 0) {
+              await tx.pledgeAlert.createMany({ data: alertsToInsert });
             }
             await tx.cronCheckpoint.upsert({
               where: { jobName: CHECKPOINT_JOB },
@@ -516,7 +558,7 @@ async function handle(req: NextRequest) {
 
       batchNumber++;
       pledgesProcessed += items.length;
-      alertsCreated += batchAlerts.length;
+      alertsCreated += dryRun ? batchAlerts.length : alertsWrittenOnPage;
 
       // One line per committed batch. If the function is killed mid-run, the
       // LAST line already in Vercel's logs tells you exactly how far it got.
