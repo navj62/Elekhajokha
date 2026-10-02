@@ -370,6 +370,52 @@ export function RegionsExplorerOverlay({ open, onClose }: Props) {
         return () => window.removeEventListener("keydown", handler);
     }, [open, onClose]);
 
+    // ---- Fetch customers ----
+    // Declared here, ahead of handleRegionClick, which closes over it.
+    const fetchCustomers = useCallback(
+        async (region: string, cursor: number, append = false) => {
+            setCustomersLoading(true);
+            try {
+                const res = await fetch(
+                    `/api/dashboard/regions-explorer?mode=customers&region=${encodeURIComponent(region)}&cursor=${cursor}&limit=15`,
+                );
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                setCustomers((prev) =>
+                    append ? [...prev, ...data.customers] : data.customers,
+                );
+                setCustomersCursor(data.nextCursor);
+            } catch {
+                // silent
+            } finally {
+                setCustomersLoading(false);
+            }
+        },
+        [],
+    );
+
+    // ---- Region click ----
+    // Declared ABOVE its first use (the keyboard-nav effect below, and
+    // fetchRegions' auto-select-first branch). It used to sit further down, so
+    // both referenced it through the temporal dead zone — legal at runtime
+    // because the closures only execute after render, but it meant neither hook
+    // could list it as a dependency, and React Compiler refused to memoize the
+    // component at all ("existing memoization could not be preserved").
+    //
+    // Identity changes only when `regions` changes: `fetchCustomers` above is
+    // memoized with [] and is stable for the component's lifetime.
+    const handleRegionClick = useCallback(
+        (regionName: string) => {
+            setSelectedRegion(regionName);
+            setCustomers([]);
+            setCustomersCursor(0);
+            setMobilePanel("customers");
+            setKeyboardIdx(regions.findIndex((r) => r.name === regionName));
+            fetchCustomers(regionName, 0);
+        },
+        [regions, fetchCustomers],
+    );
+
     // ---- Keyboard navigation ----
     useEffect(() => {
         if (!open || isSearching) return;
@@ -387,7 +433,10 @@ export function RegionsExplorerOverlay({ open, onClose }: Props) {
         };
         window.addEventListener("keydown", handler);
         return () => window.removeEventListener("keydown", handler);
-    }, [open, isSearching, keyboardIdx, regions]);
+        // `handleRegionClick` adds no new trigger: its identity changes exactly
+        // when `regions` does, and `regions` is already a dependency. The effect
+        // only attaches/detaches a keydown listener, so re-running it is inert.
+    }, [open, isSearching, keyboardIdx, regions, handleRegionClick]);
 
     // ---- Fetch regions ----
     const fetchRegions = useCallback(
@@ -411,30 +460,10 @@ export function RegionsExplorerOverlay({ open, onClose }: Props) {
                 setRegionsLoading(false);
             }
         },
-        [selectedRegion],
-    );
-
-    // ---- Fetch customers ----
-    const fetchCustomers = useCallback(
-        async (region: string, cursor: number, append = false) => {
-            setCustomersLoading(true);
-            try {
-                const res = await fetch(
-                    `/api/dashboard/regions-explorer?mode=customers&region=${encodeURIComponent(region)}&cursor=${cursor}&limit=15`,
-                );
-                if (!res.ok) throw new Error();
-                const data = await res.json();
-                setCustomers((prev) =>
-                    append ? [...prev, ...data.customers] : data.customers,
-                );
-                setCustomersCursor(data.nextCursor);
-            } catch {
-                // silent
-            } finally {
-                setCustomersLoading(false);
-            }
-        },
-        [],
+        // No loop: the only effect that CALLS fetchRegions keys off [open] and
+        // ignores this identity, so recreating it schedules nothing. The other
+        // caller is the infinite-scroll handler, driven by user scroll.
+        [selectedRegion, handleRegionClick],
     );
 
     // ---- Search ----
@@ -470,19 +499,6 @@ export function RegionsExplorerOverlay({ open, onClose }: Props) {
             setSearchResult(null);
         }
     }, [debouncedQuery, open, fetchSearch]);
-
-    // ---- Region click ----
-    const handleRegionClick = useCallback(
-        (regionName: string) => {
-            setSelectedRegion(regionName);
-            setCustomers([]);
-            setCustomersCursor(0);
-            setMobilePanel("customers");
-            setKeyboardIdx(regions.findIndex((r) => r.name === regionName));
-            fetchCustomers(regionName, 0);
-        },
-        [regions, fetchCustomers],
-    );
 
     // ---- Customer click ----
     const handleCustomerClick = useCallback(

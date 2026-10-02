@@ -100,15 +100,24 @@ interface DashboardData {
     // null = nothing to total (no ACTIVE pledges). Renders as "—", never ₹0.
     totalBalanceAmount: number | null;
   };
+  // Shape comes from GET /api/dashboard/snapshot → `recentPledges` (the only
+  // writer of this state). `customerId` backs the row's click-through; the
+  // route sends it, so it is required here.
   recentPledges?: {
     id: string;
     pledgeId?: string;
     customerName: string;
     initials?: string;
+    customerId: string;
     pledgeDate: string;
     loanAmount: number;
     releaseDate: string | null;
     status: string;
+    // NOT sent by /api/dashboard/snapshot, and no other route returns it — the
+    // "Item" cell below therefore always renders its "—" fallback. Declared so
+    // the existing markup keeps typechecking; left optional rather than
+    // invented, because populating it is a product decision, not a type fix.
+    pledgeItem?: string;
   }[];
   portfolio: {
     goldWeightGrams: number;
@@ -1111,7 +1120,7 @@ export default function DashboardPage() {
               <p className="text-[12px] mt-1" style={{ color: "var(--muted-foreground-subtle)", opacity: 0.6 }}>{t("new_pledges_appear")}</p>
             </div>
           ) : (
-            pledgesToUse.map((p: any, i: number) => {
+            pledgesToUse.map((p, i) => {
               const isLast = i === pledgesToUse.length - 1;
               const sStyle = getStatusStyle(p.status);
               const initials =
