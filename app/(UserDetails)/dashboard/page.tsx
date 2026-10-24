@@ -921,20 +921,24 @@ export default function DashboardPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/*  Performance & portfolio context                            */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <section className="mb-6 overflow-hidden">
-        <Suspense fallback={<MonthlyPerformanceSkeleton />}>
-          <MonthlyPerformanceSection />
-        </Suspense>
-      </section>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 mb-6">
+        {/* Left Column */}
+        <section className="h-full overflow-hidden">
+          <Suspense fallback={<MonthlyPerformanceSkeleton />}>
+            <MonthlyPerformanceSection />
+          </Suspense>
+        </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <RegionDistribution regions={dashboard?.regions} onViewAllRegions={() => setRegionsExplorerOpen(true)} />
-        <MetalPortfolio
-          portfolio={dashboard?.portfolio ?? null}
-          snapshotDateLabel={
-            dashboard?.portfolio?.snapshotDate ? formatDate(dashboard.portfolio.snapshotDate) : null
-          }
-        />
+        {/* Right Column */}
+        <section className="space-y-6">
+          <RegionDistribution regions={dashboard?.regions} onViewAllRegions={() => setRegionsExplorerOpen(true)} />
+          <MetalPortfolio
+            portfolio={dashboard?.portfolio ?? null}
+            snapshotDateLabel={
+              dashboard?.portfolio?.snapshotDate ? formatDate(dashboard.portfolio.snapshotDate) : null
+            }
+          />
+        </section>
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}

@@ -37,7 +37,7 @@ export function MonthlyPerformanceSkeleton() {
       {/* Chart A */}
       <div className="rounded-[18px] p-7" style={cardStyle}>
         <div className="h-4 w-44 rounded animate-pulse mb-4" style={pulseBlock} />
-        <div className="h-[320px] rounded-xl animate-pulse" style={pulseBlock} />
+        <div className="h-[420px] rounded-xl animate-pulse" style={pulseBlock} />
       </div>
 
       {/* Charts B & C */}

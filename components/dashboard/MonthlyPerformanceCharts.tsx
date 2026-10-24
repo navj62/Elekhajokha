@@ -279,7 +279,7 @@ export function MonthlyPerformanceCharts({ data }: { data: MonthlyPerformanceDat
           </div>
         </div>
 
-        <div className="flex-1 min-h-[280px] w-full">
+        <div className="flex-1 min-h-[420px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             {activeTab === "Pledges" ? (
             <BarChart data={months} barGap={2} barCategoryGap="18%">
