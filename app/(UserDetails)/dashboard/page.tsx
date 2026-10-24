@@ -102,11 +102,9 @@ interface DashboardData {
     loanAmount: number;
     releaseDate: string | null;
     status: string;
-    // NOT sent by /api/dashboard/snapshot, and no other route returns it — the
-    // "Item" cell below therefore always renders its "—" fallback. Declared so
-    // the existing markup keeps typechecking; left optional rather than
-    // invented, because populating it is a product decision, not a type fix.
-    pledgeItem?: string;
+    // First item's type plus a count of the rest ("Ring +2"); null when the
+    // pledge has no items.
+    pledgeItem: string | null;
   }[];
   portfolio: {
     goldWeightGrams: number;

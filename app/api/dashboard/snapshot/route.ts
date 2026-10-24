@@ -107,7 +107,10 @@ export async function GET() {
         where: { customer: { userId: user.id } },
         orderBy: { createdAt: "desc" },
         take: 4,
-        include: { customer: true },
+        include: {
+          customer: true,
+          items: { select: { itemType: true }, orderBy: { createdAt: "asc" } },
+        },
       }),
       // Regions
       prisma.customer.groupBy({
@@ -234,6 +237,14 @@ export async function GET() {
       // The pledge's real status. Do not remap to invented labels — an ACTIVE
       // pledge is not "Processing", and SOLD is not "On Hold".
       status: p.status,
+      // First item's type, plus a count of the rest: "Ring", "Ring +2".
+      // null only for a pledge with no items, which the card renders as "—".
+      pledgeItem:
+        p.items.length === 0
+          ? null
+          : p.items.length === 1
+            ? p.items[0].itemType
+            : `${p.items[0].itemType} +${p.items.length - 1}`,
     }));
 
     // Regions mapping
