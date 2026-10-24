@@ -6,9 +6,9 @@ import {
   Archive,
   DollarSign,
   IndianRupee,
-  RefreshCw,
   ArrowRight,
-  BarChart3,
+  Wallet,
+  Percent,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -44,19 +44,6 @@ import {
 /* ================================================================== */
 /*  Types                                                               */
 /* ================================================================== */
-
-interface MetalPrice {
-  id: string;
-  metal: "GOLD" | "SILVER";
-  usdPerOunce: number;
-  inrPerGram: number;
-  createdAt: string;
-}
-
-interface MarketRates {
-  gold: MetalPrice | null;
-  silver: MetalPrice | null;
-}
 
 interface FinancialSnapshot {
   totalLoanAmount: string;
@@ -99,6 +86,8 @@ interface DashboardData {
     totalReleasedLoanAmount: number;
     // null = nothing to total (no ACTIVE pledges). Renders as "—", never ₹0.
     totalBalanceAmount: number | null;
+    // Same null convention as totalBalanceAmount.
+    totalInterestAmount: number | null;
   };
   // Shape comes from GET /api/dashboard/snapshot → `recentPledges` (the only
   // writer of this state). `customerId` backs the row's click-through; the
@@ -721,10 +710,6 @@ export default function DashboardPage() {
 
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(true);
-  const [rates, setRates] = useState<MarketRates | null>(null);
-  const [ratesLoading, setRatesLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [inventory, setInventory] = useState<{ marketValue: number | null; inStockCount: number } | null>(null);
   const [regionsExplorerOpen, setRegionsExplorerOpen] = useState(false);
 
   /* ---- Fetch dashboard snapshot ---- */
@@ -743,40 +728,9 @@ export default function DashboardPage() {
     }
   }, []);
 
-  /* ---- Fetch market rates ---- */
-  const loadRates = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setRatesLoading(true);
-    try {
-      const res = await fetch(`/api/market-rates?t=${Date.now()}`);
-      const data = await res.json();
-      if (res.ok) setRates(data);
-    } catch (err) {
-      console.error("Rates error:", err);
-    } finally {
-      setRatesLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
-
-  /* ---- Fetch live inventory analytics (not stored in FinancialSnapshot) ---- */
-  const loadInventory = useCallback(async () => {
-    try {
-      const res = await fetch("/api/inventory/analytics", { cache: "no-store" });
-      if (res.ok) {
-        const d = await res.json();
-        setInventory({ marketValue: d.stock.marketValue, inStockCount: d.stock.count });
-      }
-    } catch (e) {
-      console.error("Inventory analytics error:", e);
-    }
-  }, []);
-
   useEffect(() => {
     loadSnapshot();
-    loadRates();
-    loadInventory();
-  }, [loadSnapshot, loadRates, loadInventory]);
+  }, [loadSnapshot]);
 
   const statsToUse = dashboard?.stats || {
     totalCustomers: 0,
@@ -786,18 +740,10 @@ export default function DashboardPage() {
     // Not 0: the snapshot fetch has not landed (or failed), so the balance is
     // unknown, not zero. Same convention as INVENTORY VALUE — render "—".
     totalBalanceAmount: null,
+    totalInterestAmount: null,
   };
 
   const pledgesToUse = dashboard?.recentPledges || [];
-
-  // No price on record shows nothing. A placeholder rate here would be a made-up
-  // number on the one surface whose whole claim is live valuation.
-  const goldPriceDisplay = rates?.gold
-    ? `₹${(Number(rates.gold.inrPerGram) * 10).toLocaleString("en-IN")} / 10g`
-    : "—";
-  const silverPriceDisplay = rates?.silver
-    ? `₹${Number(rates.silver.inrPerGram).toLocaleString("en-IN", { maximumFractionDigits: 2 })} / g`
-    : "—";
 
   function formatDate(d: string): string {
     return new Date(d).toLocaleDateString(locale, { month: "short", day: "2-digit", year: "numeric" });
@@ -882,58 +828,6 @@ export default function DashboardPage() {
       </section>
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/*  Aging table — the spine's tabular companion                */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <section className="mb-10">
-        <Suspense fallback={<AgingAnalysisSkeleton />}>
-          <AgingAnalysisSection />
-        </Suspense>
-      </section>
-
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/*  Market Rate Strip                                          */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <div
-        className="rounded-[14px] mx-0 mb-6 px-5 py-3 flex items-center justify-between"
-        style={{
-          backgroundColor: "var(--card-alt)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5">
-            <BarChart3 size={14} style={{ color: "#565C3F" }} />
-            <span className="text-[11px] font-bold tracking-wide" style={{ color: "#565C3F" }}>
-              Market Rates:
-            </span>
-          </div>
-          <div className="flex items-center gap-5">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#FBBF24" }} />
-              <span className="text-[12px] font-semibold" style={{ color: "var(--foreground)" }}>
-                Gold: {goldPriceDisplay}
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#9CA3AF" }} />
-              <span className="text-[12px] font-semibold" style={{ color: "var(--foreground)" }}>
-                Silver: {silverPriceDisplay}
-              </span>
-            </div>
-          </div>
-        </div>
-        <button
-          onClick={() => loadRates(true)}
-          disabled={refreshing}
-          className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg transition-colors hover:bg-white/60 disabled:opacity-50"
-          style={{ color: "var(--muted-foreground)" }}
-        >
-          <RefreshCw size={11} className={refreshing ? "animate-spin" : ""} />
-          REFRESH
-        </button>
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════ */}
       {/*  Book summary — context beneath the spine                   */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="mb-6">
@@ -989,33 +883,35 @@ export default function DashboardPage() {
               <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border)]" />
             </div>
 
-            {/* Inventory Value (live) */}
+            {/* Total Principal */}
             <div className="flex-1 p-6 flex flex-col items-center justify-center relative">
               <div className="flex items-center gap-2 mb-2">
-                <BarChart3 size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
+                <Wallet size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
                 <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--muted-foreground-subtle)" }}>
-                  INVENTORY VALUE
+                  TOTAL PRINCIPAL
                 </span>
               </div>
               <span className="text-[24px] font-bold" style={{ color: "var(--foreground)" }}>
-                {inventory && inventory.marketValue !== null
-                  ? formatRupees(inventory.marketValue)
+                {statsToUse.totalBalanceAmount !== null
+                  ? formatRupees(statsToUse.totalActiveLoanAmount)
                   : "—"}
               </span>
               {/* Right divider */}
               <div className="absolute right-0 top-6 bottom-6 w-px bg-[var(--border)]" />
             </div>
 
-            {/* Items in Stock (live) */}
+            {/* Total Interest */}
             <div className="flex-1 p-6 flex flex-col items-center justify-center">
               <div className="flex items-center gap-2 mb-2">
-                <Archive size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
+                <Percent size={16} style={{ color: "#565C3F" }} strokeWidth={2.2} />
                 <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: "var(--muted-foreground-subtle)" }}>
-                  ITEMS IN STOCK
+                  TOTAL INTEREST
                 </span>
               </div>
               <span className="text-[24px] font-bold" style={{ color: "var(--foreground)" }}>
-                {inventory ? inventory.inStockCount.toLocaleString(locale) : "—"}
+                {statsToUse.totalInterestAmount !== null
+                  ? formatRupees(statsToUse.totalInterestAmount)
+                  : "—"}
               </span>
             </div>
           </div>
@@ -1025,25 +921,30 @@ export default function DashboardPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/*  Performance & portfolio context                            */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 mb-6">
-        {/* Left Column */}
-        <section className="h-full overflow-hidden">
-          <Suspense fallback={<MonthlyPerformanceSkeleton />}>
-            <MonthlyPerformanceSection />
-          </Suspense>
-        </section>
+      <section className="mb-6 overflow-hidden">
+        <Suspense fallback={<MonthlyPerformanceSkeleton />}>
+          <MonthlyPerformanceSection />
+        </Suspense>
+      </section>
 
-        {/* Right Column */}
-        <section className="space-y-6">
-          <RegionDistribution regions={dashboard?.regions} onViewAllRegions={() => setRegionsExplorerOpen(true)} />
-          <MetalPortfolio
-            portfolio={dashboard?.portfolio ?? null}
-            snapshotDateLabel={
-              dashboard?.portfolio?.snapshotDate ? formatDate(dashboard.portfolio.snapshotDate) : null
-            }
-          />
-        </section>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <RegionDistribution regions={dashboard?.regions} onViewAllRegions={() => setRegionsExplorerOpen(true)} />
+        <MetalPortfolio
+          portfolio={dashboard?.portfolio ?? null}
+          snapshotDateLabel={
+            dashboard?.portfolio?.snapshotDate ? formatDate(dashboard.portfolio.snapshotDate) : null
+          }
+        />
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/*  Aging table — the spine's tabular companion                */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <section className="mb-10">
+        <Suspense fallback={<AgingAnalysisSkeleton />}>
+          <AgingAnalysisSection />
+        </Suspense>
+      </section>
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/*  Row 3: Recent Pledges — Premium Card Layout               */}

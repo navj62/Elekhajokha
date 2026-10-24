@@ -185,22 +185,27 @@ export async function GET() {
     // ₹0 is now unreachable here: an open pledge always owes at least its
     // principal, so a numeric 0 would require an open book of zero-value
     // loans. Do not collapse this null to 0 downstream.
+    const openPledgeTotals = openPledges.map((p) =>
+      calculateHybridInterest(
+        Number(p.loanAmount),
+        Number(p.interestRate),
+        p.pledgeDate,
+        now,
+        p.allowCompounding,
+        p.compoundingDuration as CompoundingDuration
+      )
+    );
     const totalBalanceAmount =
       openPledges.length === 0
         ? null
-        : openPledges.reduce(
-            (sum, p) =>
-              sum +
-              calculateHybridInterest(
-                Number(p.loanAmount),
-                Number(p.interestRate),
-                p.pledgeDate,
-                now,
-                p.allowCompounding,
-                p.compoundingDuration as CompoundingDuration
-              ).receivableAmount,
-            0
-          );
+        : openPledgeTotals.reduce((sum, r) => sum + r.receivableAmount, 0);
+    // Interest accrued on the open book, from the same engine call as the
+    // balance above — so principal + interest always reconciles to balance.
+    // Same null convention as totalBalanceAmount.
+    const totalInterestAmount =
+      openPledges.length === 0
+        ? null
+        : openPledgeTotals.reduce((sum, r) => sum + r.totalInterest, 0);
 
     const stats = {
       totalCustomers,
@@ -208,6 +213,7 @@ export async function GET() {
       totalActiveLoanAmount: Number(totalActiveLoanAmount._sum.loanAmount ?? 0),
       totalReleasedLoanAmount: Number(totalReleasedLoanAmount._sum.loanAmount ?? 0),
       totalBalanceAmount,
+      totalInterestAmount,
     };
 
     const recentPledges = recentPledgesRaw.map((p) => ({
