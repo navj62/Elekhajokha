@@ -269,17 +269,17 @@ The sell page shows a three-line breakdown: Amount Owed / Acquisition Cost / Cas
 - `GET /api/inventory/[id]` — single item, ownership-checked via `ownerId`.
 - `GET /api/inventory/[id]/receipt` — JSON `{ item, shop }` by default; `?format=pdf` streams `generateInventoryPurchasePDF`. Ownership enforced via `ownerId`.
 - `POST /api/inventory/[id]/sell` — body: soldPrice (> 0), soldAt, buyerName?, buyerMobile?, saleNotes?. Atomic: `updateMany({ where: { id, ownerId, status: "IN_STOCK" }, … })` with `count === 0` → 409 `ALREADY_SOLD`. The `findFirst` ownership read remains as a 404 fast-path only.
-- `GET /api/inventory/analytics` — live aggregation across all InventoryItem rows for this user. Returns `{ stock: { count, goldWeightGrams, silverWeightGrams, acquiredCost, marketValue, isMarketValuePartial }, sold: { count, goldWeightGrams, silverWeightGrams, moneyCollected, costBasis, realizedProfit }, total: { itemCount }, rates: { goldPerGram, silverPerGram, updatedAt } }`. All values computed live — nothing stored in FinancialSnapshot. `marketValue = SUM(netWeightOfGold × goldPpg + netWeightOfSilver × silverPpg)` for IN_STOCK items; null if both prices missing. Fetches MetalPrice directly (not via /api/market-rates internally).
+- ~~`GET /api/inventory/analytics`~~ — **removed** (`d94704e`). Its only consumer was the dashboard, which stopped calling it in `9b4d564`. Live inventory totals now come from the `summary` block of `GET /api/inventory`.
 
 ### Inventory page (`app/(UserDetails)/inventory/page.tsx`)
 Client component. Page header (title, subtitle, `MetalRateStrip variant="full"`, "Add Item" CTA), then a summary strip of 4 KPI cards: In Stock count, Total Acquired Value, Sold count, Total Sold Revenue.
 
-**There is no "Portfolio Metals" section on this page**, and this page does not call `/api/inventory/analytics`. A prior version of this doc described such a section (net gold/silver weight, unrealized P&L, sold sub-section, rate footnote) — no such component exists. What does exist:
+**There is no "Portfolio Metals" section on this page.** A prior version of this doc described such a section (net gold/silver weight, unrealized P&L, sold sub-section, rate footnote) — no such component exists. What does exist:
 - `MetalRateStrip variant="full"` renders in this page's header.
 - `MetalPortfolio` is a **dashboard** component ([app/(UserDetails)/dashboard/page.tsx](app/(UserDetails)/dashboard/page.tsx)), fed by `dashboard.portfolio` from the dashboard route — not by inventory analytics.
-- `/api/inventory/analytics` has exactly one consumer: the dashboard, which reads only `stock.marketValue` and `stock.count` from it.
+- The dashboard shows no inventory figures. It used to read `/api/inventory/analytics` for an Inventory Value / Items in Stock pair; those tiles were removed in `9b4d564` and the route, left with zero consumers, was deleted in `d94704e`.
 
-The analytics route still returns the full payload documented above; most of it is currently unconsumed. Don't assume a UI exists for a field just because the route returns it.
+The KPI cards are fed by the `summary` block of `GET /api/inventory`, which reports counts and rupee totals only — no market value.
 
 Filter pills: status / source / metal. Sort dropdown. Table columns: Photo | Item | Type | Metal+Purity | Weight (gross + net subtitle) | Acquired date | Cost | Status. Row action: "Sell" button for IN_STOCK items (Sell modal). "Add Item" navigates to `/inventory/buy`.
 
@@ -358,7 +358,7 @@ Full schema in [prisma/schema.prisma](prisma/schema.prisma). `CronCheckpoint` (`
 
 Key `InventoryItem` fields: `grossWeight` (physical), `netWeightOfGold` / `netWeightOfSilver` (server-derived, immutable after creation), `purity` (nullable), `acquiredCost` (cost basis — NOT cash paid to customer for pledge-sourced items), `amountOwedAt` (snapshotted at sale time, null for direct purchases), `acquiredMetalRate` (INR/gram at acquisition, null for OTHER or no price data — read-only after creation).
 
-`FinancialSnapshot` contains **pledge-system metrics only** (LTV, risk tiers, loan amounts, weight of pledged gold/silver). Its `mtdNewPledges` / `mtdReleasedPledges` / `mtdLoanAmount` columns are declared but **never populated** — the evaluate-risk upsert payload has no `mtd*` key, and the same-named identifiers in [app/api/dashboard/snapshot/route.ts](app/api/dashboard/snapshot/route.ts) are local variables computed live per request, not reads of these columns. Inventory data is **never stored here** — it is always computed live from `InventoryItem` rows via `/api/inventory/analytics`. Do not add inventory fields to `FinancialSnapshot`.
+`FinancialSnapshot` contains **pledge-system metrics only** (LTV, risk tiers, loan amounts, weight of pledged gold/silver). Its `mtdNewPledges` / `mtdReleasedPledges` / `mtdLoanAmount` columns are declared but **never populated** — the evaluate-risk upsert payload has no `mtd*` key, and the same-named identifiers in [app/api/dashboard/snapshot/route.ts](app/api/dashboard/snapshot/route.ts) are local variables computed live per request, not reads of these columns. Inventory data is **never stored here** — it is always computed live from `InventoryItem` rows at request time (see the `summary` block of [app/api/inventory/route.ts](app/api/inventory/route.ts)). Do not add inventory fields to `FinancialSnapshot`.
 
 Cascade caveat — **half closed.** `PledgeAudit` is now `onDelete: Restrict` (migration `20260825190943_pledge_audit_restrict_on_delete`) and is additionally guarded in the delete route (`AUDIT_RECORDS_EXIST`), so release/sale audit records survive any pledge delete attempt. `Transaction` is still `onDelete: Cascade` — a part-payment ledger is still destroyed with its pledge, mitigated only by the `PENDING_TRANSACTIONS` 409 that `?confirmDelete=true` can override.
 
@@ -378,7 +378,7 @@ Cascade caveat — **half closed.** `PledgeAudit` is now `onDelete: Restrict` (m
 - Route groups: `(auth)`, `(UserDetails)`, `(CustomersDetails)`.
 - Server-only helpers (e.g. `constantTimeEqual`) in their own `lib/` file, separate from client-importable utils.
 - Currency display: use `toLocaleString("en-IN")` for exact amounts in financial comparisons. Use `formatCurrencyAbbr` only for axis labels or at-a-glance KPIs — abbreviation hides interest accrual when amounts are close.
-- Inventory analytics: always computed live from `InventoryItem` rows. Never store pre-computed inventory aggregates anywhere. See `/api/inventory/analytics` for the canonical pattern.
+- Inventory analytics: always computed live from `InventoryItem` rows. Never store pre-computed inventory aggregates anywhere. See the `summary` block in `GET /api/inventory` ([app/api/inventory/route.ts](app/api/inventory/route.ts)) for the canonical pattern.
 
 ## Required environment variables
 
