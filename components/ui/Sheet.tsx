@@ -246,25 +246,49 @@ export interface SheetItemProps extends Omit<React.ComponentProps<"button">, "ch
   label: React.ReactNode;
   /** Optional trailing node — chevron, count, badge. */
   trailing?: React.ReactNode;
+  /**
+   * "destructive" for actions that destroy or end something (delete, log out).
+   * Callers place it last in the list; the tone only owns the colour.
+   */
+  tone?: "default" | "destructive";
 }
 
-function SheetItem({ icon, label, trailing, className, ...props }: SheetItemProps) {
+/* Destructive text uses risk-critical-foreground, not --destructive: the
+   latter is a fill colour and measures 2.99:1 (light) / 4.35:1 (dark) as
+   text on --card, failing AA. risk-critical-foreground is 8.31:1 / 7.92:1.
+   The hover/focus overrides restate the same variant+property as the base
+   classes so the destructive colour wins in every state — otherwise the
+   generic hover:text-accent-foreground would mute it at the moment of tap. */
+const ITEM_TONE = {
+  default: {
+    item: "text-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring/50",
+    icon: "text-muted-foreground",
+  },
+  destructive: {
+    item: "text-risk-critical-foreground hover:bg-destructive/10 hover:text-risk-critical-foreground focus-visible:ring-destructive/40",
+    icon: "text-risk-critical-foreground",
+  },
+} as const;
+
+function SheetItem({ icon, label, trailing, tone = "default", className, ...props }: SheetItemProps) {
   return (
     <li>
       <button
         type="button"
         data-slot="sheet-item"
+        data-tone={tone}
         className={cn(
           // min-h-11 = 44px touch target
-          "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[14px] font-medium text-foreground transition-colors",
-          "hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+          "flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[14px] font-medium transition-colors",
+          "focus-visible:ring-[3px] focus-visible:outline-none",
+          ITEM_TONE[tone].item,
           "disabled:pointer-events-none disabled:opacity-50",
           className
         )}
         {...props}
       >
         {icon && (
-          <span className="flex size-5 shrink-0 items-center justify-center text-muted-foreground">{icon}</span>
+          <span className={cn("flex size-5 shrink-0 items-center justify-center", ITEM_TONE[tone].icon)}>{icon}</span>
         )}
         <span className="min-w-0 flex-1 truncate">{label}</span>
         {trailing && <span className="shrink-0 text-muted-foreground-subtle">{trailing}</span>}

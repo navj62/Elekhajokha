@@ -75,13 +75,7 @@ export default function MoreSheet({
             data-slot-action="logout"
             icon={<LogOut size={18} />}
             label={t("log_out")}
-            /* Destructive must stay dominant in every state. Sheet.Item's base
-               hover:text-accent-foreground is a different variant key from
-               text-destructive, so twMerge does not treat them as conflicting
-               and the generic hover would win — killing the destructive signal
-               at the exact moment the user is about to tap. Overriding at the
-               same variant+property lets twMerge resolve in our favour. */
-            className="text-destructive hover:bg-destructive/10 hover:text-destructive focus-visible:ring-destructive/40"
+            tone="destructive"
             onClick={() => {
               onOpenChange(false);
               void signOut();
