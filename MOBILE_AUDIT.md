@@ -1,11 +1,13 @@
 # MOBILE_AUDIT.md
 
-## STATUS (as of 2026-07-29)
+## STATUS (as of 2026-10-27)
 
-- **Last updated:** 2026-07-29
+- **Last updated:** 2026-10-27
 - **Phase 1 (foundation): COMPLETE** — token consolidation, nav shell, Sheet primitive. Commits `8218e29` (refactor(tokens): consolidate two design-token systems into one) + `5296fb0` (feat(nav): mobile bottom nav + FAB, one shell for both breakpoints).
-- **Phase 2 screen redesigns: NOT STARTED** — none of the per-screen restyling in the tackle-order list below has begun.
-- **Blocker on resuming:** the mobile view has been reported as "way off" after Phase 1 landed. This needs screenshots + diagnosis (see the Verification methodology section in CLAUDE.md's "Mobile-First Redesign" section) before Phase 2 screen work begins — don't start screen-by-screen redesign on top of an unverified foundation.
+- **Phase 2 screen redesigns: IN PROGRESS — page 1 of 6 done.** `/customers/[id]/pledges/add` is complete: `c2d99a2` (remove fabricated header values), `2d444f4` (touch-reachable item actions, native date input, 44px targets), `0c3db42` (StickyActions, inline validation, no `alert()`), `046cb73` (tokenised surfaces for dark mode).
+- **Shared primitives now exist in `components/ui/`**, built during page 1 work: `StickyActions.tsx` (bottom action bar — owns z-30, the bottom-nav offset and its own spacer; suppresses the FAB while mounted) and `DataTable.tsx` (real `<table>` at `lg:`, card-per-row below; also exports `StatusBadge`). Build on these rather than hand-rolling.
+- **"Mobile view way off" blocker: RESOLVED.** Phase 2 page work has proceeded on top of the Phase 1 shell.
+- **Up next, in order:** `/customers/[id]` → `/customers/[id]/pledges/[pid]/release` → `/dashboard` → `/customers` → `/view/[token]`.
 
 ## CORRECTIONS TO ORIGINAL AUDIT
 
