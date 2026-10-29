@@ -7,12 +7,14 @@ import SubscriptionGuard from "@/components/SubscriptionGuard";
 import {
   Edit3, Plus, MapPin, Phone,
   CheckCircle2, Eye, Unlock, Loader2, CheckSquare, Search, X, Trash, MoreHorizontal,
+  Copy, QrCode, AlertCircle,
 } from "lucide-react";
 
 import { QRCodeCanvas } from "qrcode.react";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import Sheet from "@/components/ui/Sheet";
+import StickyActions from "@/components/ui/StickyActions";
 import DataTable, { StatusBadge, type BadgeTone, type DataTableColumn } from "@/components/ui/DataTable";
 import { isOpenPledgeStatus } from "@/lib/pledgeConstants";
 
@@ -96,6 +98,25 @@ const STATUS_LABEL: Record<Pledge["status"], string> = {
   SOLD: "Sold to Shop",
 };
 
+type ProfileField = {
+  label: string;
+  key: "name" | "mobile" | "address" | "region" | "aadharNo";
+  placeholder: string;
+  type?: "text" | "tel";
+  inputMode?: "text" | "tel" | "numeric";
+  autoComplete?: string;
+};
+
+/* inputMode picks the phone keypad / number pad on mobile. Aadhaar stays
+   type="text" so the spaces in "XXXX XXXX XXXX" survive. */
+const PROFILE_FIELDS: ProfileField[] = [
+  { label: "Full Name", key: "name", placeholder: "Customer name", autoComplete: "name" },
+  { label: "Mobile Number", key: "mobile", placeholder: "+91 XXXXX XXXXX", type: "tel", inputMode: "tel", autoComplete: "tel" },
+  { label: "Address", key: "address", placeholder: "Street, City", autoComplete: "street-address" },
+  { label: "Region", key: "region", placeholder: "State / District", autoComplete: "address-level2" },
+  { label: "Aadhaar Number", key: "aadharNo", placeholder: "XXXX XXXX XXXX", inputMode: "numeric", autoComplete: "off" },
+];
+
 /** One-line name for a pledge, used where the row itself is out of view. */
 function pledgeTitle(p: Pledge) {
   return `${p.itemLabel || "Pledge"} · ${formatDate(p.pledgeDate)}`;
@@ -122,7 +143,7 @@ export default function CustomerDetailPage() {
   const [customer, setCustomer] = useState<CustomerDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; kind: "success" | "error" } | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showQR, setShowQR] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
@@ -197,10 +218,10 @@ export default function CustomerDetailPage() {
     // Note: intentionally does NOT touch showReleased.
   }
 
-  function showToast(msg: string) {
-    setToastMsg(msg);
+  function showToast(msg: string, kind: "success" | "error" = "success") {
+    setToast({ msg, kind });
     if (toastRef.current) clearTimeout(toastRef.current);
-    toastRef.current = setTimeout(() => setToastMsg(null), 4000);
+    toastRef.current = setTimeout(() => setToast(null), 4000);
   }
 
   /* ---- Load ---------------------------------------------------- */
@@ -217,7 +238,7 @@ export default function CustomerDetailPage() {
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unexpected error";
         setError(msg);
-        showToast(msg);
+        showToast(msg, "error");
       } finally {
         setLoading(false);
       }
@@ -252,7 +273,7 @@ export default function CustomerDetailPage() {
       });
       showToast("Pledge deleted.");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Unexpected error");
+      showToast(err instanceof Error ? err.message : "Unexpected error", "error");
     } finally {
       setDeletingId(null);
     }
@@ -274,7 +295,7 @@ export default function CustomerDetailPage() {
       setIsEditingNotes(false);
       showToast("Notes updated.");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Unexpected error");
+      showToast(err instanceof Error ? err.message : "Unexpected error", "error");
     } finally {
       setSavingNotes(false);
     }
@@ -296,7 +317,7 @@ export default function CustomerDetailPage() {
       setShowEditModal(false);
       showToast("Profile updated.");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Unexpected error");
+      showToast(err instanceof Error ? err.message : "Unexpected error", "error");
     } finally {
       setSavingProfile(false);
     }
@@ -452,18 +473,47 @@ export default function CustomerDetailPage() {
     router.push(`/customers/${customerId}/release-bulk?ids=${ids.join(",")}`);
   }
 
+  /* ---- Customer portal ---------------------------------------- */
+  const portalUrl = customer ? `${process.env.NEXT_PUBLIC_BASE_URL}/view/${customer.viewToken}` : "";
+
+  async function copyPortalLink() {
+    try {
+      await navigator.clipboard.writeText(portalUrl);
+      showToast("Portal link copied.");
+    } catch {
+      // Clipboard can be refused (permissions, insecure context). The QR
+      // sheet prints the URL, so there is always a manual fallback.
+      showToast("Couldn't copy. Open Show QR to see the link.", "error");
+    }
+  }
+
+  async function toggleCustomerPortal() {
+    if (!customer) return;
+    try {
+      const res = await fetch(`/api/customers/${customer.id}/toggle-portal`, { method: "PATCH" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      setCustomer((prev) =>
+        prev ? { ...prev, isPortalBlocked: data.isPortalBlocked } : prev
+      );
+      showToast(data.isPortalBlocked ? "Portal access blocked" : "Portal access enabled");
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to update portal access", "error");
+    }
+  }
+
   /* ================================================================ */
   return (
     <SubscriptionGuard featureName="Customer Details">
-      <div
-        className="max-w-[1100px] mx-auto px-6 lg:px-8 pt-8 pb-24 dash-animate text-[#2C2C2C]"
-        style={{ minHeight: "100vh" }}
-      >
+      {/* No side padding below lg: the shell's <main> already supplies the
+          mobile gutter. No pb-* either: StickyActions reserves its own space. */}
+      <div className="max-w-[1100px] mx-auto lg:px-8 pt-4 lg:pt-8 pb-6 lg:pb-24 dash-animate text-foreground">
         {/* Breadcrumb */}
-        <div className="mb-6">
+        <div className="mb-4 lg:mb-6">
           <Link
             href="/customers"
-            className="text-[14px] font-bold text-[#2C2C2C] flex items-center gap-2 pb-2 border-b-2 border-[#555B3F] w-fit"
+            className="min-h-11 text-[14px] font-bold text-foreground flex items-center gap-2 border-b-2 border-primary w-fit"
           >
             ← Customer Details
           </Link>
@@ -519,113 +569,46 @@ export default function CustomerDetailPage() {
 
           /* ── Loaded ────────────────────────────────────────────── */
         ) : (
-          <div className="space-y-6">
+          <div className="flex flex-col gap-4 lg:gap-6">
 
-            {/* Main Header Card */}
-            <div
-              className="rounded-[24px] p-4 lg:p-6 flex flex-col md:flex-row md:items-center justify-between gap-6"
-              style={{ backgroundColor: "#FAFAF7" }}
-            >
-              <div className="flex items-center gap-5">
+            {/* Header */}
+            <section className="rounded-[24px] bg-card-alt p-4 lg:p-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="flex items-start gap-4 lg:gap-5 min-w-0">
                 {/* Avatar */}
-                <div
-                  className="w-[100px] h-[100px] flex-shrink-0 rounded-[20px] overflow-hidden relative"
-                  style={{ backgroundColor: "#2C2C2C" }}
-                >
+                <div className="size-14 lg:size-[100px] shrink-0 rounded-2xl lg:rounded-[20px] overflow-hidden relative bg-muted">
                   {customer.customerImg ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={customer.customerImg} alt={customer.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full relative flex items-center justify-center" style={{ background: "linear-gradient(200deg, #F96F82 0%, #A92C48 50%, #2A1728 100%)" }}>
-                      <svg className="absolute w-full h-full top-0 left-0" viewBox="0 0 100 100" preserveAspectRatio="none">
+                      <svg className="absolute w-full h-full top-0 left-0" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
                         <path d="M0,40 C30,60 50,20 100,50 L100,100 L0,100 Z" fill="#651C33" opacity="0.6" />
                         <path d="M0,55 C40,40 60,70 100,50 L100,100 L0,100 Z" fill="#2E1C23" />
                       </svg>
-                      <span className="relative z-10 text-white text-2xl font-bold">{getInitials(customer.name)}</span>
+                      <span className="relative z-10 text-white text-lg lg:text-2xl font-bold">{getInitials(customer.name)}</span>
                     </div>
                   )}
                 </div>
 
-                <div className="w-full">
-                  <h2 className="text-[26px] font-bold text-[#2C2C2C] mb-1">{customer.name}</h2>
-                  <div className="text-[13px] font-medium text-[#6F6F6F] flex flex-wrap items-center gap-2 mb-2">
-                    <span className="font-bold">ID: #{customer.id.split("-")[0].toUpperCase()}</span>
-                    <span>•</span>
-                    <span>{customer.region}</span>
-                    {customer.createdAt && !isLedgerImportDay(customer.createdAt) && (
-                      <>
-                        <span>•</span>
-                        <span>Registered {formatDate(customer.createdAt)}</span>
-                      </>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-[20px] lg:text-[26px] leading-tight font-bold text-foreground break-words">{customer.name}</h2>
+                  {/* Each separator travels with the item after it, so a wrap
+                      starts the new line with "•" instead of stranding one. */}
+                  <p className="mt-1 text-[13px] font-medium text-muted-foreground-subtle flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="font-bold whitespace-nowrap">ID: #{customer.id.split("-")[0].toUpperCase()}</span>
+                    {customer.region && (
+                      <span className="whitespace-nowrap"><span aria-hidden>• </span>{customer.region}</span>
                     )}
-                  </div>
-
-                  {/* Customer View Link */}
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <input
-                      value={`${process.env.NEXT_PUBLIC_BASE_URL}/view/${customer.viewToken}`}
-                      readOnly
-                      className="border px-2 py-1 rounded text-xs w-full bg-gray-50"
-                    />
-                    <button
-                      onClick={() =>
-                        navigator.clipboard.writeText(
-                          `${process.env.NEXT_PUBLIC_BASE_URL}/view/${customer.viewToken}`
-                        )
-                      }
-                      className="bg-blue-500 text-white px-3 py-1 rounded text-xs hover:bg-blue-600"
-                    >
-                      Copy
-                    </button>
-                    <button
-                      onClick={() => setShowQR(!showQR)}
-                      className="bg-gray-800 text-white px-3 py-1 rounded text-xs hover:bg-gray-900"
-                    >
-                      {showQR ? "Hide QR" : "View QR"}
-                    </button>
-                  </div>
-
-                  {/* QR Code (Toggle) */}
-                  {showQR && (
-                    <div className="mt-3 flex flex-col items-start gap-2">
-                      <div className="p-2 bg-white border rounded-lg">
-                        <QRCodeCanvas
-                          value={`${process.env.NEXT_PUBLIC_BASE_URL}/view/${customer.viewToken}`}
-                          size={120}
-                        />
-                        <p className="text-xs text-gray-400">Scan to open customer page</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Portal toggle */}
-                  <div className="mt-3 flex items-center gap-3">
-                    <Switch
-                      checked={!Boolean(customer.isPortalBlocked)}
-                      onCheckedChange={async () => {
-                        try {
-                          const res = await fetch(`/api/customers/${customer.id}/toggle-portal`, { method: "PATCH" });
-                          const data = await res.json();
-                          if (!res.ok) throw new Error(data.error || "Failed");
-                          setCustomer((prev) =>
-                            prev ? { ...prev, isPortalBlocked: data.isPortalBlocked } : prev
-                          );
-                          showToast(data.isPortalBlocked ? "Portal access blocked" : "Portal access enabled");
-                        } catch (err) {
-                          console.error(err);
-                          showToast("Failed to update portal access");
-                        }
-                      }}
-                    />
-                    <span className="text-sm text-gray-600">
-                      {!customer.isPortalBlocked ? "Portal Enabled" : "Portal Blocked"}
-                    </span>
-                  </div>
+                    {customer.createdAt && !isLedgerImportDay(customer.createdAt) && (
+                      <span className="whitespace-nowrap"><span aria-hidden>• </span>Registered {formatDate(customer.createdAt)}</span>
+                    )}
+                  </p>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2 lg:gap-3 shrink-0">
                 <button
+                  type="button"
                   onClick={() => {
                     setEditForm({
                       name: customer.name || "",
@@ -636,315 +619,348 @@ export default function CustomerDetailPage() {
                     });
                     setShowEditModal(true);
                   }}
-                  className="flex items-center gap-2 px-5 py-2.5 cursor-pointer rounded-[20px] text-[13px] font-bold transition-colors bg-[#E6E4DC] text-[#6F6F6F] hover:bg-[#D8D6C8] hover:text-[#2C2C2C]"
+                  className="inline-flex min-h-11 flex-1 md:flex-none items-center justify-center gap-2 px-5 rounded-full text-[13px] font-bold bg-secondary text-secondary-foreground hover:opacity-90 transition-opacity"
                 >
-                  <Edit3 size={15} /> Edit Profile
+                  <Edit3 size={15} /> Edit profile
                 </button>
-                <Link href={`/customers/${customerId}/pledges/add`}>
-                  <button className="flex items-center gap-2 px-6 py-2.5 cursor-pointer rounded-[20px] text-[13px] font-bold transition-all text-white bg-[#555B3F] hover:bg-[#4B5036]">
-                    <Plus size={15} /> Add Pledge
-                  </button>
+                {/* Mobile gets Add Pledge from the sticky bar instead. */}
+                <Link
+                  href={`/customers/${customerId}/pledges/add`}
+                  className="hidden lg:inline-flex min-h-11 items-center gap-2 px-6 rounded-full text-[13px] font-bold bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                >
+                  <Plus size={15} /> Add Pledge
                 </Link>
               </div>
-            </div>
 
-            {/* Grid Layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
+              {/* Customer portal: on/off, copy link, QR */}
+              <div className="md:basis-full md:order-last rounded-2xl border border-border bg-card px-3 py-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <label className="flex min-h-11 items-center gap-3 cursor-pointer">
+                  <Switch
+                    checked={!customer.isPortalBlocked}
+                    onCheckedChange={toggleCustomerPortal}
+                    aria-label="Customer portal access"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-bold text-foreground">Customer portal</span>
+                    <span className="block text-[12px] text-muted-foreground-subtle">
+                      {customer.isPortalBlocked ? "Blocked — the link will not open" : "On — customer can view their pledges"}
+                    </span>
+                  </span>
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={copyPortalLink}
+                    className="inline-flex min-h-11 flex-1 sm:flex-none items-center justify-center gap-2 px-4 rounded-full border border-border text-[13px] font-bold text-foreground hover:bg-accent transition-colors"
+                  >
+                    <Copy size={15} /> Copy link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowQR(true)}
+                    className="inline-flex min-h-11 flex-1 sm:flex-none items-center justify-center gap-2 px-4 rounded-full border border-border text-[13px] font-bold text-foreground hover:bg-accent transition-colors"
+                  >
+                    <QrCode size={15} /> Show QR
+                  </button>
+                </div>
+              </div>
+            </section>
 
-              {/* ── Left Column ────────────────────────────────── */}
-              <div className="flex flex-col gap-6">
+            {/* Body. DOM order is the desktop reading order (left column, then
+                right, then pledges). Below lg: the two column wrappers become
+                display:contents so their cards join one flex column, and
+                order-* puts pledges second — on a phone the owner opens a
+                customer to act on pledges, which used to sit ~4 screens down. */}
+            <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[1fr_380px] lg:gap-6">
 
-                {/* Financial Summary */}
-                <div
-                  className="bg-white rounded-[24px] p-6 lg:p-8 cursor-pointer transition-all duration-200 group"
-                  style={{ border: "1px solid #ECEAE4" }}
-                  onMouseEnter={(e) => {
-                    const el = e.currentTarget as HTMLDivElement;
-                    el.style.border = "1.5px solid #555B3F";
-                    el.style.backgroundColor = "#FAFAF5";
-                    el.style.boxShadow = "0 6px 24px rgba(85,91,63,0.14)";
-                  }}
-                  onMouseLeave={(e) => {
-                    const el = e.currentTarget as HTMLDivElement;
-                    el.style.border = "1px solid #ECEAE4";
-                    el.style.backgroundColor = "#ffffff";
-                    el.style.boxShadow = "none";
-                  }}
-                  onClick={() => router.push(`/customers/${customerId}/financial-summary`)}
+              {/* ── Left column ── */}
+              <div className="contents lg:flex lg:flex-col lg:gap-6">
+
+                {/* Financial summary */}
+                <Link
+                  href={`/customers/${customerId}/financial-summary`}
+                  className="order-1 lg:order-none group block bg-card rounded-[24px] p-5 lg:p-8 border border-border transition-all duration-200 hover:border-primary hover:bg-card-alt hover:shadow-[0_6px_24px_rgb(85_91_63/0.14)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ring)]"
                 >
-                  <div className="flex items-center justify-between mb-8">
-                    <div className="flex items-center gap-3">
-                      <h3 className="text-[17px] font-bold text-[#2C2C2C]">Financial Summary</h3>
-                      <span className="text-[12px] font-semibold text-[#555B3F] opacity-0 group-hover:opacity-100 transition-opacity duration-150">View Details →</span>
+                  <div className="flex items-center justify-between gap-3 mb-5 lg:mb-8">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <h3 className="text-[17px] font-bold text-foreground">Financial Summary</h3>
+                      {/* Desktop: revealed on hover. Mobile has its own cue at
+                          the card foot — there is no hover on touch, and inline
+                          here it wrapped the title onto two lines. */}
+                      <span className="hidden lg:inline text-[12px] font-semibold text-primary whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-150">
+                        View details →
+                      </span>
                     </div>
-                    <span className="bg-[#EAE9DF] text-[#555B3F] text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-widest">
+                    <span className="shrink-0 bg-accent text-accent-foreground text-[10px] font-bold px-3 py-1.5 rounded-full uppercase tracking-widest">
                       {customer.pledges.length} Pledge{customer.pledges.length !== 1 ? "s" : ""}
                     </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-4 mb-8">
-                    <div>
-                      <p className="text-[10px] font-bold tracking-wider text-[#9E9E9E] mb-2 uppercase">Total Loan</p>
-                      <p className="text-[24px] font-bold text-[#2C2C2C]">{fmt(totalLoan)}</p>
+                  {/* Rows on mobile: three 24px amounts do not fit side by side
+                      at 380px. Exact values, never abbreviated. */}
+                  <dl className="flex flex-col gap-3 mb-5 lg:grid lg:grid-cols-3 lg:gap-4 lg:mb-8">
+                    <div className="flex items-baseline justify-between gap-3 lg:block">
+                      <dt className="text-[10px] font-bold tracking-wider text-muted-foreground-subtle uppercase lg:mb-2">Total Loan</dt>
+                      <dd className="text-[17px] lg:text-[24px] font-bold tabular-nums text-foreground">{fmt(totalLoan)}</dd>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-bold tracking-wider text-[#9E9E9E] mb-2 uppercase">Repaid</p>
-                      <p className="text-[24px] font-bold text-[#555B3F]">{fmt(repaid)}</p>
+                    <div className="flex items-baseline justify-between gap-3 lg:block">
+                      <dt className="text-[10px] font-bold tracking-wider text-muted-foreground-subtle uppercase lg:mb-2">Repaid</dt>
+                      <dd className="text-[17px] lg:text-[24px] font-bold tabular-nums text-primary">{fmt(repaid)}</dd>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-bold tracking-wider text-[#9E9E9E] mb-2 uppercase">Outstanding</p>
-                      <p className="text-[24px] font-bold text-[#C94A4A]">{fmt(outstanding)}</p>
+                    <div className="flex items-baseline justify-between gap-3 lg:block">
+                      <dt className="text-[10px] font-bold tracking-wider text-muted-foreground-subtle uppercase lg:mb-2">Outstanding</dt>
+                      <dd className="text-[17px] lg:text-[24px] font-bold tabular-nums text-risk-critical-foreground">{fmt(outstanding)}</dd>
                     </div>
-                  </div>
+                  </dl>
                   <div>
-                    <div className="flex justify-between text-[10px] font-bold tracking-wider mb-2 uppercase">
-                      <span className="text-[#6F6F6F]">Repayment Progress</span>
-                      <span className="text-[#2C2C2C]">{progressValue.toFixed(1)}% Completed</span>
+                    <div className="flex justify-between gap-3 text-[10px] font-bold tracking-wider mb-2 uppercase">
+                      <span className="text-muted-foreground-subtle">Repayment Progress</span>
+                      <span className="text-foreground">{progressValue.toFixed(1)}% Completed</span>
                     </div>
-                    <div className="h-[12px] bg-[#E5E3DA] rounded-full overflow-hidden w-full relative">
+                    <div className="h-[12px] bg-muted rounded-full overflow-hidden w-full relative">
                       <div
-                        className="absolute top-0 left-0 h-full bg-[#555B3F] rounded-full transition-all duration-1000 ease-out"
+                        className="absolute top-0 left-0 h-full bg-primary rounded-full transition-all duration-1000 ease-out"
                         style={{ width: `${progressValue}%` }}
                       />
                     </div>
                   </div>
-                </div>
+                  <p className="lg:hidden mt-4 text-right text-[13px] font-semibold text-primary">View details →</p>
+                </Link>
 
                 {/* Identity & Verification */}
-                <div className="bg-white rounded-[24px] p-6 lg:p-8" style={{ border: "1px solid #ECEAE4" }}>
-                  <h3 className="text-[17px] font-bold text-[#2C2C2C] mb-6">Identity & Verification</h3>
-                  <div className="flex flex-col gap-4 mb-6 max-w-[340px]">
-                    <div className="bg-[#FAFAF7] border border-[#ECEAE4] p-4 rounded-[12px] flex justify-between items-center h-[72px]">
-                      <div>
-                        <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1.5 uppercase">Aadhaar Number</p>
-                        <p className="text-[14px] font-bold text-[#2C2C2C] tracking-[0.15em]">
+                <section className="order-4 lg:order-none bg-card rounded-[24px] p-5 lg:p-8 border border-border">
+                  <h3 className="text-[17px] font-bold text-foreground mb-5 lg:mb-6">Identity & Verification</h3>
+                  <div className="flex flex-col gap-3 lg:gap-4 mb-5 lg:mb-6 lg:max-w-[340px]">
+                    <div className="bg-card-alt border border-border p-4 rounded-[12px] flex justify-between items-center gap-3 min-h-[72px]">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold tracking-wider text-muted-foreground-subtle mb-1.5 uppercase">Aadhaar Number</p>
+                        <p className="text-[14px] font-bold text-foreground tracking-[0.15em] break-all">
                           {customer.aadharNo ? customer.aadharNo : "-"}
                         </p>
                       </div>
                       {customer.aadharNo && (
-                        <div className="text-[#555B3F] bg-[#DADBCF] p-1.5 rounded-full">
-                          <CheckCircle2 size={16} fill="currentColor" stroke="#DADBCF" />
+                        <div className="shrink-0 text-primary bg-accent p-1.5 rounded-full">
+                          <CheckCircle2 size={16} aria-label="Recorded" />
                         </div>
                       )}
                     </div>
-                    <div className="bg-[#FAFAF7] border border-[#ECEAE4] p-4 rounded-[12px] flex justify-between items-center h-[72px]">
-                      <div>
-                        <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1.5 uppercase">ID Proof Document</p>
-                        <p className="text-[14px] font-bold text-[#2C2C2C]">
+                    <div className="bg-card-alt border border-border p-4 rounded-[12px] flex justify-between items-center gap-3 min-h-[72px]">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-bold tracking-wider text-muted-foreground-subtle mb-1.5 uppercase">ID Proof Document</p>
+                        <p className="text-[14px] font-bold text-foreground">
                           {customer.idProofImg ? "Document Uploaded" : "Not Uploaded"}
                         </p>
                       </div>
                       {customer.idProofImg && (
-                        <div className="text-[#555B3F] bg-[#DADBCF] p-1.5 rounded-full">
-                          <CheckCircle2 size={16} fill="currentColor" stroke="#DADBCF" />
+                        <div className="shrink-0 text-primary bg-accent p-1.5 rounded-full">
+                          <CheckCircle2 size={16} aria-label="Uploaded" />
                         </div>
                       )}
                     </div>
                   </div>
                   {customer.idProofImg && (
                     <div>
-                      <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-3 uppercase">ID Proof Preview</p>
-                      <div className="w-[300px] h-[160px] rounded-[16px] overflow-hidden bg-[#2C2C2C]">
+                      <p className="text-[10px] font-bold tracking-wider text-muted-foreground-subtle mb-3 uppercase">ID Proof Preview</p>
+                      <div className="w-full max-w-[300px] aspect-[15/8] rounded-[16px] overflow-hidden bg-muted">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={customer.idProofImg} alt="ID Proof" className="w-full h-full object-cover" />
                       </div>
                     </div>
                   )}
-                </div>
+                </section>
               </div>
 
-              {/* ── Right Column ───────────────────────────────── */}
-              <div className="flex flex-col gap-6">
+              {/* ── Right column ── */}
+              <div className="contents lg:flex lg:flex-col lg:gap-6">
 
                 {/* Contact Details */}
-                <div className="rounded-[24px] p-6 lg:p-8" style={{ backgroundColor: "#E2E0C8" }}>
-                  <h3 className="text-[17px] font-bold text-[#2C2C2C] mb-8">Contact Details</h3>
-                  <div className="flex gap-4 items-start mb-6">
-                    <div className="w-10 h-10 rounded-full bg-white border border-[#ECEAE4] flex items-center justify-center shrink-0">
-                      <Phone size={16} className="text-[#2C2C2C]" />
+                <section className="order-3 lg:order-none rounded-[24px] p-5 lg:p-8 bg-muted">
+                  <h3 className="text-[17px] font-bold text-foreground mb-4 lg:mb-8">Contact Details</h3>
+                  <div className="flex gap-4 items-center mb-4 lg:mb-6">
+                    <div className="size-10 rounded-full bg-card border border-border flex items-center justify-center shrink-0">
+                      <Phone size={16} className="text-foreground" />
                     </div>
-                    <div>
-                      <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1 uppercase">Phone Number</p>
-                      <p className="text-[14px] font-medium text-[#2C2C2C]">{customer.mobile || "—"}</p>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 items-start">
-                    <div className="w-10 h-10 rounded-full bg-white border border-[#ECEAE4] flex items-center justify-center shrink-0 relative top-1">
-                      <MapPin size={16} className="text-[#2C2C2C]" />
-                    </div>
-                    <div>
-                      <p className="text-[9px] font-bold tracking-wider text-[#9E9E9E] mb-1 uppercase">Residential Address</p>
-                      <p className="text-[14px] font-medium text-[#2C2C2C] leading-snug">{customer.address || "—"}</p>
-                      {customer.region && (
-                        <p className="text-[12px] font-medium text-[#9E9E9E] mt-1">{customer.region}</p>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold tracking-wider text-muted-foreground-subtle mb-1 uppercase">Phone Number</p>
+                      {customer.mobile ? (
+                        <a
+                          href={`tel:${customer.mobile.replace(/[^\d+]/g, "")}`}
+                          className="inline-flex min-h-11 items-center text-[15px] font-semibold text-primary underline-offset-2 hover:underline -my-2"
+                        >
+                          {customer.mobile}
+                        </a>
+                      ) : (
+                        <p className="text-[14px] font-medium text-foreground">—</p>
                       )}
                     </div>
                   </div>
-                </div>
+                  <div className="flex gap-4 items-start">
+                    <div className="size-10 rounded-full bg-card border border-border flex items-center justify-center shrink-0 relative top-1">
+                      <MapPin size={16} className="text-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold tracking-wider text-muted-foreground-subtle mb-1 uppercase">Residential Address</p>
+                      <p className="text-[14px] font-medium text-foreground leading-snug break-words">{customer.address || "—"}</p>
+                      {customer.region && (
+                        <p className="text-[12px] font-medium text-muted-foreground-subtle mt-1">{customer.region}</p>
+                      )}
+                    </div>
+                  </div>
+                </section>
 
                 {/* Internal Remarks */}
-                <div
-                  className="rounded-[24px] p-6 lg:p-8 flex-1 flex flex-col"
-                  style={{ backgroundColor: "#E2E0C8", minHeight: "280px" }}
-                >
-                  <div className="flex items-center justify-between mb-5">
-                    <h3 className="text-[17px] font-bold text-[#2C2C2C]">Internal Remarks</h3>
+                <section className="order-5 lg:order-none rounded-[24px] p-5 lg:p-8 flex-1 flex flex-col bg-muted lg:min-h-[280px]">
+                  <div className="flex items-center justify-between gap-3 mb-4 lg:mb-5">
+                    <h3 className="text-[17px] font-bold text-foreground">Internal Remarks</h3>
                     {isEditingNotes ? (
                       <div className="flex items-center gap-2">
                         <button
+                          type="button"
                           onClick={() => setIsEditingNotes(false)}
-                          className="text-[12px] font-semibold text-[#9E9E9E] hover:text-[#2C2C2C] transition-colors"
+                          className="min-h-11 px-3 rounded-full text-[13px] font-semibold text-muted-foreground hover:text-foreground transition-colors"
                         >
                           Cancel
                         </button>
                         <button
+                          type="button"
                           onClick={handleSaveNotes}
                           disabled={savingNotes}
-                          className="text-[12px] font-semibold bg-[#555B3F] text-white px-3 py-1.5 rounded-[12px] hover:bg-[#4B5036] transition-colors disabled:opacity-50"
+                          className="min-h-11 px-4 rounded-full text-[13px] font-bold bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
                         >
                           {savingNotes ? "Saving..." : "Save Notes"}
                         </button>
                       </div>
                     ) : (
                       <button
+                        type="button"
                         onClick={() => {
                           setEditingRemark(customer.remark || "");
                           setIsEditingNotes(true);
                         }}
-                        className="text-[13px] font-semibold text-[#2C2C2C] hover:text-black transition-colors"
+                        className="min-h-11 -mr-3 px-3 rounded-full text-[13px] font-semibold text-foreground hover:bg-accent transition-colors"
                       >
                         Edit Notes
                       </button>
                     )}
                   </div>
-                  <div className="bg-[#F4F3EE] rounded-[16px] p-5 flex-1 flex flex-col justify-between border border-[#E8E6DF]">
-                    <div className="text-[14px] leading-[1.7] text-[#6F6F6F] flex-1 flex flex-col">
+                  <div className="bg-card rounded-[16px] p-4 lg:p-5 flex-1 flex flex-col border border-border">
+                    <div className="text-[14px] leading-[1.7] text-muted-foreground flex-1 flex flex-col">
                       {isEditingNotes ? (
                         <textarea
                           value={editingRemark}
                           onChange={(e) => setEditingRemark(e.target.value)}
                           placeholder="Add internal remarks here..."
-                          className="w-full flex-1 bg-transparent border-none outline-none resize-none text-[#2C2C2C] placeholder-[#9E9E9E]"
+                          aria-label="Internal remarks"
+                          className="w-full flex-1 min-h-[120px] bg-transparent border-none outline-none resize-none text-foreground placeholder:text-muted-foreground-subtle"
                         />
                       ) : (
                         customer.remark
-                          ? <p>{customer.remark}</p>
-                          : <p className="italic text-[#9E9E9E]">No remarks added yet.</p>
+                          ? <p className="whitespace-pre-wrap break-words">{customer.remark}</p>
+                          : <p className="italic text-muted-foreground-subtle">No remarks added yet.</p>
                       )}
                     </div>
                   </div>
-                </div>
+                </section>
               </div>
-            </div>
 
-            {/* Transaction History Table */}
-            <div className="bg-white rounded-[24px] mt-2 mb-6" style={{ border: "1px solid #ECEAE4" }}>
-              <div className="p-6" style={{ borderBottom: "1px solid #ECEAE4" }}>
-                {/* Row 1 — title + selection hint */}
-                <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <h3 className="text-[17px] font-bold text-[#2C2C2C]">Pledges</h3>
+              {/* Pledges */}
+              <section className="order-2 lg:order-none lg:col-span-2 bg-card rounded-[24px] border border-border">
+                <div className="p-4 lg:p-6 border-b border-border">
+                  <div className="flex items-center gap-x-3 gap-y-1 flex-wrap mb-3 lg:mb-4">
+                    <h3 className="text-[17px] font-bold text-foreground">Pledges</h3>
                     {activePledges.length > 0 && (
-                      <span
-                        className="flex items-center gap-1.5 text-[12px]"
-                        style={{ color: "var(--muted-foreground-subtle)" }}
-                      >
+                      <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground-subtle">
                         <CheckSquare size={14} />
                         Select pledges to release multiple at once
                       </span>
                     )}
                   </div>
-                </div>
 
-                {/* Row 2 — controls */}
-                {customer.pledges.length > 0 && (
-                  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-                    {/* Left: search + metal pills */}
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                      <div className="relative w-full sm:w-[240px]">
-                        <Search
-                          size={15}
-                          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9E9E9E] pointer-events-none"
-                        />
-                        <input
-                          type="text"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                          placeholder="Search pledges..."
-                          className="w-full h-9 pl-8 pr-8 rounded-[10px] text-[13px] text-[#2C2C2C] bg-white border border-[#ECEAE4] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
-                          style={{ backgroundColor: "var(--card)" }}
-                        />
-                        {searchQuery && (
-                          <button
-                            onClick={() => setSearchQuery("")}
-                            aria-label="Clear search"
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-[#9E9E9E] hover:text-[#2C2C2C] transition-colors"
-                          >
-                            <X size={15} />
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1.5 overflow-x-auto">
-                        {(["ALL", "GOLD", "SILVER"] as const).map((m) => {
-                          const active = metalFilter === m;
-                          const label = m === "ALL" ? "All" : m.charAt(0) + m.slice(1).toLowerCase();
-                          return (
+                  {customer.pledges.length > 0 && (
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+                      {/* Search + metal pills */}
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="relative w-full sm:w-[240px]">
+                          <Search
+                            size={15}
+                            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground-subtle pointer-events-none"
+                          />
+                          <input
+                            type="search"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search pledges..."
+                            aria-label="Search pledges by item or date"
+                            className="w-full h-11 pl-9 pr-11 rounded-[12px] text-[14px] text-foreground bg-card border border-border placeholder:text-muted-foreground-subtle focus:outline-none focus:ring-2 focus:ring-ring transition-all [&::-webkit-search-cancel-button]:appearance-none"
+                          />
+                          {searchQuery && (
                             <button
-                              key={m}
-                              onClick={() => setMetalFilter(m)}
-                              className="rounded-full px-3 py-1 text-[12px] font-semibold whitespace-nowrap transition-colors"
-                              style={
-                                active
-                                  ? { backgroundColor: "#565C3F", color: "#FFFFFF" }
-                                  : {
-                                    backgroundColor: "transparent",
-                                    color: "var(--muted-foreground-subtle)",
-                                    border: "1px solid var(--border)",
-                                  }
-                              }
+                              type="button"
+                              onClick={() => setSearchQuery("")}
+                              aria-label="Clear search"
+                              className="absolute right-0 top-0 size-11 inline-flex items-center justify-center text-muted-foreground-subtle hover:text-foreground transition-colors"
                             >
-                              {label}
+                              <X size={15} />
                             </button>
-                          );
-                        })}
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 overflow-x-auto" role="group" aria-label="Filter by metal">
+                          {(["ALL", "GOLD", "SILVER"] as const).map((m) => {
+                            const active = metalFilter === m;
+                            const label = m === "ALL" ? "All" : m.charAt(0) + m.slice(1).toLowerCase();
+                            return (
+                              <button
+                                key={m}
+                                type="button"
+                                onClick={() => setMetalFilter(m)}
+                                aria-pressed={active}
+                                className={
+                                  "min-h-11 lg:min-h-9 rounded-full px-4 text-[13px] font-semibold whitespace-nowrap transition-colors border " +
+                                  (active
+                                    ? "bg-primary text-primary-foreground border-primary"
+                                    : "bg-transparent text-muted-foreground-subtle border-border hover:bg-accent")
+                                }
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Sort + show-released */}
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <label className="flex items-center gap-2 shrink-0">
+                          <span className="text-[12px] text-muted-foreground-subtle whitespace-nowrap">Sort by</span>
+                          <select
+                            value={sortBy}
+                            onChange={(e) => setSortBy(e.target.value)}
+                            className="h-11 lg:h-9 px-3 rounded-[12px] text-[13px] text-foreground bg-card border border-border focus:outline-none focus:ring-2 focus:ring-ring transition-all"
+                          >
+                            <option value="date_desc">Date (newest first)</option>
+                            <option value="date_asc">Date (oldest first)</option>
+                            <option value="loan_desc">Loan Amount (high→low)</option>
+                            <option value="loan_asc">Loan Amount (low→high)</option>
+                            {/* LTV options omitted — lastCalculatedLtv is not available on this view. */}
+                          </select>
+                        </label>
+
+                        <label className="flex min-h-11 items-center gap-2 shrink-0 cursor-pointer">
+                          <Switch checked={showReleased} onCheckedChange={setShowReleased} />
+                          <span className="text-[12px] text-muted-foreground whitespace-nowrap">Show released</span>
+                        </label>
                       </div>
                     </div>
+                  )}
 
-                    {/* Right: sort + show-released */}
-                    <div className="flex items-center gap-3 overflow-x-auto">
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[12px] text-[#9E9E9E] whitespace-nowrap">Sort by</span>
-                        <select
-                          value={sortBy}
-                          onChange={(e) => setSortBy(e.target.value)}
-                          className="h-9 px-3 rounded-[10px] text-[13px] text-[#2C2C2C] bg-white border border-[#ECEAE4] focus:outline-none focus:ring-2 focus:ring-[#8C8F7A] transition-all"
-                          style={{ backgroundColor: "var(--card)" }}
-                        >
-                          <option value="date_desc">Date (newest first)</option>
-                          <option value="date_asc">Date (oldest first)</option>
-                          <option value="loan_desc">Loan Amount (high→low)</option>
-                          <option value="loan_asc">Loan Amount (low→high)</option>
-                          {/* LTV options omitted — lastCalculatedLtv is not available on this view. */}
-                        </select>
-                      </div>
-
-                      <label className="flex items-center gap-2 shrink-0 cursor-pointer">
-                        <Switch checked={showReleased} onCheckedChange={setShowReleased} />
-                        <span className="text-[12px] text-[#6F6F6F] whitespace-nowrap">Show released</span>
-                      </label>
-                    </div>
-                  </div>
-                )}
-
-                {/* Result count */}
-                {customer.pledges.length > 0 && (
-                  <p className="text-[12px] mt-3" style={{ color: "var(--muted-foreground-subtle)" }}>
-                    {filtersActive
-                      ? `Showing ${displayedPledges.length} of ${customer.pledges.length} pledges`
-                      : `${customer.pledges.length} pledges total`}
-                  </p>
-                )}
-              </div>
+                  {customer.pledges.length > 0 && (
+                    <p className="text-[12px] mt-3 text-muted-foreground-subtle" aria-live="polite">
+                      {filtersActive
+                        ? `Showing ${displayedPledges.length} of ${customer.pledges.length} pledges`
+                        : `${customer.pledges.length} pledges total`}
+                    </p>
+                  )}
+                </div>
 
               {customer.pledges.length === 0 ? (
                 <div className="px-6 py-12 text-center">
@@ -985,98 +1001,147 @@ export default function CustomerDetailPage() {
                   />
                 </div>
               )}
+              </section>
             </div>
-
           </div>
         )}
       </div>
 
-      {/* Edit Profile Modal */}
-      {showEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setShowEditModal(false)}>
-          <div
-            className="bg-white rounded-[24px] p-8 w-full max-w-[500px] shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+      {/* Bottom action bar — one bar, two modes.
+          Default: Add Pledge (mobile only; desktop has it in the header).
+          Selecting: "N selected" + Clear + Release. On desktop this mode is
+          pinned to the viewport as the old bar was, so a Release button never
+          ends up below a long list. While mounted it retires the FAB
+          (globals.css), which Add Pledge replaces on this screen. */}
+      {customer && (selectedIds.size > 0 ? (
+        <StickyActions
+          className="lg:fixed lg:inset-x-0 lg:z-30 lg:mt-0 lg:bg-card lg:px-10 lg:py-4 lg:shadow-[0_-4px_24px_rgb(0_0_0/0.05)]"
+          leading={
+            <span className="text-[13px] font-bold text-foreground whitespace-nowrap">
+              {selectedIds.size} selected
+            </span>
+          }
+        >
+          <button
+            type="button"
+            onClick={() => setSelectedIds(new Set())}
+            className="min-h-11 px-4 rounded-full border border-border text-[13px] font-bold text-foreground hover:bg-accent transition-colors"
           >
-            <h3 className="text-[20px] font-bold text-[#2C2C2C] mb-6">Edit Profile</h3>
-            <div className="flex flex-col gap-4">
-              {([
-                { label: "Full Name", key: "name", placeholder: "Customer name" },
-                { label: "Mobile Number", key: "mobile", placeholder: "+91 XXXXX XXXXX" },
-                { label: "Address", key: "address", placeholder: "Street, City" },
-                { label: "Region", key: "region", placeholder: "State / District" },
-                { label: "Aadhaar Number", key: "aadharNo", placeholder: "XXXX XXXX XXXX" },
-              ] as { label: string; key: keyof typeof editForm; placeholder: string }[]).map(({ label, key, placeholder }) => (
-                <div key={key}>
-                  <label className="block text-[11px] font-bold tracking-wider text-[#9E9E9E] uppercase mb-1.5">{label}</label>
-                  <input
-                    value={editForm[key]}
-                    onChange={(e) => setEditForm((prev) => ({ ...prev, [key]: e.target.value }))}
-                    placeholder={placeholder}
-                    className="w-full px-4 py-3 rounded-[12px] border border-[#E0DED6] bg-[#FAFAF7] text-[14px] text-[#2C2C2C] outline-none focus:border-[#555B3F] transition-colors"
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-end gap-3 mt-8">
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="px-5 py-2.5 rounded-[20px] text-[13px] font-bold bg-[#F0EEE8] text-[#6F6F6F] hover:bg-[#E6E4DC] transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveProfile}
-                disabled={savingProfile}
-                className="px-5 py-2.5 rounded-[20px] text-[13px] font-bold bg-[#555B3F] text-white hover:bg-[#4B5036] transition-colors disabled:opacity-50"
-              >
-                {savingProfile ? "Saving..." : "Save Changes"}
-              </button>
-            </div>
-          </div>
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={releaseSelected}
+            className="inline-flex min-h-11 items-center gap-2 px-5 rounded-full text-[13px] font-bold bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+          >
+            <Unlock size={15} /> Release ({selectedIds.size})
+          </button>
+        </StickyActions>
+      ) : (
+        <StickyActions className="lg:hidden">
+          <Link
+            href={`/customers/${customerId}/pledges/add`}
+            className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full text-[14px] font-bold bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+          >
+            <Plus size={16} /> Add Pledge
+          </Link>
+        </StickyActions>
+      ))}
+
+      {/* Toast. Top of the screen on mobile, where neither the sticky bar nor
+          the bottom nav can cover it; bottom-right on desktop as before. */}
+      {toast && (
+        <div
+          role={toast.kind === "error" ? "alert" : "status"}
+          className="fixed z-50 inset-x-4 top-[calc(var(--topbar-h)+0.5rem)] lg:inset-x-auto lg:top-auto lg:right-8 lg:bottom-8 lg:max-w-[420px] rounded-[12px] bg-foreground text-background px-4 py-3 shadow-xl text-[13px] font-bold flex items-start gap-2"
+        >
+          {toast.kind === "error"
+            ? <AlertCircle size={16} className="mt-px shrink-0 text-risk-critical" />
+            : <CheckCircle2 size={16} className="mt-px shrink-0 text-success" />}
+          <span className="min-w-0">{toast.msg}</span>
         </div>
       )}
 
-      {/* Bulk selection action bar */}
-      {selectedIds.size > 0 && (
-        <div
-          className="fixed bottom-0 left-0 right-0 z-40 px-6 lg:px-10 py-4 flex items-center justify-between gap-4"
-          style={{
-            backgroundColor: "var(--card)",
-            borderTop: "1px solid var(--border)",
-            boxShadow: "0 -4px 16px rgba(0,0,0,0.06)",
-          }}
-        >
-          <span className="text-[14px] font-medium text-[#2C2C2C]">
-            {selectedIds.size} pledge{selectedIds.size !== 1 ? "s" : ""} selected
-          </span>
-          <div className="flex items-center gap-4">
+      {/* Customer portal QR. Large enough to scan from across the counter;
+          always on white, since a QR on a dark surface may not scan. */}
+      <Sheet
+        open={showQR && !!customer}
+        onOpenChange={setShowQR}
+        title="Customer portal"
+        description={customer ? `Scan to open ${customer.name}'s pledge statement.` : undefined}
+        size="sm"
+      >
+        {customer && (
+          <div className="flex flex-col items-center gap-3 pb-2">
+            {customer.isPortalBlocked && (
+              <p role="alert" className="w-full rounded-[12px] bg-risk-critical-surface px-3 py-2 text-[12px] font-semibold text-risk-critical-foreground">
+                Portal is blocked — this code will not open until access is turned back on.
+              </p>
+            )}
+            <div className="rounded-2xl bg-white p-4">
+              <QRCodeCanvas value={portalUrl} size={240} />
+            </div>
+            <p className="w-full break-all text-center text-[12px] text-muted-foreground-subtle">{portalUrl}</p>
             <button
-              onClick={() => setSelectedIds(new Set())}
-              className="text-[13px] font-semibold text-[#6F6F6F] hover:text-[#2C2C2C] transition-colors"
+              type="button"
+              onClick={copyPortalLink}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-border text-[13px] font-bold text-foreground hover:bg-accent transition-colors"
             >
-              Clear
-            </button>
-            <button
-              onClick={releaseSelected}
-              className="flex items-center gap-2 text-[13px] font-bold text-white bg-[#565C3F] hover:bg-[#4B5036] rounded-[12px] px-4 py-2 transition-colors"
-            >
-              Release Selected ({selectedIds.size}) →
+              <Copy size={15} /> Copy link
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </Sheet>
 
-      {/* Toast */}
-      {toastMsg && (
-        <div
-          className="fixed bottom-8 right-8 z-50 rounded-[12px] text-white px-5 py-3 shadow-xl text-[13px] font-bold flex items-center gap-2"
-          style={{ backgroundColor: "#2C2C2C", border: "1px solid #4B5036" }}
-        >
-          <CheckCircle2 size={16} className="text-[#A9B37E]" />
-          {toastMsg}
+      {/* Edit profile */}
+      <Sheet
+        open={showEditModal}
+        onOpenChange={setShowEditModal}
+        title="Edit profile"
+        size="md"
+        dismissible={!savingProfile}
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setShowEditModal(false)}
+              disabled={savingProfile}
+              className="min-h-11 flex-1 lg:flex-none px-5 rounded-full text-[13px] font-bold bg-secondary text-secondary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveProfile}
+              disabled={savingProfile}
+              className="min-h-11 flex-1 lg:flex-none px-5 rounded-full text-[13px] font-bold bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              {savingProfile ? "Saving..." : "Save changes"}
+            </button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4 pt-1">
+          {PROFILE_FIELDS.map(({ label, key, placeholder, inputMode, autoComplete, type }) => (
+            <div key={key}>
+              <label htmlFor={`edit-${key}`} className="block text-[11px] font-bold tracking-wider text-muted-foreground-subtle uppercase mb-1.5">
+                {label}
+              </label>
+              <input
+                id={`edit-${key}`}
+                type={type ?? "text"}
+                inputMode={inputMode}
+                autoComplete={autoComplete}
+                value={editForm[key]}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, [key]: e.target.value }))}
+                placeholder={placeholder}
+                className="w-full h-11 px-4 rounded-[12px] border border-border bg-card-alt text-[16px] lg:text-[14px] text-foreground placeholder:text-muted-foreground-subtle outline-none focus:border-primary transition-colors"
+              />
+            </div>
+          ))}
         </div>
-      )}
+      </Sheet>
+
       {/* Row actions (mobile "More") */}
       <Sheet
         open={rowMenu !== null}
