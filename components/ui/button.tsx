@@ -10,11 +10,15 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        /* Fill is risk-critical-foreground, not --destructive: white on
-           --destructive measured 2.99:1 light / 3.52:1 dark and failed AA.
-           Card-coloured text on risk-critical-foreground is 8.31:1 / 7.92:1. */
+        /* Not --destructive: white on it measured 2.99:1 light / 3.52:1 dark
+           and failed AA.
+           Light: risk-critical-foreground fill, card text — 8.31:1.
+           Dark:  risk-critical fill, background text — 5.35:1. Dark's
+           risk-critical-foreground (#F0A8A8) also passes (7.92:1) but is a
+           pale pink that, beside an outline Cancel, read as a neutral
+           button rather than a destructive one. */
         destructive:
-          "bg-risk-critical-foreground text-card hover:bg-risk-critical-foreground/90 focus-visible:ring-destructive/40",
+          "bg-risk-critical-foreground text-card hover:bg-risk-critical-foreground/90 focus-visible:ring-destructive/40 dark:bg-risk-critical dark:text-background dark:hover:bg-risk-critical/90",
         outline:
           "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
         secondary:
