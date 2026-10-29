@@ -327,7 +327,7 @@ export default function CustomerDetailPage() {
     return (
       <SubscriptionGuard featureName="Customer Details">
         <div className="max-w-[1100px] mx-auto pt-6 pb-24 px-6">
-          <p className="text-[14px] text-[#9E9E9E]">Customer ID not provided.</p>
+          <p className="text-[14px] text-muted-foreground-subtle">Customer ID not provided.</p>
         </div>
       </SubscriptionGuard>
     );
@@ -506,6 +506,8 @@ export default function CustomerDetailPage() {
   /* ================================================================ */
   return (
     <SubscriptionGuard featureName="Customer Details">
+      {/* Remaining hex in this file is the fallback avatar's gradient
+          illustration only — artwork, not UI chrome, so not tokenised. */}
       {/* No side padding below lg: the shell's <main> already supplies the
           mobile gutter. No pb-* either: StickyActions reserves its own space. */}
       <div className="max-w-[1100px] mx-auto lg:px-8 pt-4 lg:pt-8 pb-6 lg:pb-24 dash-animate text-foreground">
@@ -521,50 +523,44 @@ export default function CustomerDetailPage() {
 
         {/* ── Loading skeletons ─────────────────────────────────── */}
         {loading ? (
-          <div className="space-y-6">
-            <div className="rounded-[24px] p-6 flex flex-col md:flex-row md:items-center justify-between gap-6" style={{ backgroundColor: "#FAFAF7" }}>
-              <div className="flex items-center gap-5">
-                <div className="skeleton" style={{ width: 100, height: 100, borderRadius: 20, flexShrink: 0 }} />
-                <div>
-                  <div className="skeleton" style={{ width: 200, height: 22, marginBottom: 10 }} />
-                  <div className="skeleton" style={{ width: 260, height: 14 }} />
+          /* Mirrors the loaded layout at both breakpoints, so nothing jumps
+             and nothing overflows at 380px while it loads. */
+          <div className="flex flex-col gap-4 lg:gap-6" aria-busy="true" aria-label="Loading customer">
+            <div className="rounded-[24px] p-4 lg:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 lg:gap-6 bg-card-alt">
+              <div className="flex items-center gap-4 lg:gap-5 min-w-0">
+                <div className="skeleton size-14 lg:size-[100px] shrink-0 rounded-2xl lg:rounded-[20px]" />
+                <div className="min-w-0 flex-1">
+                  <div className="skeleton h-[22px] w-[180px] max-w-full mb-2.5" />
+                  <div className="skeleton h-[14px] w-[220px] max-w-full" />
                 </div>
               </div>
-              <div className="flex gap-3">
-                <div className="skeleton" style={{ width: 130, height: 40, borderRadius: 20 }} />
-                <div className="skeleton" style={{ width: 130, height: 40, borderRadius: 20 }} />
-                <div className="skeleton" style={{ width: 140, height: 40, borderRadius: 20 }} />
-              </div>
+              <div className="skeleton h-11 w-full md:w-[140px] rounded-full" />
             </div>
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
-              <div className="flex flex-col gap-6">
-                <div className="bg-white rounded-[24px] p-8" style={{ border: "1px solid #ECEAE4" }}>
-                  <div className="skeleton" style={{ width: 160, height: 18, marginBottom: 32 }} />
-                  <div className="grid grid-cols-3 gap-4 mb-8">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i}>
-                        <div className="skeleton" style={{ width: 100, height: 10, marginBottom: 10 }} />
-                        <div className="skeleton" style={{ width: 140, height: 28 }} />
-                      </div>
-                    ))}
+            <div className="bg-card rounded-[24px] p-5 lg:p-8 border border-border lg:max-w-[calc(100%-404px)]">
+              <div className="skeleton h-[18px] w-[160px] mb-6 lg:mb-8" />
+              <div className="flex flex-col gap-3 mb-6 lg:grid lg:grid-cols-3 lg:gap-4 lg:mb-8">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="flex items-center justify-between gap-3 lg:block">
+                    <div className="skeleton h-[10px] w-[90px] lg:mb-2.5" />
+                    <div className="skeleton h-[20px] lg:h-[28px] w-[120px] lg:w-[140px] max-w-full" />
                   </div>
-                  <div className="skeleton" style={{ width: "100%", height: 12, borderRadius: 20 }} />
-                </div>
+                ))}
               </div>
+              <div className="skeleton h-[12px] w-full rounded-full" />
             </div>
           </div>
 
           /* ── Error ─────────────────────────────────────────────── */
         ) : error ? (
-          <div className="p-6 rounded-[16px] border" style={{ backgroundColor: "#F8D7DA", borderColor: "#F5C2C7" }}>
-            <h3 className="text-[14px] font-bold text-[#C94A4A] mb-1">Unable to load customer</h3>
-            <p className="text-[13px] text-[#C94A4A]">{error}</p>
+          <div role="alert" className="p-6 rounded-[16px] border bg-risk-critical-surface border-risk-critical/40">
+            <h3 className="text-[14px] font-bold text-risk-critical-foreground mb-1">Unable to load customer</h3>
+            <p className="text-[13px] text-risk-critical-foreground">{error}</p>
           </div>
 
           /* ── Not found ─────────────────────────────────────────── */
         ) : !customer ? (
-          <div className="p-6 rounded-[16px] border text-center" style={{ backgroundColor: "#FFFFFF", borderColor: "#ECEAE4" }}>
-            <p className="text-[14px] text-[#9E9E9E]">Customer not found.</p>
+          <div className="p-6 rounded-[16px] border text-center bg-card border-border">
+            <p className="text-[14px] text-muted-foreground-subtle">Customer not found.</p>
           </div>
 
           /* ── Loaded ────────────────────────────────────────────── */
@@ -964,19 +960,21 @@ export default function CustomerDetailPage() {
 
               {customer.pledges.length === 0 ? (
                 <div className="px-6 py-12 text-center">
-                  <p className="text-[13px] font-medium text-[#9E9E9E] mb-4">No pledges yet.</p>
-                  <Link href={`/customers/${customerId}/pledges/add`}>
-                    <button className="text-[13px] font-bold px-4 py-2 rounded-[12px] bg-[#DADBCF] text-[#555B3F] hover:bg-[#D4D5C8] transition-colors">
-                      Create First Pledge
-                    </button>
+                  <p className="text-[13px] font-medium text-muted-foreground-subtle mb-4">No pledges yet.</p>
+                  <Link
+                    href={`/customers/${customerId}/pledges/add`}
+                    className="inline-flex min-h-11 items-center px-5 rounded-full text-[13px] font-bold bg-accent text-primary hover:opacity-90 transition-opacity"
+                  >
+                    Create First Pledge
                   </Link>
                 </div>
               ) : displayedPledges.length === 0 ? (
                 <div className="px-6 py-12 text-center">
-                  <p className="text-[13px] font-medium text-[#9E9E9E] mb-3">No pledges match your filters.</p>
+                  <p className="text-[13px] font-medium text-muted-foreground-subtle mb-3">No pledges match your filters.</p>
                   <button
+                    type="button"
                     onClick={clearFilters}
-                    className="text-[13px] font-semibold text-[#555B3F] hover:text-[#4B5036] underline underline-offset-2 transition-colors"
+                    className="min-h-11 px-3 text-[13px] font-semibold text-primary underline underline-offset-2 hover:opacity-80 transition-opacity"
                   >
                     Clear filters
                   </button>
