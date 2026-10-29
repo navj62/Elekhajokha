@@ -6,11 +6,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
 import {
   Edit3, Plus, MapPin, Phone,
-  CheckCircle2, Eye, Unlock, Archive, Loader2, CheckSquare, Search, X, Trash,
+  CheckCircle2, Eye, Unlock, Loader2, CheckSquare, Search, X, Trash, MoreHorizontal,
 } from "lucide-react";
 
 import { QRCodeCanvas } from "qrcode.react";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
+import Sheet from "@/components/ui/Sheet";
+import DataTable, { StatusBadge, type BadgeTone, type DataTableColumn } from "@/components/ui/DataTable";
 import { isOpenPledgeStatus } from "@/lib/pledgeConstants";
 
 /* ------------------------------------------------------------------ */
@@ -79,19 +82,33 @@ function isLedgerImportDay(value: string) {
   return d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) === LEDGER_IMPORT_DAY_IST;
 }
 
-function renderStatusBadge(status?: string | null) {
-  if (!status) return null;
-  let bg = "#EAEAEA", color = "#6D6D6D", dot = "#A0A0A0";
-  if (status === "ACTIVE") { bg = "#E6E8DA"; color = "#5C633F"; dot = "#838C58"; }
-  if (status === "OVERDUE") { bg = "#F8D7DA"; color = "#C94A4A"; dot = "#D66666"; }
-  if (status === "SOLD") { bg = "#FEE2E2"; color = "#B91C1C"; dot = "#DC2626"; }
-  const label = status === "SOLD" ? "Sold to Shop" : status.charAt(0) + status.slice(1).toLowerCase();
-  return (
-    <span style={{ backgroundColor: bg, color, borderRadius: "20px", padding: "4px 10px", fontSize: "10px", fontWeight: 700, letterSpacing: "0.5px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-      <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: dot }} />
-      {label.toUpperCase()}
-    </span>
-  );
+const STATUS_TONE: Record<Pledge["status"], BadgeTone> = {
+  ACTIVE: "active",
+  OVERDUE: "overdue",
+  RELEASED: "released",
+  SOLD: "sold",
+};
+
+const STATUS_LABEL: Record<Pledge["status"], string> = {
+  ACTIVE: "Active",
+  OVERDUE: "Overdue",
+  RELEASED: "Released",
+  SOLD: "Sold to Shop",
+};
+
+/** One-line name for a pledge, used where the row itself is out of view. */
+function pledgeTitle(p: Pledge) {
+  return `${p.itemLabel || "Pledge"} · ${formatDate(p.pledgeDate)}`;
+}
+
+/* Server error codes from the pledge DELETE route, in words. RELEASED and
+   SOLD pledges never offer Delete, so these are the residual cases. */
+const DELETE_ERROR_TEXT: Record<string, string> = {
+  AUDIT_RECORDS_EXIST: "This pledge has a release or sale record, so it can't be deleted.",
+};
+
+function deleteErrorText(code: unknown) {
+  return (typeof code === "string" && DELETE_ERROR_TEXT[code]) || "Couldn't delete this pledge. Please try again.";
 }
 
 /* ================================================================== */
@@ -119,6 +136,9 @@ export default function CustomerDetailPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [metalFilter, setMetalFilter] = useState<"ALL" | "GOLD" | "SILVER">("ALL");
   const [sortBy, setSortBy] = useState("date_desc");
+  /* Which pledge's row action sheet is open. One page-level Sheet keyed by
+     pledge, rather than one mounted Sheet per card. */
+  const [rowMenu, setRowMenu] = useState<Pledge | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; step: "INITIAL" | "PAYMENT_WARNING"; count?: number } | null>(null);
   const toastRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -225,7 +245,7 @@ export default function CustomerDetailPage() {
         return;
       }
 
-      if (!res.ok) throw new Error(data?.error || "Unable to delete pledge.");
+      if (!res.ok) throw new Error(deleteErrorText(data?.error));
       setCustomer({
         ...customer,
         pledges: customer.pledges.filter((p) => p.id !== pledgeId),
@@ -300,26 +320,131 @@ export default function CustomerDetailPage() {
 
   /* ---- Bulk selection (ACTIVE or OVERDUE pledges) ------------- */
   const activePledges = customer?.pledges.filter((p) => isOpenPledgeStatus(p.status)) ?? [];
-  const allActiveSelected =
-    activePledges.length > 0 && activePledges.every((p) => selectedIds.has(p.id));
 
-  function toggleOne(id: string) {
+  function toggleOne(id: string, next: boolean) {
     setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+      const set = new Set(prev);
+      if (next) set.add(id);
+      else set.delete(id);
+      return set;
     });
   }
 
-  function toggleAllActive() {
+  /* Select-all acts on the open pledges currently on screen, so a search or
+     metal filter can never leave pledges selected that the owner cannot see. */
+  function toggleAllShown(next: boolean) {
+    const shown = displayedPledges.filter((p) => isOpenPledgeStatus(p.status)).map((p) => p.id);
     setSelectedIds((prev) => {
-      if (activePledges.length > 0 && activePledges.every((p) => prev.has(p.id))) {
-        return new Set(); // all selected → clear
+      const set = new Set(prev);
+      for (const id of shown) {
+        if (next) set.add(id);
+        else set.delete(id);
       }
-      return new Set(activePledges.map((p) => p.id));
+      return set;
     });
   }
+
+  const pledgeColumns: DataTableColumn<Pledge>[] = [
+    {
+      key: "item",
+      header: "Item",
+      role: "identity",
+      cell: (p) => (
+        <>
+          <span className="font-bold text-foreground">{p.itemLabel || "—"}</span>
+          {p.itemCount > 1 && (
+            <span className="block text-[11px] font-medium text-muted-foreground-subtle mt-0.5">
+              +{p.itemCount - 1} more item{p.itemCount > 2 ? "s" : ""}
+            </span>
+          )}
+        </>
+      ),
+    },
+    {
+      key: "loan",
+      header: "Loan Amount",
+      role: "primary",
+      cell: (p) => <span className="font-bold tabular-nums">{fmt(p.loanAmount)}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      role: "trailing",
+      cell: (p) => <StatusBadge tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status]}</StatusBadge>,
+    },
+    {
+      key: "pledgeDate",
+      header: "Pledge Date",
+      cell: (p) => <span className="font-bold">{formatDate(p.pledgeDate)}</span>,
+    },
+    {
+      key: "releaseDate",
+      header: "Release Date",
+      cell: (p) => <span className="font-semibold text-muted-foreground">{formatDate(p.releaseDate)}</span>,
+    },
+  ];
+
+  /* Rule B (destructive row actions): Delete never sits on the card face.
+     Mobile shows the one forward action, Release, plus "More", which opens
+     a sheet holding Delete. Desktop keeps the icon pair it always had.
+     Closed pledges offer neither; the card foot still needs one labelled
+     button (DataTable always renders the strip), so it is "View details". */
+  function renderPledgeActions(p: Pledge) {
+    const detailHref = `/customers/${customerId}/pledges/${p.id}`;
+    if (!isOpenPledgeStatus(p.status)) {
+      return (
+        <Link
+          href={detailHref}
+          className="lg:hidden inline-flex items-center justify-center gap-2 rounded-full border border-border text-[13px] font-bold text-foreground hover:bg-accent transition-colors"
+        >
+          <Eye size={15} /> View details
+        </Link>
+      );
+    }
+    const deleting = deletingId === p.id;
+    return (
+      <>
+        <Link
+          href={`/customers/${customerId}/pledges/${p.id}/release`}
+          className="lg:hidden inline-flex items-center justify-center gap-2 rounded-full bg-primary text-primary-foreground text-[13px] font-bold hover:opacity-90 transition-opacity"
+        >
+          <Unlock size={15} /> Release
+        </Link>
+        <button
+          type="button"
+          onClick={() => setRowMenu(p)}
+          disabled={deleting}
+          aria-label={`More actions for ${pledgeTitle(p)}`}
+          className="lg:hidden inline-flex items-center justify-center gap-2 rounded-full border border-border text-[13px] font-bold text-foreground hover:bg-accent transition-colors disabled:opacity-50"
+        >
+          {deleting ? <Loader2 size={15} className="animate-spin" /> : <MoreHorizontal size={15} />} More
+        </button>
+
+        <Link
+          href={`/customers/${customerId}/pledges/${p.id}/release`}
+          title="Release this pledge"
+          aria-label={`Release ${pledgeTitle(p)}`}
+          className="hidden lg:inline-flex p-2 rounded-full text-muted-foreground-subtle hover:bg-accent hover:text-primary transition-colors"
+        >
+          <Unlock size={15} />
+        </Link>
+        <button
+          type="button"
+          disabled={deleting}
+          onClick={() => setDeleteConfirm({ id: p.id, step: "INITIAL" })}
+          title="Delete pledge"
+          aria-label={`Delete ${pledgeTitle(p)}`}
+          className="hidden lg:inline-flex p-2 rounded-full text-muted-foreground-subtle hover:bg-accent hover:text-risk-critical-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {deleting ? <Loader2 size={15} className="animate-spin text-risk-critical-foreground" /> : <Trash size={15} />}
+        </button>
+      </>
+    );
+  }
+
+  const confirmPledge = deleteConfirm
+    ? customer?.pledges.find((p) => p.id === deleteConfirm.id) ?? null
+    : null;
 
   function releaseSelected() {
     const ids = Array.from(selectedIds);
@@ -841,104 +966,23 @@ export default function CustomerDetailPage() {
                   </button>
                 </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid #ECEAE4" }}>
-                        <th className="pl-6 lg:pl-8 pr-2 py-5 w-[44px]">
-                          <input
-                            type="checkbox"
-                            aria-label="Select all active pledges"
-                            checked={allActiveSelected}
-                            disabled={activePledges.length === 0}
-                            onChange={toggleAllActive}
-                            className="h-4 w-4 accent-[#555B3F] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                          />
-                        </th>
-                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Pledge Date</th>
-                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Item</th>
-                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Loan Amount</th>
-                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Release Date</th>
-                        <th className="px-6 lg:px-8 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase">Status</th>
-                        <th className="px-6 py-5 text-[10px] font-bold text-[#9E9E9E] tracking-wider uppercase text-right w-[110px]">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {displayedPledges.map((pledge, idx) => (
-                        <tr
-                          key={pledge.id}
-                          className="group cursor-pointer transition-colors duration-200"
-                          style={{ borderBottom: idx === displayedPledges.length - 1 ? "none" : "1px solid #ECEAE4" }}
-                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#FAFAF7")}
-                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
-                          onClick={() => router.push(`/customers/${customerId}/pledges/${pledge.id}`)}
-                        >
-                          <td
-                            className="pl-6 lg:pl-8 pr-2 py-5"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <input
-                              type="checkbox"
-                              aria-label="Select pledge"
-                              checked={selectedIds.has(pledge.id)}
-                              disabled={!isOpenPledgeStatus(pledge.status)}
-                              onChange={() => toggleOne(pledge.id)}
-                              className="h-4 w-4 accent-[#555B3F] cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                            />
-                          </td>
-                          <td className="px-6 lg:px-8 py-5">
-                            <div className="text-[13px] font-bold text-[#2C2C2C]">{formatDate(pledge.pledgeDate)}</div>
-                          </td>
-                          <td className="px-6 lg:px-8 py-5">
-                            <div className="text-[13px] font-bold text-[#2C2C2C]">{pledge.itemLabel || "—"}</div>
-                            {pledge.itemCount > 1 && (
-                              <div className="text-[11px] text-[#9E9E9E] mt-0.5">
-                                +{pledge.itemCount - 1} more item{pledge.itemCount > 2 ? "s" : ""}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-6 lg:px-8 py-5">
-                            <div className="text-[13px] font-bold text-[#2C2C2C]">{fmt(pledge.loanAmount)}</div>
-                          </td>
-                          <td className="px-6 lg:px-8 py-5">
-                            <div className="text-[13px] font-semibold text-[#6F6F6F]">{formatDate(pledge.releaseDate)}</div>
-                          </td>
-                          <td className="px-6 lg:px-8 py-5">
-                            {renderStatusBadge(pledge.status)}
-                          </td>
-                          <td
-                            className="px-6 py-5 text-right"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="flex items-center justify-end gap-1">
-
-                              <Link href={`/customers/${customerId}/pledges/${pledge.id}/release`}>
-                                <button
-                                  disabled={pledge.status === "RELEASED" || pledge.status === "SOLD"}
-                                  className="p-2 rounded-full hover:bg-[#EAE9DF] text-[#9E9E9E] hover:text-[#555B3F] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                  title="Release this pledge"
-                                >
-                                  <Unlock size={15} />
-                                </button>
-                              </Link>
-                              <button
-                                disabled={deletingId === pledge.id}
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setDeleteConfirm({ id: pledge.id, step: "INITIAL" });
-                                }}
-                                className="p-2 rounded-full hover:bg-[#EAE9DF] text-[#9E9E9E] hover:text-red-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                title="Delete Pledge"
-                              >
-                                {deletingId === pledge.id ? <Loader2 size={15} className="animate-spin text-red-600" /> : <Trash size={15} />}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="p-4 lg:p-6">
+                  <DataTable
+                    label="Pledges"
+                    rows={displayedPledges}
+                    columns={pledgeColumns}
+                    tableOrder={["pledgeDate", "item", "loan", "releaseDate", "status"]}
+                    rowId={(p) => p.id}
+                    rowLabel={pledgeTitle}
+                    rowHref={(p) => `/customers/${customerId}/pledges/${p.id}`}
+                    actions={renderPledgeActions}
+                    selection={{
+                      selectedIds: Array.from(selectedIds),
+                      onToggle: toggleOne,
+                      onToggleAll: toggleAllShown,
+                      isSelectable: (p) => isOpenPledgeStatus(p.status),
+                    }}
+                  />
                 </div>
               )}
             </div>
@@ -1033,41 +1077,76 @@ export default function CustomerDetailPage() {
           {toastMsg}
         </div>
       )}
-      {/* Delete Confirmation Modal */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setDeleteConfirm(null)}>
-          <div
-            className="bg-white rounded-[24px] p-8 w-full max-w-[400px] shadow-2xl text-center"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-5">
-              <Trash size={28} className="text-red-500" />
-            </div>
-            <h3 className="text-[20px] font-bold text-[#2C2C2C] mb-2">
-              {deleteConfirm.step === "INITIAL" ? "Delete Pledge?" : "Delete Anyway?"}
-            </h3>
-            <p className="text-[14px] text-[#6F6F6F] mb-8 leading-relaxed">
-              {deleteConfirm.step === "INITIAL"
-                ? "Are you sure you want to delete this pledge? This action cannot be undone."
-                : `This pledge has ${deleteConfirm.count} part-payment(s) recorded. Deleting it will permanently erase that history.`}
-            </p>
-            <div className="flex gap-3">
-              <button
+      {/* Row actions (mobile "More") */}
+      <Sheet
+        open={rowMenu !== null}
+        onOpenChange={(open) => { if (!open) setRowMenu(null); }}
+        title={rowMenu ? pledgeTitle(rowMenu) : "Pledge"}
+        description={rowMenu ? fmt(rowMenu.loanAmount) : undefined}
+        size="sm"
+      >
+        {rowMenu && (
+          <Sheet.List>
+            <Sheet.Item
+              icon={<Eye size={18} />}
+              label="View pledge"
+              onClick={() => {
+                const id = rowMenu.id;
+                setRowMenu(null);
+                router.push(`/customers/${customerId}/pledges/${id}`);
+              }}
+            />
+            <li role="separator" aria-hidden className="mx-3 my-1 h-px bg-border" />
+            <Sheet.Item
+              tone="destructive"
+              icon={<Trash size={18} />}
+              label="Delete pledge"
+              onClick={() => {
+                const id = rowMenu.id;
+                setRowMenu(null);
+                setDeleteConfirm({ id, step: "INITIAL" });
+              }}
+            />
+          </Sheet.List>
+        )}
+      </Sheet>
+
+      {/* Delete confirmation. Names the pledge: on mobile the sheet covers
+          the row the owner tapped. The destructive action is the filled
+          primary; the dismiss is a quieter outline — not a Yes/No pair. */}
+      <Sheet
+        open={deleteConfirm !== null}
+        onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}
+        title={deleteConfirm?.step === "PAYMENT_WARNING" ? "Delete anyway?" : "Delete this pledge?"}
+        description={confirmPledge ? `${pledgeTitle(confirmPledge)} · ${fmt(confirmPledge.loanAmount)}` : undefined}
+        size="sm"
+        footer={
+          deleteConfirm && (
+            <>
+              <Button
+                variant="outline"
                 onClick={() => setDeleteConfirm(null)}
-                className="flex-1 py-3 rounded-[20px] text-[13px] font-bold bg-[#F0EEE8] text-[#6F6F6F] hover:bg-[#E6E4DC] transition-colors"
+                className="min-h-11 flex-1 rounded-full text-[13px] font-bold lg:flex-none lg:px-5"
               >
-                Cancel
-              </button>
-              <button
+                Keep pledge
+              </Button>
+              <Button
+                variant="destructive"
                 onClick={() => executeDelete(deleteConfirm.id, deleteConfirm.step === "PAYMENT_WARNING")}
-                className="flex-1 py-3 rounded-[20px] text-[13px] font-bold bg-red-600 text-white hover:bg-red-700 transition-colors"
+                className="min-h-11 flex-1 rounded-full text-[13px] font-bold lg:flex-none lg:px-5"
               >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                <Trash size={15} /> Delete pledge
+              </Button>
+            </>
+          )
+        }
+      >
+        <p className="text-[14px] leading-relaxed text-muted-foreground">
+          {deleteConfirm?.step === "PAYMENT_WARNING"
+            ? `This pledge has ${deleteConfirm.count} part-payment${deleteConfirm.count === 1 ? "" : "s"} recorded. Deleting it permanently erases that payment history.`
+            : "The pledge and its items are permanently removed. This can't be undone."}
+        </p>
+      </Sheet>
     </SubscriptionGuard>
   );
 }
