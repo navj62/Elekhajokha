@@ -1,13 +1,15 @@
 # MOBILE_AUDIT.md
 
-## STATUS (as of 2026-10-27)
+## STATUS (as of 2026-10-30)
 
-- **Last updated:** 2026-10-27
+- **Last updated:** 2026-10-30
 - **Phase 1 (foundation): COMPLETE** — token consolidation, nav shell, Sheet primitive. Commits `8218e29` (refactor(tokens): consolidate two design-token systems into one) + `5296fb0` (feat(nav): mobile bottom nav + FAB, one shell for both breakpoints).
-- **Phase 2 screen redesigns: IN PROGRESS — page 1 of 6 done.** `/customers/[id]/pledges/add` is complete: `c2d99a2` (remove fabricated header values), `2d444f4` (touch-reachable item actions, native date input, 44px targets), `0c3db42` (StickyActions, inline validation, no `alert()`), `046cb73` (tokenised surfaces for dark mode).
+- **Phase 2 screen redesigns: IN PROGRESS — page 2 of 6 done.**
+  - Page 1 `/customers/[id]/pledges/add` is complete: `c2d99a2` (remove fabricated header values), `2d444f4` (touch-reachable item actions, native date input, 44px targets), `0c3db42` (StickyActions, inline validation, no `alert()`), `046cb73` (tokenised surfaces for dark mode).
+  - Page 2 `/customers/[id]` is complete: `968e581` (remove Active badge, unconditional Aadhaar check, Export Data, View All Transactions; hide Registered on the import day), `2cca40e` (pledges as DataTable cards, delete behind a ⋯ sheet), `6aa216c` (mobile layout, one bottom bar), `8cba24d` (tokenised surfaces, skeleton fits 380px), `f93f6c8` (header wrap fix at md+). Supporting: `cb88526` (`Sheet.Item tone="destructive"`), `2551f5c` + `6ad807f` (Button `destructive` variant meets AA; dark uses the saturated risk-critical red).
 - **Shared primitives now exist in `components/ui/`**, built during page 1 work: `StickyActions.tsx` (bottom action bar — owns z-30, the bottom-nav offset and its own spacer; suppresses the FAB while mounted) and `DataTable.tsx` (real `<table>` at `lg:`, card-per-row below; also exports `StatusBadge`). Build on these rather than hand-rolling.
 - **"Mobile view way off" blocker: RESOLVED.** Phase 2 page work has proceeded on top of the Phase 1 shell.
-- **Up next, in order:** `/customers/[id]` → `/customers/[id]/pledges/[pid]/release` → `/dashboard` → `/customers` → `/view/[token]`.
+- **Up next, in order:** `/customers/[id]/pledges/[pid]/release` → `/dashboard` → `/customers` → `/view/[token]`.
 
 ## DEFERRED / KNOWN ISSUES
 
