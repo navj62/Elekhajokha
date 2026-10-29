@@ -9,6 +9,12 @@
 - **"Mobile view way off" blocker: RESOLVED.** Phase 2 page work has proceeded on top of the Phase 1 shell.
 - **Up next, in order:** `/customers/[id]` → `/customers/[id]/pledges/[pid]/release` → `/dashboard` → `/customers` → `/view/[token]`.
 
+## DEFERRED / KNOWN ISSUES
+
+Found during Phase 2 page audits and deliberately kept out of the mobile work — each needs its own commit.
+
+- Outstanding on /customers/[id] (line ~283-285) counts SOLD pledges as outstanding; must be fixed before any aggregate outstanding calculation lands in a report or dashboard, since the error would propagate.
+
 ## CORRECTIONS TO ORIGINAL AUDIT
 
 Findings below were discovered to be wrong or incomplete while executing Steps 1–2
