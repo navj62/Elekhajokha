@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
 import {
-  Edit3, Plus, Upload, MapPin, Phone,
+  Edit3, Plus, MapPin, Phone,
   CheckCircle2, Eye, Unlock, Archive, Loader2, CheckSquare, Search, X, Trash,
 } from "lucide-react";
 
@@ -64,6 +64,19 @@ function fmt(amount: string | number) {
 
 function getInitials(name: string) {
   return name.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase();
+}
+
+/* ~2,101 customers were bulk-imported on this day with createdAt defaulted
+   to the import moment, so for them "Registered" would show the import date,
+   not when they became a customer. The true date was never captured. The
+   line is hidden for that day rather than shown wrong. Side effect: a
+   customer genuinely added by hand on 2026-07-26 also loses the line. */
+const LEDGER_IMPORT_DAY_IST = "2026-07-26";
+
+function isLedgerImportDay(value: string) {
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return false;
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) === LEDGER_IMPORT_DAY_IST;
 }
 
 function renderStatusBadge(status?: string | null) {
@@ -406,9 +419,6 @@ export default function CustomerDetailPage() {
                       <span className="relative z-10 text-white text-2xl font-bold">{getInitials(customer.name)}</span>
                     </div>
                   )}
-                  <div className="absolute bottom-2 left-2 z-10 bg-[#555B3F] text-white text-[9px] font-bold px-3 py-1 rounded-[12px] uppercase tracking-wider">
-                    Active
-                  </div>
                 </div>
 
                 <div className="w-full">
@@ -417,7 +427,7 @@ export default function CustomerDetailPage() {
                     <span className="font-bold">ID: #{customer.id.split("-")[0].toUpperCase()}</span>
                     <span>•</span>
                     <span>{customer.region}</span>
-                    {customer.createdAt && (
+                    {customer.createdAt && !isLedgerImportDay(customer.createdAt) && (
                       <>
                         <span>•</span>
                         <span>Registered {formatDate(customer.createdAt)}</span>
@@ -505,9 +515,6 @@ export default function CustomerDetailPage() {
                 >
                   <Edit3 size={15} /> Edit Profile
                 </button>
-                <button className="flex items-center gap-2 px-5 py-2.5 rounded-[20px] text-[13px] font-bold transition-colors bg-[#E6E4DC] text-[#6F6F6F] hover:bg-[#D8D6C8] hover:text-[#2C2C2C]">
-                  <Upload size={15} /> Export Data
-                </button>
                 <Link href={`/customers/${customerId}/pledges/add`}>
                   <button className="flex items-center gap-2 px-6 py-2.5 cursor-pointer rounded-[20px] text-[13px] font-bold transition-all text-white bg-[#555B3F] hover:bg-[#4B5036]">
                     <Plus size={15} /> Add Pledge
@@ -588,9 +595,11 @@ export default function CustomerDetailPage() {
                           {customer.aadharNo ? customer.aadharNo : "-"}
                         </p>
                       </div>
-                      <div className="text-[#555B3F] bg-[#DADBCF] p-1.5 rounded-full">
-                        <CheckCircle2 size={16} fill="currentColor" stroke="#DADBCF" />
-                      </div>
+                      {customer.aadharNo && (
+                        <div className="text-[#555B3F] bg-[#DADBCF] p-1.5 rounded-full">
+                          <CheckCircle2 size={16} fill="currentColor" stroke="#DADBCF" />
+                        </div>
+                      )}
                     </div>
                     <div className="bg-[#FAFAF7] border border-[#ECEAE4] p-4 rounded-[12px] flex justify-between items-center h-[72px]">
                       <div>
@@ -932,12 +941,6 @@ export default function CustomerDetailPage() {
                   </table>
                 </div>
               )}
-
-              <div className="p-4 border-t border-[#ECEAE4] flex justify-center">
-                <button className="text-[10px] font-bold tracking-widest uppercase text-[#9E9E9E] hover:text-[#2C2C2C] py-2 transition-colors">
-                  View All Transactions
-                </button>
-              </div>
             </div>
 
           </div>
