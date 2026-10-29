@@ -568,8 +568,10 @@ export default function CustomerDetailPage() {
           <div className="flex flex-col gap-4 lg:gap-6">
 
             {/* Header */}
-            <section className="rounded-[24px] bg-card-alt p-4 lg:p-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div className="flex items-start gap-4 lg:gap-5 min-w-0">
+            {/* md:flex-wrap is load-bearing: the portal row takes basis-full to
+                sit on its own line; without wrap it squeezes the name column. */}
+            <section className="rounded-[24px] bg-card-alt p-4 lg:p-6 flex flex-col gap-4 md:flex-row md:flex-wrap md:items-start md:justify-between">
+              <div className="flex items-start gap-4 lg:gap-5 min-w-0 md:flex-1">
                 {/* Avatar */}
                 <div className="size-14 lg:size-[100px] shrink-0 rounded-2xl lg:rounded-[20px] overflow-hidden relative bg-muted">
                   {customer.customerImg ? (
