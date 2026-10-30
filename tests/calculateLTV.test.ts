@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { calculateLTV, getRiskTier } from "@/lib/calculateLTV";
+import {
+  calculateLTV,
+  getRiskTier,
+  daysToUnderwater,
+  RISK_TIER_BOUNDARIES,
+} from "@/lib/calculateLTV";
 
 // -----------------------------------------------------------------------------
 // getRiskTier — canonical per-pledge risk thresholds (CLAUDE.md Invariant 8):
@@ -163,5 +168,81 @@ describe("calculateLTV — null price handling", () => {
     expect(r.marketValue).toBe(10000);
     expect(r.ltv).toBe(91);
     expect(r.riskTier).toBe("UNDERWATER");
+  });
+});
+
+describe("RISK_TIER_BOUNDARIES — drives getRiskTier", () => {
+  it("each boundary is the inclusive top of its tier", () => {
+    expect(getRiskTier(RISK_TIER_BOUNDARIES.SAFE)).toBe("SAFE");
+    expect(getRiskTier(RISK_TIER_BOUNDARIES.SAFE + 0.01)).toBe("WATCH");
+    expect(getRiskTier(RISK_TIER_BOUNDARIES.WATCH)).toBe("WATCH");
+    expect(getRiskTier(RISK_TIER_BOUNDARIES.WATCH + 0.01)).toBe("AT_RISK");
+    expect(getRiskTier(RISK_TIER_BOUNDARIES.AT_RISK)).toBe("AT_RISK");
+    expect(getRiskTier(RISK_TIER_BOUNDARIES.AT_RISK + 0.01)).toBe("UNDERWATER");
+  });
+
+  it("values are the canonical 65 / 75 / 90", () => {
+    expect(RISK_TIER_BOUNDARIES).toEqual({ SAFE: 65, WATCH: 75, AT_RISK: 90 });
+  });
+});
+
+describe("daysToUnderwater — threshold", () => {
+  // Verbatim copy of the implementation before `thresholdPct` was added.
+  // The default threshold must reproduce it exactly for every existing caller.
+  function legacyDaysToUnderwater(
+    loanAmount: number,
+    interestRate: number,
+    amountOwed: number,
+    marketValue: number | null
+  ): number | null {
+    if (marketValue === null) return null;
+    if (amountOwed >= marketValue) return 0;
+    const dailyRate = interestRate / 100 / 365;
+    const dailyAccrual = loanAmount * dailyRate;
+    if (dailyAccrual <= 0) return null;
+    return Math.ceil((marketValue - amountOwed) / dailyAccrual);
+  }
+
+  it("default threshold matches the legacy result across a grid of inputs", () => {
+    const loans  = [0, 1, 999.99, 10000, 250000, 1234567.89];
+    const rates  = [0, 0.5, 12, 18, 24, 36.75];
+    const owedF  = [0, 0.5, 1, 1.0731, 1.5];
+    const values = [null, 0, 1, 15000, 333333.33, 2500000];
+    let checked = 0;
+    for (const loan of loans)
+      for (const rate of rates)
+        for (const f of owedF)
+          for (const mv of values) {
+            const owed = loan * f;
+            expect(daysToUnderwater(loan, rate, owed, mv)).toBe(
+              legacyDaysToUnderwater(loan, rate, owed, mv)
+            );
+            checked++;
+          }
+    expect(checked).toBe(loans.length * rates.length * owedF.length * values.length);
+  });
+
+  it("passing 100 explicitly is the same as the default", () => {
+    expect(daysToUnderwater(10000, 24, 10500, 20000, 100)).toBe(
+      daysToUnderwater(10000, 24, 10500, 20000)
+    );
+  });
+
+  it("threshold 90 projects to 90% of market value", () => {
+    // daily accrual = 10000 × 0.24 / 365 ≈ 6.5753
+    // target = 18000 → gap 7500 → ceil(1140.6…) = 1141
+    expect(daysToUnderwater(10000, 24, 10500, 20000, 90)).toBe(1141);
+    // vs the 100% default: gap 9500 → 1445
+    expect(daysToUnderwater(10000, 24, 10500, 20000)).toBe(1445);
+  });
+
+  it("threshold 90 returns 0 once owed reaches 90% of value", () => {
+    expect(daysToUnderwater(10000, 24, 9000, 10000, 90)).toBe(0);
+    expect(daysToUnderwater(10000, 24, 9500, 10000, 90)).toBe(0);
+    expect(daysToUnderwater(10000, 24, 8999, 10000, 90)).toBe(1);
+  });
+
+  it("null market value stays null at any threshold", () => {
+    expect(daysToUnderwater(10000, 24, 10500, null, 90)).toBeNull();
   });
 });

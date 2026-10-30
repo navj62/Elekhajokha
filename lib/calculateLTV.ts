@@ -3,10 +3,21 @@ import { calculateHybridInterest } from "@/lib/interest";
 
 export type RiskTier = "SAFE" | "WATCH" | "AT_RISK" | "UNDERWATER";
 
+/**
+ * Upper LTV % bound (inclusive) of each tier below UNDERWATER. The one place
+ * these numbers live — getRiskTier and any UI that draws tier markers read
+ * them from here.
+ */
+export const RISK_TIER_BOUNDARIES = {
+  SAFE:    65,
+  WATCH:   75,
+  AT_RISK: 90,
+} as const;
+
 export function getRiskTier(ltv: number): RiskTier {
-  if (ltv <= 65) return "SAFE";
-  if (ltv <= 75) return "WATCH";
-  if (ltv <= 90) return "AT_RISK";
+  if (ltv <= RISK_TIER_BOUNDARIES.SAFE)    return "SAFE";
+  if (ltv <= RISK_TIER_BOUNDARIES.WATCH)   return "WATCH";
+  if (ltv <= RISK_TIER_BOUNDARIES.AT_RISK) return "AT_RISK";
   return "UNDERWATER";
 }
 
@@ -18,23 +29,29 @@ export function getRiskTier(ltv: number): RiskTier {
  * canonical interest engine (calculateHybridInterest) is the source
  * of truth for amounts owed.
  *
+ * `thresholdPct` is the LTV % that counts as underwater. It defaults to 100
+ * (amount owed reaches market value), which every existing caller relies on;
+ * pass RISK_TIER_BOUNDARIES.AT_RISK to project to the UNDERWATER tier instead.
+ *
  * Returns null when there is no market value or no accrual to project from,
- * and 0 when the pledge is already underwater.
+ * and 0 when the pledge is already past the threshold.
  */
 export function daysToUnderwater(
   loanAmount: number,
   interestRate: number, // annual %
   amountOwed: number,
-  marketValue: number | null
+  marketValue: number | null,
+  thresholdPct: number = 100
 ): number | null {
   if (marketValue === null) return null;
-  if (amountOwed >= marketValue) return 0;
+  const target = marketValue * (thresholdPct / 100);
+  if (amountOwed >= target) return 0;
 
   const dailyRate = interestRate / 100 / 365;
   const dailyAccrual = loanAmount * dailyRate;
   if (dailyAccrual <= 0) return null;
 
-  return Math.ceil((marketValue - amountOwed) / dailyAccrual);
+  return Math.ceil((target - amountOwed) / dailyAccrual);
 }
 
 interface LTVInput {
