@@ -223,25 +223,99 @@ export async function GET(_req: Request, context: RouteContext) {
     if (!pledge)
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
 
-    // This pledge's part-payment history (ownership enforced via relation).
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        pledgeId,
-        pledge: { customer: { userId: user.id } },
-      },
-      orderBy: { createdAt: "desc" },
-      select: {
-        id:        true,
-        type:      true,
-        amount:    true,
-        createdAt: true,
-        note:      true,
-      },
-    });
+    // Everything below runs only after the scoped lookup above has proven
+    // ownership. Nested queries still carry the relation guard.
+
+    // The pledge's calendar day in IST (pledgeDate carries no time of day).
+    // Same +05:30 wall-clock convention as istBoundary in the report routes.
+    const pledgeDayIST = pledge.pledgeDate.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const pledgeDayStart = new Date(`${pledgeDayIST}T00:00:00.000+05:30`);
+    const pledgeDayEnd   = new Date(`${pledgeDayIST}T23:59:59.999+05:30`);
+
+    const [
+      transactions,
+      goldAtPledge,
+      silverAtPledge,
+      closingAudit,
+      openPledgeCount,
+      firstPledge,
+    ] = await Promise.all([
+      // This pledge's part-payment history (ownership enforced via relation).
+      prisma.transaction.findMany({
+        where: {
+          pledgeId,
+          pledge: { customer: { userId: user.id } },
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          id:        true,
+          type:      true,
+          amount:    true,
+          createdAt: true,
+          note:      true,
+        },
+      }),
+      // Price recorded ON the pledge's IST calendar day — never an older day
+      // (a months-old price is not "value at pledge") and never a later one.
+      // Latest row within that day wins. null when none was recorded that day
+      // (most imported pledges); callers must NOT fall back to today's price.
+      prisma.metalPrice.findFirst({
+        where:   { metal: "GOLD", createdAt: { gte: pledgeDayStart, lte: pledgeDayEnd } },
+        orderBy: { createdAt: "desc" },
+        select:  { inrPerGram: true, createdAt: true },
+      }),
+      prisma.metalPrice.findFirst({
+        where:   { metal: "SILVER", createdAt: { gte: pledgeDayStart, lte: pledgeDayEnd } },
+        orderBy: { createdAt: "desc" },
+        select:  { inrPerGram: true, createdAt: true },
+      }),
+      // The closing record (release or sale). Absent for open pledges, and
+      // for legacy closed pledges that predate the audit trail.
+      prisma.pledgeAudit.findFirst({
+        where: {
+          pledgeId,
+          action: { in: ["RELEASED", "SOLD"] },
+          pledge: { customer: { userId: user.id } },
+        },
+        orderBy: { createdAt: "desc" },
+        select: {
+          action:               true,
+          releaseDate:          true,
+          createdAt:            true,
+          receivableAmount:     true,
+          totalInterest:        true,
+          durationMonths:       true,
+          goldPricePerGram:     true,
+          silverPricePerGram:   true,
+          marketValueAtRelease: true,
+          ltvAtRelease:         true,
+        },
+      }),
+      prisma.pledge.count({
+        where: {
+          customerId,
+          customer: { userId: user.id },
+          status: { in: [...OPEN_PLEDGE_STATUSES] },
+        },
+      }),
+      // Earliest pledgeDate stands in for "customer since": Customer.createdAt
+      // is the import timestamp for migrated customers and must not be shown.
+      prisma.pledge.findFirst({
+        where:   { customerId, customer: { userId: user.id } },
+        orderBy: { pledgeDate: "asc" },
+        select:  { pledgeDate: true },
+      }),
+    ]);
 
     return NextResponse.json({
       pledge,
       transactions,
+      pricesAtPledge: { gold: goldAtPledge, silver: silverAtPledge },
+      closingAudit,
+      customerStats: {
+        openPledgeCount,
+        firstPledgeDate: firstPledge?.pledgeDate ?? null,
+      },
       user: { id: user.id, username: user.username },
     });
 
