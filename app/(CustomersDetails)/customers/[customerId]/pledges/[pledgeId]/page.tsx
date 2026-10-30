@@ -19,6 +19,10 @@ import Sheet from "@/components/ui/Sheet";
 import { Input } from "@/components/ui/input";
 import StickyActions from "@/components/ui/StickyActions";
 import DataTable, { StatusBadge, type BadgeTone, type DataTableColumn } from "@/components/ui/DataTable";
+import {
+  Card, Eyebrow, MetalBadge, Row, StatTile, btnPrimary, btnSecondary,
+  fmtINR, fmtDate, fmtGrams,
+} from "@/components/ui/DetailParts";
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                       */
@@ -206,29 +210,13 @@ async function fetchPledge(customerId: string, pledgeId: string): Promise<FetchR
 /* -------------------------------------------------------------------------- */
 const DAY_MS = 1000 * 60 * 60 * 24;
 
-/** Exact rupees. Unknown is always "—", never ₹0. */
-function fmtINR(n: number | null | undefined) {
-  if (n === null || n === undefined) return "—";
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency", currency: "INR", maximumFractionDigits: 2,
-  }).format(n);
-}
 function fmtSignedINR(n: number) {
   return `${n >= 0 ? "+" : "−"}${fmtINR(Math.abs(n))}`;
-}
-function fmtDate(iso: string | null | undefined) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-IN", {
-    day: "2-digit", month: "short", year: "numeric",
-  });
 }
 function fmtDateTime(iso: string) {
   return new Date(iso).toLocaleString("en-IN", {
     day: "2-digit", month: "short", hour: "numeric", minute: "2-digit",
   });
-}
-function fmtGrams(g: number) {
-  return `${g.toLocaleString("en-IN", { maximumFractionDigits: 3 })} g`;
 }
 /** A stored LTV at the Decimal(5,2) ceiling means "at or above", not exact. */
 function fmtLtv(ltv: number | null) {
@@ -304,45 +292,6 @@ const UNDERWATER_AT = RISK_TIER_BOUNDARIES.AT_RISK;
 /* -------------------------------------------------------------------------- */
 /* Sub-components                                                              */
 /* -------------------------------------------------------------------------- */
-function Card({ title, aside, children, className }: {
-  title?: React.ReactNode;
-  aside?: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <section className={cn("bg-card border border-border rounded-[24px] overflow-hidden", className)}>
-      {title && (
-        <div className="flex items-center justify-between gap-3 px-5 lg:px-6 pt-5 pb-3">
-          <h2 className="text-[15px] font-bold text-foreground">{title}</h2>
-          {aside}
-        </div>
-      )}
-      {children}
-    </section>
-  );
-}
-
-function Eyebrow({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <p className={cn("text-[11px] font-bold tracking-wider uppercase text-muted-foreground-subtle", className)}>
-      {children}
-    </p>
-  );
-}
-
-function MetalBadge({ metal }: { metal: string }) {
-  const isGold = metal.toUpperCase() === "GOLD";
-  return (
-    <span className={cn(
-      "inline-flex text-[11px] font-bold tracking-wide px-2 py-0.5 rounded-full",
-      isGold ? "bg-gold-surface text-gold-foreground" : "bg-silver-surface text-silver-foreground",
-    )}>
-      {isGold ? "Gold" : "Silver"}
-    </span>
-  );
-}
-
 /** 0–100% track with a marker at every real tier boundary. */
 function LtvBar({ ltv }: { ltv: number }) {
   const tier = getRiskTier(ltv);
@@ -375,40 +324,6 @@ function LtvBar({ ltv }: { ltv: number }) {
     </div>
   );
 }
-
-function StatTile({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
-  return (
-    <div className="h-full bg-card border border-border rounded-[16px] px-4 py-3.5 min-w-0">
-      <Eyebrow>{label}</Eyebrow>
-      <p className="mt-1 text-[18px] font-bold text-foreground tabular-nums leading-tight">{value}</p>
-      {sub && <p className="mt-0.5 text-[12px] text-muted-foreground-subtle">{sub}</p>}
-    </div>
-  );
-}
-
-/**
- * The one label/value row on this page: muted label left, bold value right.
- * Must sit inside a <dl>. The label takes the free space; the value keeps its
- * natural width up to 60% and wraps beyond that (long remarks), never truncates.
- */
-function Row({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
-  return (
-    <div className="flex items-baseline justify-between gap-4 py-3 border-t border-border first:border-t-0">
-      <dt className="min-w-0 flex-[1_1_0%]">
-        <span className="block text-[13px] text-muted-foreground">{label}</span>
-        {sub && <span className="block text-[12px] text-muted-foreground-subtle">{sub}</span>}
-      </dt>
-      <dd className="min-w-0 max-w-[60%] text-right text-[14px] font-bold text-foreground tabular-nums break-words">
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-const btnBase =
-  "inline-flex min-h-11 items-center justify-center gap-2 px-5 rounded-full text-[13px] font-bold transition-opacity hover:opacity-90";
-const btnPrimary = `${btnBase} bg-primary text-primary-foreground`;
-const btnSecondary = `${btnBase} bg-secondary text-secondary-foreground`;
 
 /* ========================================================================== */
 /* Page                                                                        */
