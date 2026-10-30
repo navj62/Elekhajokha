@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { saleDateError, buyerMobileError } from "@/lib/inventorySale";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -41,10 +42,17 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (!soldAt || isNaN(soldAtDate.getTime()))
       return NextResponse.json({ error: "Invalid soldAt" }, { status: 400 });
 
+    const dateError = saleDateError(soldAtDate, item.acquiredAt, new Date());
+    if (dateError)
+      return NextResponse.json({ error: "VALIDATION", message: dateError }, { status: 400 });
+
     if (typeof buyerName === "string" && buyerName.length > 200)
       return NextResponse.json({ error: "VALIDATION", message: "Buyer name must be at most 200 characters" }, { status: 400 });
     if (typeof buyerMobile === "string" && buyerMobile.length > 20)
       return NextResponse.json({ error: "VALIDATION", message: "Buyer mobile must be at most 20 characters" }, { status: 400 });
+    const mobileError = buyerMobileError(buyerMobile);
+    if (mobileError)
+      return NextResponse.json({ error: "VALIDATION", message: mobileError }, { status: 400 });
     if (typeof saleNotes === "string" && saleNotes.length > 2000)
       return NextResponse.json({ error: "VALIDATION", message: "Sale notes must be at most 2000 characters" }, { status: 400 });
 
