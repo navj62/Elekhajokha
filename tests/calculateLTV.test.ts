@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   calculateLTV,
+  marketValue,
   getRiskTier,
   daysToUnderwater,
   RISK_TIER_BOUNDARIES,
@@ -168,6 +169,21 @@ describe("calculateLTV — null price handling", () => {
     expect(r.marketValue).toBe(10000);
     expect(r.ltv).toBe(91);
     expect(r.riskTier).toBe("UNDERWATER");
+  });
+});
+
+describe("marketValue — the shared valuation rule", () => {
+  it("nothing priceable -> null, never 0", () => {
+    expect(marketValue(0, 0, 1000, 100)).toBeNull();     // no weight
+    expect(marketValue(10, 20, null, null)).toBeNull();  // no prices
+    expect(marketValue(10, 0, null, 100)).toBeNull();    // held metal unpriced
+    expect(marketValue(0, 20, 1000, null)).toBeNull();
+  });
+
+  it("skips a metal with zero weight or no price, sums the rest", () => {
+    expect(marketValue(10, 20, 1000, null)).toBe(10000);
+    expect(marketValue(10, 20, 1000, 100)).toBe(12000);
+    expect(marketValue(0, 20, 1000, 100)).toBe(2000);
   });
 });
 

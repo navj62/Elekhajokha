@@ -54,6 +54,27 @@ export function daysToUnderwater(
   return Math.ceil((target - amountOwed) / dailyAccrual);
 }
 
+/**
+ * Market value of pure-metal net weights at the given INR/gram prices.
+ *
+ * A metal with zero weight or no price contributes nothing; when neither
+ * metal can be priced the result is null ("could not value"), never 0.
+ * Unrounded — callers round for display. calculateLTV is built on this, so
+ * every valuation in the app shares one rule.
+ */
+export function marketValue(
+  goldWeight:  number,
+  silverWeight: number,
+  goldPrice:   number | null,
+  silverPrice: number | null,
+): number | null {
+  const goldValue   = goldWeight   > 0 && goldPrice   != null ? goldWeight   * goldPrice   : null;
+  const silverValue = silverWeight > 0 && silverPrice != null ? silverWeight * silverPrice : null;
+  if (goldValue === null && silverValue === null) return null;
+
+  return (goldValue ?? 0) + (silverValue ?? 0);
+}
+
 interface LTVInput {
   principal:           number;
   rate:                number;
@@ -84,32 +105,21 @@ export function calculateLTV(input: LTVInput): LTVResult {
     input.compoundingDuration
   );
 
-  const hasGold   = input.goldWeight   > 0 && input.goldPrice   !== null;
-  const hasSilver = input.silverWeight > 0 && input.silverPrice !== null;
+  const value = marketValue(
+    input.goldWeight, input.silverWeight, input.goldPrice, input.silverPrice,
+  );
 
-  if (!hasGold && !hasSilver) {
+  if (value === null) {
     return { amountOwed, marketValue: null, ltv: null, riskTier: null };
   }
 
- const goldValue =
-  input.goldWeight > 0 && input.goldPrice != null
-    ? input.goldWeight * input.goldPrice
-    : 0;
-
-const silverValue =
-  input.silverWeight > 0 && input.silverPrice != null
-    ? input.silverWeight * input.silverPrice
-    : 0;
-
-const marketValue = goldValue + silverValue;
-
-  const ltv = marketValue > 0
-    ? Math.round((amountOwed / marketValue) * 10000) / 100
+  const ltv = value > 0
+    ? Math.round((amountOwed / value) * 10000) / 100
     : null;
 
   return {
     amountOwed,
-    marketValue: Math.round(marketValue * 100) / 100,
+    marketValue: Math.round(value * 100) / 100,
     ltv,
     riskTier: ltv !== null ? getRiskTier(ltv) : null,
   };
