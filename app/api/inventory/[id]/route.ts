@@ -20,11 +20,38 @@ export async function GET(_req: NextRequest, context: RouteContext) {
     const item = await prisma.inventoryItem.findFirst({
       where:   { id, ownerId: user.id },
       include: {
+        // Settlement data for PLEDGE_SALE items. Reached only through an item
+        // the where clause above has already proven this user owns.
         sourcePledge: {
           select: {
             id: true,
             customerId: true,
             customer: { select: { name: true } },
+            pledgeDate:       true,
+            loanAmount:       true,
+            interestRate:     true,
+            releaseDate:      true,
+            totalInterest:    true,
+            receivableAmount: true,
+            durationMonths:   true,
+            // The immutable record written by the sell route. Absent for
+            // legacy sales that predate the audit trail.
+            pledgeAudits: {
+              where:   { action: "SOLD" },
+              orderBy: { createdAt: "desc" },
+              take:    1,
+              select: {
+                principal:            true,
+                totalInterest:        true,
+                receivableAmount:     true,
+                durationMonths:       true,
+                releaseDate:          true,
+                goldPricePerGram:     true,
+                silverPricePerGram:   true,
+                marketValueAtRelease: true,
+                ltvAtRelease:         true,
+              },
+            },
           },
         },
       },

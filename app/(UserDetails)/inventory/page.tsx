@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Archive,
   Inbox,
@@ -78,270 +79,6 @@ function fmtDate(iso: string) {
 
 function fmtINR(n: number) {
   return "₹" + n.toLocaleString("en-IN");
-}
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/* ================================================================== */
-/*  Sell Modal                                                          */
-/* ================================================================== */
-
-function SellModal({
-  item,
-  onClose,
-  onSuccess,
-}: {
-  item: InventoryItem;
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const [form, setForm] = useState({
-    soldPrice: "",
-    soldAt: todayISO(),
-    buyerName: "",
-    buyerMobile: "",
-    saleNotes: "",
-  });
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const soldPriceNum = Number(form.soldPrice);
-  const acquiredCost = Number(item.acquiredCost);
-  const profit = !isNaN(soldPriceNum) && form.soldPrice !== "" ? soldPriceNum - acquiredCost : null;
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-
-    if (isNaN(soldPriceNum) || soldPriceNum <= 0) {
-      setError("Sale price must be > 0.");
-      return;
-    }
-    if (!form.soldAt) {
-      setError("Sale date is required.");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const res = await fetch(`/api/inventory/${item.id}/sell`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          soldPrice: soldPriceNum,
-          soldAt: form.soldAt,
-          buyerName: form.buyerName.trim() || null,
-          buyerMobile: form.buyerMobile.trim() || null,
-          saleNotes: form.saleNotes.trim() || null,
-        }),
-      });
-      const data = await res.json();
-      if (res.status === 409)
-        throw new Error("This item was already sold.");
-      if (!res.ok)
-        throw new Error(data?.error ?? "Failed to record sale.");
-      onSuccess();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unexpected error.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const metalLabel = item.purity
-    ? `${item.metalType} ${Number(item.purity).toFixed(0)}K`
-    : item.metalType;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-      <div
-        className="relative w-full max-w-[480px] rounded-[22px] p-7 shadow-2xl"
-        style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
-      >
-        <button
-          onClick={onClose}
-          className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-[#EAE9DF] transition-colors"
-          style={{ color: "var(--muted-foreground)" }}
-        >
-          <X size={18} />
-        </button>
-
-        <h2 className="text-[18px] font-bold mb-1" style={{ color: "var(--foreground)" }}>
-          Record Sale
-        </h2>
-
-        {/* Item summary */}
-        <div
-          className="flex items-center gap-3 p-3.5 rounded-[14px] mb-5 mt-3"
-          style={{ backgroundColor: "var(--background)", border: "1px solid var(--border)" }}
-        >
-          {item.photoUrl ? (
-            <img src={item.photoUrl} alt="" className="w-11 h-11 rounded-xl object-cover shrink-0 border border-black/5 shadow-sm" />
-          ) : (
-            <div
-              className="w-11 h-11 rounded-xl shrink-0 flex items-center justify-center bg-[#F5F4E7] border border-[#EAE9DF] text-[#565C3F]"
-            >
-              <Package size={18} />
-            </div>
-          )}
-          <div className="min-w-0">
-            <p className="text-[14px] font-semibold truncate" style={{ color: "var(--foreground)" }}>
-              {item.description}
-            </p>
-            <p className="text-[12px] mt-0.5 font-medium" style={{ color: "var(--muted-foreground)" }}>
-              {metalLabel} · {Number(item.weightGrams).toFixed(2)}g ·{" "}
-              <span style={{ color: "var(--muted-foreground-subtle)" }}>
-                Acquired for {acquiredCost === 0 ? "free (forfeited)" : fmtINR(acquiredCost)}
-              </span>
-            </p>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Sale Price */}
-          <div>
-            <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted-foreground)" }}>
-              Sale Price (₹) *
-            </label>
-            <input
-              type="number"
-              min="0.01"
-              step="any"
-              value={form.soldPrice}
-              onChange={(e) => setForm((f) => ({ ...f, soldPrice: e.target.value }))}
-              placeholder="e.g. 55000"
-              className="w-full px-3.5 py-2.5 rounded-[12px] text-[13.5px] font-medium outline-none focus:ring-2 focus:ring-[#565C3F] transition-all"
-              style={{
-                backgroundColor: "var(--background)",
-                border: "1px solid var(--border)",
-                color: "var(--foreground)",
-              }}
-            />
-          </div>
-
-          {/* Live profit */}
-          {profit !== null && (
-            <div
-              className="px-3.5 py-2.5 rounded-[12px] text-[13px] font-bold flex items-center justify-between"
-              style={{
-                backgroundColor: profit > 0 ? "#E8F0DC" : profit < 0 ? "#FEE2E2" : "var(--background)",
-                color: profit > 0 ? "#4D6B2A" : profit < 0 ? "#991B1B" : "var(--muted-foreground)",
-                border: `1px solid ${profit > 0 ? "#C8D9A8" : profit < 0 ? "#FECACA" : "var(--border)"}`,
-              }}
-            >
-              <span>{profit > 0 ? "Estimated Profit" : profit < 0 ? "Estimated Loss" : "Break Even"}</span>
-              <span>{profit > 0 ? `+${fmtINR(profit)}` : profit < 0 ? `-${fmtINR(Math.abs(profit))}` : "₹0"}</span>
-            </div>
-          )}
-
-          {/* Sale Date */}
-          <div>
-            <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted-foreground)" }}>
-              Sale Date *
-            </label>
-            <input
-              type="date"
-              max={todayISO()}
-              value={form.soldAt}
-              onChange={(e) => setForm((f) => ({ ...f, soldAt: e.target.value }))}
-              className="w-full px-3.5 py-2.5 rounded-[12px] text-[13.5px] font-medium outline-none focus:ring-2 focus:ring-[#565C3F] transition-all"
-              style={{
-                backgroundColor: "var(--background)",
-                border: "1px solid var(--border)",
-                color: "var(--foreground)",
-              }}
-            />
-          </div>
-
-          {/* Buyer Name + Mobile */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted-foreground)" }}>
-                Buyer Name (opt)
-              </label>
-              <input
-                type="text"
-                value={form.buyerName}
-                onChange={(e) => setForm((f) => ({ ...f, buyerName: e.target.value }))}
-                placeholder="e.g. Sunita Devi"
-                className="w-full px-3.5 py-2.5 rounded-[12px] text-[13.5px] font-medium outline-none focus:ring-2 focus:ring-[#565C3F] transition-all"
-                style={{
-                  backgroundColor: "var(--background)",
-                  border: "1px solid var(--border)",
-                  color: "var(--foreground)",
-                }}
-              />
-            </div>
-
-            <div>
-              <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted-foreground)" }}>
-                Buyer Mobile (opt)
-              </label>
-              <input
-                type="text"
-                value={form.buyerMobile}
-                onChange={(e) => setForm((f) => ({ ...f, buyerMobile: e.target.value }))}
-                placeholder="e.g. 9876543210"
-                className="w-full px-3.5 py-2.5 rounded-[12px] text-[13.5px] font-medium outline-none focus:ring-2 focus:ring-[#565C3F] transition-all"
-                style={{
-                  backgroundColor: "var(--background)",
-                  border: "1px solid var(--border)",
-                  color: "var(--foreground)",
-                }}
-              />
-            </div>
-          </div>
-
-          {/* Notes */}
-          <div>
-            <label className="block text-[12px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--muted-foreground)" }}>
-              Notes (optional)
-            </label>
-            <textarea
-              rows={2}
-              value={form.saleNotes}
-              onChange={(e) => setForm((f) => ({ ...f, saleNotes: e.target.value }))}
-              placeholder="Any sale details"
-              className="w-full px-3.5 py-2.5 rounded-[12px] text-[13.5px] font-medium outline-none resize-none focus:ring-2 focus:ring-[#565C3F] transition-all"
-              style={{
-                backgroundColor: "var(--background)",
-                border: "1px solid var(--border)",
-                color: "var(--foreground)",
-              }}
-            />
-          </div>
-
-          {error && (
-            <div
-              className="px-3.5 py-2.5 rounded-[12px] text-[13px] font-semibold bg-[#FEE2E2] text-[#991B1B] border border-[#FECACA]"
-            >
-              {error}
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 py-2.5 rounded-[12px] text-[13.5px] font-semibold transition-colors bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--muted-foreground)] hover:bg-[#EAE9DF]"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="flex-1 py-2.5 rounded-[12px] text-[13.5px] font-semibold text-white flex items-center justify-center gap-2 transition-all bg-[#565C3F] hover:bg-[#464b33] disabled:opacity-60 shadow-sm"
-            >
-              {submitting && <Loader2 size={15} className="animate-spin" />}
-              {submitting ? "Recording…" : "Record Sale"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
 }
 
 /* ================================================================== */
@@ -752,18 +489,10 @@ export default function InventoryPage() {
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "value_high" | "value_low">("newest");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [sellItem, setSellItem] = useState<InventoryItem | null>(null);
   const [viewDetailsItem, setViewDetailsItem] = useState<InventoryItem | null>(null);
+  const router = useRouter();
+  const goToSell = (it: InventoryItem) => router.push(`/inventory/${it.id}/sell`);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const toastRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  function showToast(msg: string) {
-    setToast(msg);
-    if (toastRef.current) clearTimeout(toastRef.current);
-    toastRef.current = setTimeout(() => setToast(null), 4000);
-  }
-
   const loadInventory = useCallback(async () => {
     setLoading(true);
     try {
@@ -866,16 +595,6 @@ export default function InventoryPage() {
   return (
     <SubscriptionGuard>
       <div className="py-6 space-y-4" onClick={() => setOpenMenuId(null)}>
-
-        {/* Toast */}
-        {toast && (
-          <div
-            className="fixed bottom-6 right-6 z-50 px-4 py-3 rounded-[12px] text-[13px] font-semibold text-white shadow-xl animate-in fade-in slide-in-from-bottom-3 duration-200"
-            style={{ backgroundColor: "#565C3F" }}
-          >
-            {toast}
-          </div>
-        )}
 
         {/* Header + Subtitle + Add Item CTA */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1123,8 +842,8 @@ export default function InventoryPage() {
                       <InventoryRow
                         key={item.id}
                         item={item}
-                        onSell={setSellItem}
-                        onViewDetails={setViewDetailsItem}
+                        onSell={goToSell}
+                        onViewDetails={(it) => router.push(`/inventory/${it.id}`)}
                         openMenuId={openMenuId}
                         setOpenMenuId={setOpenMenuId}
                       />
@@ -1172,25 +891,13 @@ export default function InventoryPage() {
       </div>
 
       {/* Modals */}
-      {sellItem && (
-        <SellModal
-          item={sellItem}
-          onClose={() => setSellItem(null)}
-          onSuccess={() => {
-            setSellItem(null);
-            showToast("Item sold successfully.");
-            loadInventory();
-          }}
-        />
-      )}
-
       {viewDetailsItem && (
         <ItemDetailsModal
           item={viewDetailsItem}
           onClose={() => setViewDetailsItem(null)}
           onSell={(item) => {
             setViewDetailsItem(null);
-            setSellItem(item);
+            goToSell(item);
           }}
         />
       )}
