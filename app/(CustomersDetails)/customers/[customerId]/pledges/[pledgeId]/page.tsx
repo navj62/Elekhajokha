@@ -795,7 +795,7 @@ export default function PledgeDetailPage() {
         <div className="grid gap-3 lg:gap-4 grid-cols-2 lg:grid-cols-4">
           <StatTile
             label="Interest rate"
-            value={`${pledge.interestRate}% / yr · ${pledge.allowCompounding ? COMPOUNDING_LABEL[pledge.compoundingDuration] : "simple"}`}
+            value={`${pledge.interestRate}% / yr · ${pledge.allowCompounding ? COMPOUNDING_LABEL[pledge.compoundingDuration] : "Simple interest"}`}
           />
           <StatTile
             label="Monthly interest"

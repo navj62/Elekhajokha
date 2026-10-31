@@ -429,7 +429,7 @@ export default function SellPledgePage() {
               <div className="bg-[#F9F8F3] rounded-[12px] p-4">
                 <p className="text-[11px] font-medium text-[#8C8F7A] mb-1">Compounding</p>
                 <p className="text-[15px] font-semibold text-[#2C2C2C] mt-1">
-                  {pledge.allowCompounding ? titleCase(pledge.compoundingDuration) : "None"}
+                  {pledge.allowCompounding ? titleCase(pledge.compoundingDuration) : "Simple interest"}
                 </p>
               </div>
             </div>
