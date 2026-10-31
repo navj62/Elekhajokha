@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { Gender } from "@prisma/client"
 import { uploadImage } from "@/lib/upload";
+import { parsePledgeDefaults, type PledgeDefaultsUpdate } from "@/lib/pledgeDefaults";
 
 export async function POST(req: Request) {
   try {
@@ -69,6 +70,20 @@ export async function POST(req: Request) {
       }
     }
 
+    // Optional shop pledge defaults. Same rule as the photo above: onboarding
+    // must ALWAYS complete, so an invalid value is dropped with a warning —
+    // never a 400, never a throw before the Clerk write below. Only valid
+    // values reach the upsert, so they cannot make it fail either.
+    let pledgeDefaults: PledgeDefaultsUpdate = {};
+    try {
+      const parsed = parsePledgeDefaults(formData);
+      pledgeDefaults = parsed.data;
+      if (parsed.errors.length)
+        warnings.push(`Some pledge defaults were not saved (${parsed.errors.join(" ")}) You can set them in your profile.`);
+    } catch {
+      warnings.push("Pledge defaults could not be saved — you can set them in your profile.");
+    }
+
     const user = await prisma.user.upsert({
       where: { clerkUserId: userId },
       create: {
@@ -82,6 +97,7 @@ export async function POST(req: Request) {
         mobile,
         gender: genderEnum,
         profileImageUrl,
+        ...pledgeDefaults,
       },
       update: {
         shopName,
@@ -91,6 +107,7 @@ export async function POST(req: Request) {
         profileImageUrl,
         firstName,
         lastName,
+        ...pledgeDefaults,
       },
     });
 

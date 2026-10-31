@@ -20,6 +20,8 @@ import Sheet from "@/components/ui/Sheet";
 import StickyActions from "@/components/ui/StickyActions";
 import { PLEDGE_FORM_REQUIRED_KEYS } from "@/lib/pledgeFormKeys";
 import { metalContent } from "@/lib/weights";
+import { checkInterestRate } from "@/lib/interestRate";
+import type { CompoundingDurationValue, PledgeDefaults } from "@/lib/pledgeDefaults";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                              */
@@ -68,6 +70,13 @@ const toLocalISODate = (d: Date) =>
  */
 const decimalOnly = (v: string): string | null =>
   v === "" || /^\d*\.?\d*$/.test(v) ? v : null;
+
+type CompoundingLabel = "Monthly" | "Half-Yearly" | "Yearly";
+const COMPOUNDING_LABEL_OF: Record<CompoundingDurationValue, CompoundingLabel> = {
+  MONTHLY: "Monthly",
+  HALFYEARLY: "Half-Yearly",
+  YEARLY: "Yearly",
+};
 
 /* ------------------------------------------------------------------ */
 /* Item Type Select (grouped, API-driven)                             */
@@ -194,9 +203,9 @@ function validateForm(input: {
   if (!input.loanAmount) e.loanAmount = "Enter the loan amount.";
   else if (!isFinite(loan) || loan <= 0) e.loanAmount = "Loan amount must be greater than 0.";
 
-  const rate = Number(input.interestRate);
-  if (!input.interestRate) e.interestRate = "Enter the interest rate.";
-  else if (!isFinite(rate) || rate <= 0) e.interestRate = "Interest rate must be greater than 0.";
+  // Same rule as the POST: above 0, at most 100, at most 2 decimal places.
+  const rate = checkInterestRate(input.interestRate);
+  if (!rate.ok) e.interestRate = rate.message;
 
   const LABEL: Record<string, string> = {
     grossWeight: "Gross weight",
@@ -242,7 +251,11 @@ export default function AddPledgePage() {
   const [pledgeDate, setPledgeDate] = useState("");
   const [loanAmount, setLoanAmount] = useState("");
   const [interestRate, setInterestRate] = useState("");
-  const [compounding, setCompounding] = useState<"Monthly" | "Half-Yearly" | "Yearly">("Monthly");
+  const [compounding, setCompounding] = useState<CompoundingLabel>("Monthly");
+  const [allowCompounding, setAllowCompounding] = useState(true);
+  // Shop defaults pre-fill only what the owner hasn't touched yet — a slow
+  // /api/pledge-defaults response must never overwrite something typed.
+  const touched = useRef({ rate: false, compounding: false, allowCompounding: false });
   const [remarks, setRemarks] = useState("");
   const [pledgePhotoPreview, setPledgePhotoPreview] = useState<string | null>(null);
   const pledgePhotoInputRef = useRef<HTMLInputElement>(null);
@@ -322,6 +335,20 @@ export default function AddPledgePage() {
 
     // Default date to today, in the shop's zone rather than UTC.
     setPledgeDate(toLocalISODate(new Date()));
+
+    // Shop pledge defaults (pre-fill only). No defaults / a failed fetch leaves
+    // today's behaviour: blank rate, compounding on, Monthly.
+    fetch("/api/pledge-defaults")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: PledgeDefaults | null) => {
+        if (!d) return;
+        if (d.defaultInterestRate !== null && !touched.current.rate) setInterestRate(d.defaultInterestRate);
+        if (d.defaultAllowCompounding !== null && !touched.current.allowCompounding)
+          setAllowCompounding(d.defaultAllowCompounding);
+        if (d.defaultCompoundingDuration !== null && !touched.current.compounding)
+          setCompounding(COMPOUNDING_LABEL_OF[d.defaultCompoundingDuration]);
+      })
+      .catch(() => { });
 
     // Fetch item types
     fetch("/api/item-types")
@@ -439,7 +466,10 @@ export default function AddPledgePage() {
       formData.append("pledgeDate", pledgeDate);
       formData.append("loanAmount", loanAmount);
       formData.append("interestRate", interestRate);
+      // Duration is always sent (the column is required); the engine ignores it
+      // when compounding is off.
       formData.append("compoundingDuration", compoundingMap[compounding] || "MONTHLY");
+      formData.append("allowCompounding", String(allowCompounding));
       formData.append("items", JSON.stringify(apiItems));
       if (remarks) formData.append("remark", remarks);
       /* The photo was picked, previewed and then dropped: this FormData is
@@ -614,6 +644,7 @@ export default function AddPledgePage() {
                       onChange={(e) => {
                         const v = decimalOnly(e.target.value);
                         if (v !== null) {
+                          touched.current.rate = true;
                           setInterestRate(v);
                           clearError("interestRate");
                         }
@@ -623,14 +654,48 @@ export default function AddPledgePage() {
                     <FieldError id={`${fieldId("interestRate")}-err`}>{errors.interestRate}</FieldError>
                   </div>
 
-                  {/* Compounding Duration */}
+                  {/* Compounding — on/off, then duration (hidden when off) */}
                   <div>
-                    <label className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle mb-2">Compounding Duration</label>
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <span id="compounding-label" className="block text-[12px] font-bold tracking-wide text-muted-foreground-subtle">
+                        {allowCompounding ? "Compounding Duration" : "Compounding"}
+                      </span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={allowCompounding}
+                        aria-label="Compound interest"
+                        onClick={() => {
+                          touched.current.allowCompounding = true;
+                          setAllowCompounding((v) => !v);
+                        }}
+                        className="inline-flex items-center gap-2 min-h-11 -my-3 text-[12px] font-bold text-muted-foreground"
+                      >
+                        {allowCompounding ? "On" : "Off"}
+                        <span
+                          aria-hidden="true"
+                          className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border border-border transition-colors ${allowCompounding ? "bg-primary" : "bg-card-alt"}`}
+                        >
+                          <span
+                            className={`absolute top-0.5 size-[18px] rounded-full bg-card shadow-sm transition-transform ${allowCompounding ? "translate-x-[22px]" : "translate-x-0.5"}`}
+                          />
+                        </span>
+                      </button>
+                    </div>
+                    {!allowCompounding ? (
+                      <p className="flex items-center min-h-11 px-3 py-3 rounded-[12px] border border-border bg-card-alt text-[13px] text-muted-foreground">
+                        Simple interest — no compounding.
+                      </p>
+                    ) : (
                     <div className="flex items-center bg-card-alt p-1 rounded-[12px] border border-border">
                       {(["Monthly", "Half-Yearly", "Yearly"] as const).map((opt) => (
                         <button
                           key={opt}
-                          onClick={() => setCompounding(opt)}
+                          type="button"
+                          onClick={() => {
+                            touched.current.compounding = true;
+                            setCompounding(opt);
+                          }}
                           className={`flex-1 min-h-11 py-3 text-[13px] font-bold rounded-[8px] transition-all ${compounding === opt
                             ? "bg-primary shadow-sm text-primary-foreground border border-border"
                             : "text-muted-foreground-subtle hover:text-foreground border border-transparent"
@@ -640,6 +705,7 @@ export default function AddPledgePage() {
                         </button>
                       ))}
                     </div>
+                    )}
                   </div>
                 </div>
               </div>

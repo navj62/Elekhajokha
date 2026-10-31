@@ -7,6 +7,11 @@ import {
   Camera, Loader2, UserPlus, Mail, Briefcase,
   Shield, Check, ArrowLeft, HelpCircle,
 } from "lucide-react";
+import PledgeDefaultsFields, {
+  EMPTY_PLEDGE_DEFAULTS,
+  appendPledgeDefaults,
+  type PledgeDefaultsValue,
+} from "@/components/PledgeDefaultsFields";
 
 /* ═══════════════════════════════════════
    Sub-components
@@ -78,6 +83,10 @@ export default function OnboardingPage() {
     gender: "Male",
   });
 
+  // Optional — never blocks finishing. An invalid value is shown inline and
+  // dropped server-side with a warning; the request still succeeds.
+  const [pledgeDefaults, setPledgeDefaults] = useState<PledgeDefaultsValue>(EMPTY_PLEDGE_DEFAULTS);
+
   const [imageUploading, setImageUploading] = useState(false);
   const [profileImage, setProfileImage] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -116,6 +125,7 @@ export default function OnboardingPage() {
       fd.append("mobile", form.mobile);
       fd.append("gender", form.gender);
       if (profileImage) fd.append("profileImage", profileImage);
+      appendPledgeDefaults(fd, pledgeDefaults);
 
       const res = await fetch("/api/onboarding", { method: "POST", body: fd });
       if (!res.ok) {
@@ -435,6 +445,17 @@ export default function OnboardingPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Optional pledge defaults — pre-fill new pledges; never required. */}
+                <section aria-labelledby="onboarding-pledge-defaults" className="pt-2 border-t border-border">
+                  <h2 id="onboarding-pledge-defaults" className="text-[10px] font-bold text-muted-foreground tracking-widest uppercase mt-4">
+                    Pledge defaults (optional)
+                  </h2>
+                  <p className="text-[13px] text-muted-foreground mt-1 mb-4 leading-relaxed">
+                    Pre-fills every new pledge. You can change them on each pledge, or later in your profile.
+                  </p>
+                  <PledgeDefaultsFields idPrefix="onboarding" value={pledgeDefaults} onChange={setPledgeDefaults} />
+                </section>
 
                 {error && (
                   <div className="text-red-500 text-[13px] font-medium bg-red-50 p-3 rounded-xl border border-red-100 flex items-center gap-2">

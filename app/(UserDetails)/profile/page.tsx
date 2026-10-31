@@ -4,6 +4,14 @@ import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { Loader2, User, Mail, CalendarDays, Lock, Info, Edit2, X } from "lucide-react";
+import PledgeDefaultsFields, {
+  EMPTY_PLEDGE_DEFAULTS,
+  appendPledgeDefaults,
+  pledgeDefaultRateError,
+  pledgeDefaultsFromApi,
+  type PledgeDefaultsValue,
+} from "@/components/PledgeDefaultsFields";
+import type { PledgeDefaults } from "@/lib/pledgeDefaults";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -27,6 +35,9 @@ interface Profile {
   activePledges: number;
   shopownerTerms: string | null;
   customerTerms: string | null;
+  defaultInterestRate: PledgeDefaults["defaultInterestRate"];
+  defaultAllowCompounding: PledgeDefaults["defaultAllowCompounding"];
+  defaultCompoundingDuration: PledgeDefaults["defaultCompoundingDuration"];
 }
 
 export default function ProfilePage() {
@@ -49,6 +60,12 @@ export default function ProfilePage() {
   const [customerTerms, setCustomerTerms] = useState("");
   const [termsSaving, setTermsSaving] = useState(false);
   const [termsErr, setTermsErr] = useState("");
+
+  // ── Pledge defaults state ─────────────────────────────────────────────
+  const [pledgeDefaults, setPledgeDefaults] = useState<PledgeDefaultsValue>(EMPTY_PLEDGE_DEFAULTS);
+  const [defaultsSaving, setDefaultsSaving] = useState(false);
+  const [defaultsErr, setDefaultsErr] = useState("");
+  const [defaultsSaved, setDefaultsSaved] = useState(false);
 
   // ── Item Types state ──────────────────────────────────────────────────
   type ItemTypeEntry = { id: string; label: string; isDefault: boolean };
@@ -75,6 +92,7 @@ export default function ProfilePage() {
         });
         setShopownerTerms(data.shopownerTerms ?? "");
         setCustomerTerms(data.customerTerms ?? "");
+        setPledgeDefaults(pledgeDefaultsFromApi(data));
       })
       .catch((e) => setFetchErr(e.message))
       .finally(() => setFetching(false));
@@ -154,6 +172,27 @@ export default function ProfilePage() {
       if (!res.ok) { const d = await res.json(); throw new Error(d.error || "Failed"); }
     } catch (e) { setTermsErr((e as Error).message); }
     finally { setTermsSaving(false); }
+  }
+
+  async function handleDefaultsSave() {
+    setDefaultsErr(""); setDefaultsSaved(false);
+    const rateError = pledgeDefaultRateError(pledgeDefaults.rate);
+    if (rateError) { setDefaultsErr(rateError); return; }
+    setDefaultsSaving(true);
+    try {
+      // Only the three default fields — every other profile field is left as is.
+      const fd = new FormData();
+      appendPledgeDefaults(fd, pledgeDefaults);
+      const res = await fetch("/api/profile", { method: "PATCH", body: fd });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.message || d.error || "Failed to save defaults");
+      setPledgeDefaults(pledgeDefaultsFromApi({
+        ...d,
+        defaultInterestRate: d.defaultInterestRate != null ? String(d.defaultInterestRate) : null,
+      }));
+      setDefaultsSaved(true);
+    } catch (e) { setDefaultsErr((e as Error).message); }
+    finally { setDefaultsSaving(false); }
   }
 
   if (!clerkLoaded || fetching) {
@@ -453,6 +492,42 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+
+          {/* Pledge Defaults */}
+          <section aria-labelledby="pledge-defaults-heading" className="bg-card rounded-[20px] border border-border shadow-sm p-6">
+            <div className="mb-5">
+              <h3 id="pledge-defaults-heading" className="text-[18px] font-semibold text-foreground">Pledge Defaults</h3>
+              <p className="text-[13px] text-muted-foreground mt-1.5 leading-relaxed">
+                Pre-fill the new-pledge form. You can still change them on each pledge, and changing them
+                here never alters existing pledges. Leave a field blank or &ldquo;Not set&rdquo; for no default.
+              </p>
+            </div>
+
+            <PledgeDefaultsFields
+              idPrefix="profile"
+              value={pledgeDefaults}
+              onChange={(v) => { setPledgeDefaults(v); setDefaultsSaved(false); }}
+            />
+
+            {defaultsErr && (
+              <p role="alert" className="mt-4 text-[13px] text-destructive">{defaultsErr}</p>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-5">
+              {defaultsSaved && (
+                <span role="status" className="text-[13px] text-muted-foreground">Saved</span>
+              )}
+              <button
+                type="button"
+                onClick={handleDefaultsSave}
+                disabled={defaultsSaving}
+                className="min-h-11 bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60 text-[13px] font-semibold px-6 rounded-[12px] transition-opacity flex items-center gap-2 shadow-sm"
+              >
+                {defaultsSaving && <Loader2 size={14} className="animate-spin" />}
+                Save Defaults
+              </button>
+            </div>
+          </section>
 
           {/* Item Types */}
           <div className="bg-white rounded-[20px] border border-[#ECEAE4] shadow-sm p-6">

@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { uploadImage } from "@/lib/upload";
 import { Gender } from "@prisma/client";
+import { parsePledgeDefaults } from "@/lib/pledgeDefaults";
 
 /* ------------------------------------------------------------------ */
 /*  GET /api/profile                                                    */
@@ -32,6 +33,9 @@ export async function GET() {
         subscriptionEndDate: true,
         shopownerTerms: true,
         customerTerms: true,
+        defaultInterestRate: true,
+        defaultAllowCompounding: true,
+        defaultCompoundingDuration: true,
         createdAt: true,
         _count: {
           select: {
@@ -55,6 +59,7 @@ export async function GET() {
 
     return NextResponse.json({
       ...user,
+      defaultInterestRate: user.defaultInterestRate?.toString() ?? null,
       totalCustomers: user._count.customers,
       activePledges,
     });
@@ -135,6 +140,17 @@ export async function PATCH(req: Request) {
       }
     }
 
+    /* Pledge defaults — only present when the Pledge Defaults card saves.
+       Absent → unchanged, "" → cleared, invalid → 400 (unlike onboarding,
+       settings can simply ask again). */
+    const pledgeDefaults = parsePledgeDefaults(formData);
+    if (pledgeDefaults.errors.length) {
+      return NextResponse.json(
+        { error: "VALIDATION", message: pledgeDefaults.errors.join(" ") },
+        { status: 400 }
+      );
+    }
+
     /* ☁️ Upload image if present — optional side effect. User.profileImageUrl
        is nullable and display-only (never read by receipts/PDFs). A
        Cloudinary outage must not block saving the rest of this PATCH (shop
@@ -170,6 +186,7 @@ export async function PATCH(req: Request) {
         ...(profileImageUrl && { profileImageUrl }), // ✅ only if uploaded
         ...(shopownerTerms !== undefined && { shopownerTerms: shopownerTerms }),
         ...(customerTerms  !== undefined && { customerTerms: customerTerms }),
+        ...pledgeDefaults.data,
       },
     });
 

@@ -33,6 +33,12 @@ model User {
   updatedAt              DateTime           @updatedAt
   customerTerms          String?
   shopownerTerms         String?
+  // Shop-level pledge defaults. They only PRE-FILL the new-pledge form; every
+  // pledge stores its own interestRate / allowCompounding / compoundingDuration,
+  // and changing these never touches existing pledges. Null = no default.
+  defaultInterestRate        Decimal?             @db.Decimal(5, 2)
+  defaultAllowCompounding    Boolean?
+  defaultCompoundingDuration CompoundingDuration?
   customers              Customer[]
   alerts                 PledgeAlert[]
   tasks                  Task[]

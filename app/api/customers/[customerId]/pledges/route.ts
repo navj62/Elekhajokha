@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { uploadImage } from "@/lib/upload";
 import { metalContent } from "@/lib/weights";
 import { Prisma, MetalType, CompoundingDuration } from "@prisma/client";
+import { checkInterestRate } from "@/lib/interestRate";
 
 type RouteContext = {
   params: Promise<{ customerId: string }>;
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const loanAmount          = formData.get("loanAmount")?.toString();
     const interestRate        = formData.get("interestRate")?.toString();
     const compoundingDuration = formData.get("compoundingDuration")?.toString();
+    const allowCompoundingRaw = formData.get("allowCompounding");
     const pledgeDate          = formData.get("pledgeDate")?.toString();
     const remark              = formData.get("remark")?.toString() || null;
     const imageFile           = formData.get("itemPhoto");
@@ -68,10 +70,22 @@ export async function POST(req: NextRequest, context: RouteContext) {
         { status: 400 }
       );
 
+    // Absent → true, so every caller that predates the toggle (and the DB
+    // default) behaves exactly as before. FormData carries strings, so the only
+    // accepted values are "true" / "false".
+    let allowCompounding = true;
+    if (allowCompoundingRaw !== null) {
+      if (allowCompoundingRaw !== "true" && allowCompoundingRaw !== "false")
+        return NextResponse.json(
+          { error: "VALIDATION", message: "allowCompounding must be true or false" },
+          { status: 400 }
+        );
+      allowCompounding = allowCompoundingRaw === "true";
+    }
+
     // ── Bounds: keep money inputs sane before they reach interest/LTV math ──
     // Compare on Number(), but keep the original strings for Decimal storage.
     const loanAmountNum   = Number(loanAmount);
-    const interestRateNum = Number(interestRate);
 
     if (isNaN(loanAmountNum) || loanAmountNum <= 0 || loanAmountNum > 10_00_00_000)
       return NextResponse.json(
@@ -79,11 +93,10 @@ export async function POST(req: NextRequest, context: RouteContext) {
         { status: 400 }
       );
 
-    if (isNaN(interestRateNum) || interestRateNum < 0 || interestRateNum > 100)
-      return NextResponse.json(
-        { error: "Interest rate must be between 0 and 100" },
-        { status: 400 }
-      );
+    // Above 0, at most 100, at most 2 decimal places (lib/interestRate.ts).
+    const rateCheck = checkInterestRate(interestRate);
+    if (!rateCheck.ok)
+      return NextResponse.json({ error: rateCheck.message }, { status: 400 });
 
     // ── Items ─────────────────────────────────────────────────────
     const itemsRaw = formData.get("items")?.toString();
@@ -191,7 +204,8 @@ export async function POST(req: NextRequest, context: RouteContext) {
         customerId,
         pledgeDate:          new Date(pledgeDate),
         loanAmount:          toDecimal(loanAmount),
-        interestRate:        toDecimal(interestRate),
+        interestRate:        toDecimal(rateCheck.value),
+        allowCompounding,
         compoundingDuration: compoundingDuration as CompoundingDuration,
         status:              "ACTIVE",
         remark,
