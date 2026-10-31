@@ -2,344 +2,227 @@
 import path from "path";
 import PDFDocument from "pdfkit";
 
-type Row = {
-  index: number;
-  name: string;
-  mobile: string;
-  pledgeCount: number;
-  totalLoan: number;
-  createdAt: string;
-  riskScore: number;
-  riskTier: string;
+// ── Reports export (Active / Released / Customer tabs) ──────────────
+
+// Noto Sans Devanagari (OFL, licence alongside in public/fonts). The Regular
+// cut has Devanagari, digits and ₹ but NO Latin letters, so body text is drawn
+// in script runs: Devanagari + ₹ in Noto Regular, everything else in
+// Helvetica. The Condensed Bold cut covers Latin too, so bold text uses it
+// whole.
+const REPORT_FONT_REGULAR = "NotoDevanagariRegular";
+const REPORT_FONT_BOLD = "NotoDevanagariBold";
+
+export type ReportPdfAlign = "left" | "right" | "center";
+
+export type ReportPdfColumn = {
+  header: string;
+  width: number; // relative weight — scaled to the page's content width
+  align: ReportPdfAlign;
 };
 
-function riskHex(tier: string): string {
-  switch (tier) {
-    case "SAFE":     return "#16a34a";
-    case "WATCH":    return "#d97706";
-    case "AT_RISK":  return "#ea580c";
-    case "CRITICAL": return "#dc2626";
-    default:         return "#6b7280";
+export type ReportPdfCell = { text: string; color?: string };
+
+export type ReportPdfInput = {
+  shop: { shopName: string | null; address: string | null; mobile: string | null };
+  title: string;
+  metaLines: string[];
+  summary: { label: string; value: string }[];
+  columns: ReportPdfColumn[];
+  rows: ReportPdfCell[][];
+  totals: ReportPdfCell[];
+};
+
+const graphemeSegmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
+const graphemes = (s: string) => Array.from(graphemeSegmenter.segment(s), (g) => g.segment);
+
+function needsDevanagariFont(cp: number): boolean {
+  return (
+    (cp >= 0x0900 && cp <= 0x097f) || // Devanagari
+    (cp >= 0xa8e0 && cp <= 0xa8ff) || // Devanagari Extended
+    cp === 0x20b9 ||                  // ₹ — not in Helvetica's WinAnsi set
+    cp === 0x200c || cp === 0x200d    // ZWNJ / ZWJ inside conjuncts
+  );
+}
+
+type TextRun = { font: string; text: string };
+
+function textRuns(text: string, bold: boolean): TextRun[] {
+  if (bold) return [{ font: REPORT_FONT_BOLD, text }];
+  const runs: TextRun[] = [];
+  for (const g of graphemes(text)) {
+    const last = runs[runs.length - 1];
+    // Whitespace stays in the current run so a space never splits a word pair.
+    const font =
+      last && /^\s+$/.test(g)
+        ? last.font
+        : needsDevanagariFont(g.codePointAt(0)!) ? REPORT_FONT_REGULAR : "Helvetica";
+    if (last && last.font === font) last.text += g;
+    else runs.push({ font, text: g });
+  }
+  return runs;
+}
+
+function runsWidth(doc: PDFKit.PDFDocument, runs: TextRun[], size: number): number {
+  return runs.reduce((w, r) => w + doc.font(r.font).fontSize(size).widthOfString(r.text), 0);
+}
+
+/**
+ * Single-line text clipped to `width` with an ellipsis, positioned on a shared
+ * alphabetic baseline so Helvetica and Noto runs line up.
+ */
+function drawLine(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  x: number,
+  baselineY: number,
+  width: number,
+  opts: { size: number; bold?: boolean; color: string; align?: ReportPdfAlign }
+) {
+  const bold = opts.bold ?? false;
+  let runs = textRuns(text, bold);
+  if (runsWidth(doc, runs, opts.size) > width) {
+    const g = graphemes(text);
+    let n = g.length;
+    do {
+      n--;
+      runs = textRuns(g.slice(0, n).join("").trimEnd() + "…", bold);
+    } while (n > 0 && runsWidth(doc, runs, opts.size) > width);
+  }
+  const total = runsWidth(doc, runs, opts.size);
+  let cx =
+    opts.align === "right" ? x + width - total
+    : opts.align === "center" ? x + (width - total) / 2
+    : x;
+  doc.fillColor(opts.color);
+  for (const r of runs) {
+    doc.font(r.font).fontSize(opts.size).text(r.text, cx, baselineY, {
+      lineBreak: false,
+      baseline: "alphabetic",
+    });
+    cx += doc.widthOfString(r.text);
   }
 }
 
-// ── Column layout (portrait A4, content x: 40→555, total 515pt) ──
-// No(20) Name(110) Mobile(85) AddedOn(72) Pledges(45) Loan(90) Risk(93) = 515
-const CUSTOMER_COL = {
-  no:      { x: 40,  w: 20  },
-  name:    { x: 60,  w: 110 },
-  mobile:  { x: 170, w: 85  },
-  addedon: { x: 255, w: 72  },
-  pledges: { x: 327, w: 45  },
-  loan:    { x: 372, w: 90  },
-  risk:    { x: 462, w: 93  },
-};
-
-export function generateCustomerPDF(title: string, rows: Row[]): Promise<Buffer> {
+export function generateReportPDF(input: ReportPdfInput): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 40, size: "A4" });
+    // margin 0: all positions are absolute, and pdfkit must never auto-paginate.
+    const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 0, bufferPages: true });
     const chunks: Buffer[] = [];
 
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    const pageWidth = doc.page.width - 80; // 40 margin each side
-    const col = CUSTOMER_COL;
-    const rowH = 24;
+    const fontDir = path.join(process.cwd(), "public", "fonts");
+    doc.registerFont(REPORT_FONT_REGULAR, path.join(fontDir, "NotoSansDevanagari-Regular.ttf"));
+    doc.registerFont(REPORT_FONT_BOLD, path.join(fontDir, "NotoSansDevanagari_Condensed-Bold.ttf"));
 
-    // ── Header bar ──────────────────────────────────────────
-    doc.rect(40, 40, pageWidth, 40).fill("#1e40af");
-    doc
-      .fillColor("white")
-      .fontSize(18)
-      .font("Helvetica-Bold")
-      .text(title, 40, 52, { width: pageWidth, align: "center" });
+    const olive = "#565C3F";
+    const oliveL = "#EAE9DF";
+    const zebra = "#F7F6F0";
+    const ink = "#1a1a1a";
+    const grey = "#6b7280";
 
-    // ── Meta line ───────────────────────────────────────────
-    const date = new Date().toLocaleDateString("en-IN", {
-      day: "2-digit", month: "short", year: "numeric",
+    const M = 40;
+    const pageW = doc.page.width - M * 2;
+    const pageH = doc.page.height;
+    const bottomLimit = pageH - M - 16; // room for the page footer
+    const rowH = 18;
+    const cellPad = 4;
+    const shopName = input.shop.shopName?.trim() || "";
+
+    // Column x/width, scaled from relative weights.
+    const weightSum = input.columns.reduce((s, c) => s + c.width, 0);
+    let acc = M;
+    const cols = input.columns.map((c) => {
+      const w = (c.width / weightSum) * pageW;
+      const col = { ...c, x: acc, w };
+      acc += w;
+      return col;
     });
-    doc
-      .fillColor("#6b7280")
-      .fontSize(9)
-      .font("Helvetica")
-      .text(`Generated: ${date}   |   Total customers: ${rows.length}`, 40, 92, {
-        width: pageWidth, align: "right",
+
+    const drawRow = (cells: ReportPdfCell[], y: number, o: { fill?: string; bold?: boolean; color: string; size: number }) => {
+      if (o.fill) doc.rect(M, y, pageW, rowH).fill(o.fill);
+      const baseline = y + rowH / 2 + o.size * 0.35;
+      cols.forEach((c, i) => {
+        const cell = cells[i];
+        if (!cell || !cell.text) return;
+        drawLine(doc, cell.text, c.x + cellPad, baseline, c.w - cellPad * 2, {
+          size: o.size, bold: o.bold, color: cell.color ?? o.color, align: c.align,
+        });
       });
+    };
 
-    // ── Table header ────────────────────────────────────────
-    let y = 110;
-    doc.rect(40, y, pageWidth, rowH).fill("#dbeafe");
-    doc.fillColor("#1e3a8a").fontSize(8).font("Helvetica-Bold");
-    doc.text("#",            col.no.x,      y + 7, { width: col.no.w,      align: "center" });
-    doc.text("Customer Name",col.name.x,    y + 7, { width: col.name.w,    align: "left"   });
-    doc.text("Mobile",       col.mobile.x,  y + 7, { width: col.mobile.w,  align: "left"   });
-    doc.text("Added On",     col.addedon.x, y + 7, { width: col.addedon.w, align: "left"   });
-    doc.text("Pledges",      col.pledges.x, y + 7, { width: col.pledges.w, align: "center" });
-    doc.text("Total Loan",   col.loan.x,    y + 7, { width: col.loan.w,    align: "right"  });
-    doc.text("Risk Score",   col.risk.x,    y + 7, { width: col.risk.w,    align: "right"  });
+    const drawHeader = (y: number) => {
+      drawRow(cols.map((c) => ({ text: c.header })), y, { fill: olive, bold: true, color: "white", size: 8.5 });
+      return y + rowH;
+    };
 
-    // ── Table rows ──────────────────────────────────────────
-    y += rowH;
-    rows.forEach((r, i) => {
-      if (y > doc.page.height - 60) {
-        doc.addPage();
-        y = 40;
-      }
-
-      doc.rect(40, y, pageWidth, rowH).fill(i % 2 === 0 ? "#f9fafb" : "white");
-      doc.rect(40, y, pageWidth, rowH).strokeColor("#e5e7eb").lineWidth(0.5).stroke();
-
-      doc.fillColor("#374151").fontSize(8).font("Helvetica");
-      doc.text(String(r.index),                                col.no.x,      y + 7, { width: col.no.w,      align: "center" });
-      doc.text(r.name,                                         col.name.x,    y + 7, { width: col.name.w,    align: "left"   });
-      doc.text(r.mobile || "—",                                col.mobile.x,  y + 7, { width: col.mobile.w,  align: "left"   });
-      doc.text(r.createdAt,                                    col.addedon.x, y + 7, { width: col.addedon.w, align: "left"   });
-      doc.text(String(r.pledgeCount),                          col.pledges.x, y + 7, { width: col.pledges.w, align: "center" });
-      doc.text(`Rs.${Math.round(r.totalLoan).toLocaleString("en-IN")}`, col.loan.x, y + 7, { width: col.loan.w, align: "right" });
-
-      // Risk score colored by tier
-      const tierLabel = r.riskTier === "AT_RISK" ? "AT RISK" : r.riskTier;
-      doc.fillColor(riskHex(r.riskTier)).font("Helvetica-Bold");
-      doc.text(`${r.riskScore} ${tierLabel}`,                  col.risk.x,    y + 7, { width: col.risk.w,    align: "right"  });
-
-      y += rowH;
-    });
-
-    // ── Footer line ─────────────────────────────────────────
-    if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
-    const totalLoan = rows.reduce((s, r) => s + r.totalLoan, 0);
-    doc.rect(40, y, pageWidth, rowH).fill("#dbeafe");
-    doc.fillColor("#1e3a8a").fontSize(8).font("Helvetica-Bold");
-    doc.text("Total",                                          col.name.x,    y + 7, { width: col.name.w,    align: "left"   });
-    doc.text(String(rows.length),                              col.pledges.x, y + 7, { width: col.pledges.w, align: "center" });
-    doc.text(`Rs.${Math.round(totalLoan).toLocaleString("en-IN")}`, col.loan.x, y + 7, { width: col.loan.w, align: "right" });
-
-    doc.end();
-  });
-}
-
-
-// lib/generatePDF.ts  — add this function alongside generateCustomerPDF
-
-type PledgeRow = {
-  index: number;
-  customerName: string;
-  pledgeDate: string;
-  releaseDate: string | null;
-  itemType: string;
-  itemName: string;
-  netWeight: number;
-  netWeightOfGold: number;
-  netWeightOfSilver: number;
-  loanAmount: number;
-  interestAccrued: number;
-  receivableAmount: number | null;
-  marketValue: number | null;
-  ltv: number | null;
-  status: string;
-};
-
-// LTV thresholds mirror the financial-summary web colors.
-function ltvHex(ltv: number | null): string {
-  if (ltv === null) return "#9ca3af";
-  if (ltv < 65) return "#4D6B2A";
-  if (ltv <= 75) return "#8A6B17";
-  if (ltv <= 90) return "#9A4B14";
-  return "#B91C1C";
-}
-
-export function generatePledgePDF(
-  title: string,
-  rows: PledgeRow[],
-  variant: "active" | "released" = "active"
-): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 40, size: "A4" });
-    const chunks: Buffer[] = [];
-
-    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
-
-    const pageWidth = doc.page.width - 80;
-
-    // ── Header bar ──────────────────────────────────────────
-    doc.rect(40, 40, pageWidth, 40).fill("#065f46");
-    doc
-      .fillColor("white")
-      .fontSize(18)
-      .font("Helvetica-Bold")
-      .text(title, 40, 52, { width: pageWidth, align: "center" });
-
-    const date = new Date().toLocaleDateString("en-IN", {
-      day: "2-digit", month: "short", year: "numeric",
-    });
-    doc
-      .fillColor("#6b7280")
-      .fontSize(9)
-      .font("Helvetica")
-      .text(
-        `Generated: ${date}   |   Total pledges: ${rows.length}`,
-        40, 92, { width: pageWidth, align: "right" }
-      );
-
-    // ── Column layout (portrait A4, content x: 40→555, total 515pt) ──
-    // Active:   Customer(90) Date(55) Pledge(55) GoldWt(42) SilverWt(42)
-    //           Loan(65) Interest(60) Receivable(70) LTV(36) = 515pt
-    // Released: Customer(82) Date(52) Released(52) Pledge(45) NetWt(42)
-    //           Loan(63) Interest(59) Receivable(70) LTV(50) = 515pt
-    const isReleased = variant === "released";
-    const col = isReleased
-      ? {
-          customer:   { x: 40,  w: 82 },
-          date:       { x: 122, w: 52 },
-          released:   { x: 174, w: 52 },
-          pledge:     { x: 226, w: 45 },
-          netwt:      { x: 271, w: 42 },
-          loan:       { x: 313, w: 63 },
-          interest:   { x: 376, w: 59 },
-          receivable: { x: 435, w: 70 },
-          ltv:        { x: 505, w: 50 },
-        }
-      : {
-          customer:   { x: 40,  w: 90 },
-          date:       { x: 130, w: 55 },
-          pledge:     { x: 185, w: 55 },
-          goldwt:     { x: 240, w: 42 },
-          silverwt:   { x: 282, w: 42 },
-          loan:       { x: 324, w: 65 },
-          interest:   { x: 389, w: 60 },
-          receivable: { x: 449, w: 70 },
-          ltv:        { x: 519, w: 36 },
-        };
-    const rowH = 30;
-
-    const rupees = (n: number) => `Rs.${Math.round(n).toLocaleString("en-IN")}`;
-
-    // ── Table header ────────────────────────────────────────
-    let y = 110;
-    doc.rect(40, y, pageWidth, rowH).fill("#d1fae5");
-    doc.fillColor("#065f46").fontSize(8).font("Helvetica-Bold");
-
-    if (isReleased) {
-      const rc = col as typeof col & {
-        released: { x: number; w: number };
-        pledge:   { x: number; w: number };
-        netwt:    { x: number; w: number };
-      };
-      doc.text("Customer",   rc.customer.x,   y + 9, { width: rc.customer.w,   align: "left"  });
-      doc.text("Date",       rc.date.x,       y + 9, { width: rc.date.w,       align: "left"  });
-      doc.text("Released",   rc.released.x,   y + 9, { width: rc.released.w,   align: "left"  });
-      doc.text("Pledge",     rc.pledge.x,     y + 9, { width: rc.pledge.w,     align: "left"  });
-      doc.text("Net Wt",     rc.netwt.x,      y + 9, { width: rc.netwt.w,      align: "right" });
-      doc.text("Loan",       rc.loan.x,       y + 9, { width: rc.loan.w,       align: "right" });
-      doc.text("Interest",   rc.interest.x,   y + 9, { width: rc.interest.w,   align: "right" });
-      doc.text("Receivable", rc.receivable.x, y + 9, { width: rc.receivable.w, align: "right" });
-      doc.text("LTV",        rc.ltv.x,        y + 9, { width: rc.ltv.w,        align: "right" });
-    } else {
-      const ac = col as typeof col & {
-        pledge:   { x: number; w: number };
-        goldwt:   { x: number; w: number };
-        silverwt: { x: number; w: number };
-      };
-      doc.text("Customer",   ac.customer.x,   y + 9, { width: ac.customer.w,   align: "left"  });
-      doc.text("Date",       ac.date.x,       y + 9, { width: ac.date.w,       align: "left"  });
-      doc.text("Pledge",     ac.pledge.x,     y + 9, { width: ac.pledge.w,     align: "left"  });
-      doc.text("Gold Wt",    ac.goldwt.x,     y + 9, { width: ac.goldwt.w,     align: "right" });
-      doc.text("Silver Wt",  ac.silverwt.x,   y + 9, { width: ac.silverwt.w,   align: "right" });
-      doc.text("Loan",       ac.loan.x,       y + 9, { width: ac.loan.w,       align: "right" });
-      doc.text("Interest",   ac.interest.x,   y + 9, { width: ac.interest.w,   align: "right" });
-      doc.text("Receivable", ac.receivable.x, y + 9, { width: ac.receivable.w, align: "right" });
-      doc.text("LTV",        ac.ltv.x,        y + 9, { width: ac.ltv.w,        align: "right" });
+    // ── Letterhead (first page) ──────────────────────────────────
+    let y = M;
+    if (shopName) {
+      drawLine(doc, shopName, M, y + 14, pageW, { size: 16, bold: true, color: ink, align: "center" });
+      y += 22;
     }
-    y += rowH;
+    const contact = [input.shop.address?.trim(), input.shop.mobile?.trim() ? `Mob: ${input.shop.mobile.trim()}` : ""]
+      .filter(Boolean)
+      .join("   |   ");
+    if (contact) {
+      drawLine(doc, contact, M, y + 9, pageW, { size: 9, color: grey, align: "center" });
+      y += 16;
+    }
+    y += 4;
+    doc.rect(M, y, pageW, 26).fill(olive);
+    drawLine(doc, input.title, M, y + 17.5, pageW, { size: 13, bold: true, color: "white", align: "center" });
+    y += 34;
 
-    // ── Table rows ──────────────────────────────────────────
-    rows.forEach((r, i) => {
-      if (y > doc.page.height - 60) {
-        doc.addPage();
-        y = 40;
-      }
+    for (const line of input.metaLines) {
+      drawLine(doc, line, M, y + 9, pageW, { size: 9, color: grey });
+      y += 13;
+    }
+    y += 6;
 
-      doc.rect(40, y, pageWidth, rowH).fill(i % 2 === 0 ? "#f0fdf4" : "white");
-      doc.rect(40, y, pageWidth, rowH).strokeColor("#e5e7eb").lineWidth(0.5).stroke();
-      doc.fillColor("#374151").fontSize(8).font("Helvetica");
+    // ── Summary strip ────────────────────────────────────────────
+    if (input.summary.length) {
+      const boxW = pageW / input.summary.length;
+      doc.rect(M, y, pageW, 38).fill(oliveL);
+      input.summary.forEach((s, i) => {
+        const bx = M + i * boxW;
+        drawLine(doc, s.value, bx, y + 18, boxW, { size: 12, bold: true, color: ink, align: "center" });
+        drawLine(doc, s.label.toUpperCase(), bx, y + 31, boxW, { size: 7, color: grey, align: "center" });
+      });
+      y += 48;
+    }
 
-      if (isReleased) {
-        const rc = col as typeof col & {
-          released: { x: number; w: number };
-          pledge:   { x: number; w: number };
-          netwt:    { x: number; w: number };
-        };
-        doc.text(r.customerName,                                     rc.customer.x,   y + 9, { width: rc.customer.w,   align: "left"  });
-        doc.text(r.pledgeDate,                                       rc.date.x,       y + 9, { width: rc.date.w,       align: "left"  });
-        doc.text(r.releaseDate ?? "—",                               rc.released.x,   y + 9, { width: rc.released.w,   align: "left"  });
-        doc.text(r.itemName,                                         rc.pledge.x,     y + 9, { width: rc.pledge.w,     align: "left"  });
-        doc.text(r.netWeight > 0 ? `${r.netWeight.toFixed(2)}g` : "—",
-                                                                     rc.netwt.x,      y + 9, { width: rc.netwt.w,      align: "right" });
-        doc.text(rupees(r.loanAmount),                               rc.loan.x,       y + 9, { width: rc.loan.w,       align: "right" });
-        doc.text(r.interestAccrued > 0 ? rupees(r.interestAccrued) : "—",
-                                                                     rc.interest.x,   y + 9, { width: rc.interest.w,   align: "right" });
-        doc.text(r.receivableAmount != null ? rupees(r.receivableAmount) : "—",
-                                                                     rc.receivable.x, y + 9, { width: rc.receivable.w, align: "right" });
-        doc.fillColor(ltvHex(r.ltv)).font("Helvetica-Bold");
-        doc.text(r.ltv != null ? `${r.ltv.toFixed(1)}%` : "—",     rc.ltv.x,        y + 9, { width: rc.ltv.w,        align: "right" });
-      } else {
-        const ac = col as typeof col & {
-          pledge:   { x: number; w: number };
-          goldwt:   { x: number; w: number };
-          silverwt: { x: number; w: number };
-        };
-        doc.text(r.customerName,                                     ac.customer.x,   y + 9, { width: ac.customer.w,   align: "left"  });
-        doc.text(r.pledgeDate,                                       ac.date.x,       y + 9, { width: ac.date.w,       align: "left"  });
-        doc.text(r.itemName,                                         ac.pledge.x,     y + 9, { width: ac.pledge.w,     align: "left"  });
-        doc.text(r.netWeightOfGold > 0 ? `${r.netWeightOfGold.toFixed(2)}g` : "—",
-                                                                     ac.goldwt.x,     y + 9, { width: ac.goldwt.w,     align: "right" });
-        doc.text(r.netWeightOfSilver > 0 ? `${r.netWeightOfSilver.toFixed(2)}g` : "—",
-                                                                     ac.silverwt.x,   y + 9, { width: ac.silverwt.w,   align: "right" });
-        doc.text(rupees(r.loanAmount),                               ac.loan.x,       y + 9, { width: ac.loan.w,       align: "right" });
-        doc.text(r.interestAccrued > 0 ? rupees(r.interestAccrued) : "—",
-                                                                     ac.interest.x,   y + 9, { width: ac.interest.w,   align: "right" });
-        doc.text(r.receivableAmount != null ? rupees(r.receivableAmount) : "—",
-                                                                     ac.receivable.x, y + 9, { width: ac.receivable.w, align: "right" });
-        doc.fillColor(ltvHex(r.ltv)).font("Helvetica-Bold");
-        doc.text(r.ltv != null ? `${r.ltv.toFixed(1)}%` : "—",     ac.ltv.x,        y + 9, { width: ac.ltv.w,        align: "right" });
-      }
+    // ── Table ────────────────────────────────────────────────────
+    const continuationTitle = [shopName, input.title].filter(Boolean).join("  —  ") + " (continued)";
+    const newPage = () => {
+      doc.addPage({ size: "A4", layout: "landscape", margin: 0 });
+      drawLine(doc, continuationTitle, M, M + 9, pageW, { size: 9, color: grey });
+      return drawHeader(M + 16);
+    };
 
+    y = drawHeader(y);
+    if (input.rows.length === 0) {
+      drawLine(doc, "No records.", M, y + rowH / 2 + 3, pageW, { size: 9, color: grey, align: "center" });
+      y += rowH;
+    }
+    input.rows.forEach((cells, i) => {
+      if (y + rowH > bottomLimit) y = newPage();
+      drawRow(cells, y, { fill: i % 2 === 0 ? zebra : undefined, color: "#374151", size: 8 });
       y += rowH;
     });
+    if (y + rowH > bottomLimit) y = newPage();
+    drawRow(input.totals, y, { fill: oliveL, bold: true, color: olive, size: 8.5 });
 
-    // ── Totals footer ───────────────────────────────────────
-    if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
-    const totalLoan       = rows.reduce((s, r) => s + r.loanAmount, 0);
-    const totalInterest   = rows.reduce((s, r) => s + r.interestAccrued, 0);
-    const totalReceivable = rows.reduce((s, r) => s + (r.receivableAmount ?? 0), 0);
-    doc.rect(40, y, pageWidth, rowH).fill("#d1fae5");
-    doc.fillColor("#065f46").fontSize(8).font("Helvetica-Bold");
-
-    if (isReleased) {
-      const rc = col as typeof col & { netwt: { x: number; w: number } };
-      const totalNetWt = rows.reduce((s, r) => s + r.netWeight, 0);
-      doc.text("Total",                        rc.customer.x,   y + 9, { width: rc.customer.w,   align: "left"  });
-      doc.text(`${totalNetWt.toFixed(2)}g`,    rc.netwt.x,      y + 9, { width: rc.netwt.w,      align: "right" });
-      doc.text(rupees(totalLoan),              rc.loan.x,       y + 9, { width: rc.loan.w,       align: "right" });
-      doc.text(rupees(totalInterest),          rc.interest.x,   y + 9, { width: rc.interest.w,   align: "right" });
-      doc.text(rupees(totalReceivable),        rc.receivable.x, y + 9, { width: rc.receivable.w, align: "right" });
-    } else {
-      const ac = col as typeof col & {
-        goldwt:   { x: number; w: number };
-        silverwt: { x: number; w: number };
-      };
-      const totalGold   = rows.reduce((s, r) => s + r.netWeightOfGold, 0);
-      const totalSilver = rows.reduce((s, r) => s + r.netWeightOfSilver, 0);
-      doc.text("Total",                        ac.customer.x,   y + 9, { width: ac.customer.w,   align: "left"  });
-      doc.text(`${totalGold.toFixed(2)}g`,     ac.goldwt.x,     y + 9, { width: ac.goldwt.w,     align: "right" });
-      doc.text(`${totalSilver.toFixed(2)}g`,   ac.silverwt.x,   y + 9, { width: ac.silverwt.w,   align: "right" });
-      doc.text(rupees(totalLoan),              ac.loan.x,       y + 9, { width: ac.loan.w,       align: "right" });
-      doc.text(rupees(totalInterest),          ac.interest.x,   y + 9, { width: ac.interest.w,   align: "right" });
-      doc.text(rupees(totalReceivable),        ac.receivable.x, y + 9, { width: ac.receivable.w, align: "right" });
+    // ── Footer: "Page X of Y" on every page ──────────────────────
+    const { start, count } = doc.bufferedPageRange();
+    const footerLeft = [shopName, input.title].filter(Boolean).join("  ·  ");
+    for (let i = start; i < start + count; i++) {
+      doc.switchToPage(i);
+      const fy = pageH - M + 6;
+      drawLine(doc, footerLeft, M, fy, pageW * 0.7, { size: 8, color: grey });
+      drawLine(doc, `Page ${i - start + 1} of ${count}`, M, fy, pageW, { size: 8, color: grey, align: "right" });
     }
 
     doc.end();

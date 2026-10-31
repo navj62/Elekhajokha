@@ -23,11 +23,6 @@ import { cn } from "@/lib/utils";
 /*  does nothing — a full-width table shrinks to its container instead */
 /*  of scrolling. Those wrappers were decorative; the columns crushed. */
 /*                                                                     */
-/*  EXCEPTION — do not convert /reports/pledges and /reports/customers.*/
-/*  They are print-shaped PDF previews; nobody decides anything there, */
-/*  they download. Those two keep a scrolling table with an explicit   */
-/*  min-w-.                                                            */
-/*                                                                     */
 /*  CARD CONTRACT (uniform across every consumer):                     */
 /*    role "identity" — line 1. The card is the primary tap target     */
 /*                      wherever the table row was clickable.          */
@@ -430,7 +425,8 @@ export type BadgeTone =
   | "safe"
   | "watch"
   | "at-risk"
-  | "critical";
+  | "critical"
+  | "unknown";
 
 const TONE_SURFACE: Record<BadgeTone, string> = {
   active: "bg-status-active-surface text-status-active-foreground",
@@ -443,6 +439,9 @@ const TONE_SURFACE: Record<BadgeTone, string> = {
   watch: "bg-risk-medium-surface text-risk-medium-foreground",
   "at-risk": "bg-risk-high-surface text-risk-high-foreground",
   critical: "bg-risk-critical-surface text-risk-critical-foreground",
+  // No tier could be computed (e.g. no metal price). Neutral on purpose: the
+  // released tokens are the palette's grey, so "unknown" never reads as safe.
+  unknown: "bg-status-released-surface text-status-released-foreground",
 };
 
 const TONE_DOT: Record<BadgeTone, string> = {
@@ -454,6 +453,7 @@ const TONE_DOT: Record<BadgeTone, string> = {
   watch: "bg-risk-medium",
   "at-risk": "bg-risk-high",
   critical: "bg-risk-critical",
+  unknown: "bg-status-released",
 };
 
 export function StatusBadge({

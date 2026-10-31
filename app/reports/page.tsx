@@ -1,9 +1,51 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { ArrowLeft, ArrowRight, FileText, Loader2, X } from "lucide-react";
+import React, { Suspense, useState, useEffect, useCallback, useRef } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, ArrowRight, FileSpreadsheet, FileText, Loader2, X } from "lucide-react";
+import { StatusBadge, type BadgeTone } from "@/components/ui/DataTable";
+import {
+  REPORT_RISK_TIERS,
+  REPORT_RISK_TIER_LABEL,
+  parseRiskTiers,
+  type ReportRiskTier,
+} from "@/lib/reports/riskTierFilter";
 
 type ReportKind = "customers" | "active" | "released";
+const REPORT_KINDS: readonly ReportKind[] = ["customers", "active", "released"];
+
+const TIER_TONE: Record<ReportRiskTier, BadgeTone> = {
+  SAFE: "safe",
+  WATCH: "watch",
+  AT_RISK: "at-risk",
+  UNDERWATER: "critical",
+  UNKNOWN: "unknown",
+};
+const TIER_DOT: Record<ReportRiskTier, string> = {
+  SAFE: "bg-risk-low",
+  WATCH: "bg-risk-medium",
+  AT_RISK: "bg-risk-high",
+  UNDERWATER: "bg-risk-critical",
+  UNKNOWN: "bg-status-released",
+};
+type ExportFormat = "xlsx" | "pdf";
+
+// Query string for /api/reports/export — the tab plus exactly the filters
+// that tab sends to its own route, so a file always matches what's on screen.
+function exportQueryFor(
+  tab: ReportKind,
+  startDate: string,
+  endDate: string,
+  activeOnly: boolean,
+  tiers: readonly ReportRiskTier[]
+) {
+  const params = new URLSearchParams({ tab });
+  if (startDate) params.set("startDate", startDate);
+  if (endDate) params.set("endDate", endDate);
+  if (tab === "customers" && activeOnly) params.set("activeOnly", "true");
+  if (tab === "active" && tiers.length) params.set("tiers", tiers.join(","));
+  return params.toString();
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface CustomerRow {
@@ -33,6 +75,7 @@ interface PledgeRow {
   receivableAmount: number | null;
   marketValue: number | null;
   ltv: number | null;
+  riskTier?: ReportRiskTier; // Active tab only
   status: string;
 }
 
@@ -98,8 +141,19 @@ function formatDate(d: Date) {
   });
 }
 
-export default function ReportsPage() {
-  const [selectedReport, setSelectedReport] = useState<ReportKind>("customers");
+function ReportsPageContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Tab and tier filter live in the URL so a refresh or shared link keeps them.
+  const [selectedReport, setSelectedReport] = useState<ReportKind>(() => {
+    const tab = searchParams.get("tab");
+    return REPORT_KINDS.includes(tab as ReportKind) ? (tab as ReportKind) : "customers";
+  });
+  // Active Pledges only — none selected = every tier.
+  const [tiers, setTiers] = useState<ReportRiskTier[]>(() => parseRiskTiers(searchParams.get("tiers")));
+  const [tierCounts, setTierCounts] = useState<Record<ReportRiskTier, number> | null>(null);
 
   // Data
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
@@ -121,7 +175,13 @@ export default function ReportsPage() {
   // Loading states
   const [loadingData, setLoadingData] = useState(true);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
-  const [generatingPDF, setGeneratingPDF] = useState(false);
+
+  // Export — `appliedQuery` is the export query for the data currently on
+  // screen, set when a fetch lands. Exports use it (not the live inputs), and
+  // stay disabled while the inputs have moved on and the table hasn't caught up.
+  const [appliedQuery, setAppliedQuery] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const [exportError, setExportError] = useState<{ query: string; message: string } | null>(null);
 
   const isPledge = selectedReport !== "customers";
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -168,9 +228,15 @@ export default function ReportsPage() {
       if (endDate) params.set("endDate", endDate);
       if (activeOnly) params.set("activeOnly", "true");
       const res = await fetch(`/api/reports/customers?${params}`);
-      if (res.ok) setCustomers(await res.json());
+      if (res.ok) {
+        setCustomers(await res.json());
+        setAppliedQuery(exportQueryFor("customers", startDate, endDate, activeOnly, []));
+      } else {
+        setAppliedQuery(null);
+      }
     } catch (err) {
       console.error("Customer fetch error:", err);
+      setAppliedQuery(null);
     } finally {
       setLoadingCustomers(false);
     }
@@ -185,10 +251,11 @@ export default function ReportsPage() {
       const params = new URLSearchParams({ status });
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
+      if (status === "active" && tiers.length) params.set("tiers", tiers.join(","));
       if (extra) for (const [k, v] of Object.entries(extra)) params.set(k, v);
       return params.toString();
     },
-    [selectedReport, startDate, endDate]
+    [selectedReport, startDate, endDate, tiers]
   );
 
   // ── Fetch the filtered table (debounced on date typing) ──────────────────
@@ -198,26 +265,54 @@ export default function ReportsPage() {
     try {
       const res = await fetch(`/api/reports/pledges?${buildPledgeQuery()}`);
       const data = await res.json();
+      const query = exportQueryFor(selectedReport, startDate, endDate, false, tiers);
       if (!res.ok) {
+        setTierCounts(null);
         if (data?.error === "TOO_MANY_RECORDS") {
           setTableRows([]);
           setTableTotals(null);
           setTableError({ count: data.count ?? 0 });
+          // Too many to display, but Excel export has no cap — keep it available.
+          setAppliedQuery(query);
         } else {
           setTableRows([]);
           setTableTotals(null);
+          setAppliedQuery(null);
         }
         return;
       }
       setTableRows(data.rows ?? []);
       setTableTotals(data.totals ?? null);
+      setTierCounts(data.tierCounts ?? null);
+      setAppliedQuery(query);
     } catch (err) {
       console.error("Pledge table fetch error:", err);
       setTableRows([]);
+      setTierCounts(null);
+      setAppliedQuery(null);
     } finally {
       setLoadingTable(false);
     }
-  }, [buildPledgeQuery]);
+  }, [buildPledgeQuery, selectedReport, startDate, endDate, tiers]);
+
+  // ── URL sync for tab + tier filter (called from handlers, not an effect) ──
+  function syncUrl(tab: ReportKind, nextTiers: readonly ReportRiskTier[]) {
+    const params = new URLSearchParams();
+    if (tab !== "customers") params.set("tab", tab);
+    if (tab === "active" && nextTiers.length) params.set("tiers", nextTiers.join(","));
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+  function selectReport(tab: ReportKind) {
+    setSelectedReport(tab);
+    syncUrl(tab, tiers);
+  }
+  function toggleTier(tier: ReportRiskTier) {
+    // Keep canonical order so the URL and the files' filter line are stable.
+    const next = REPORT_RISK_TIERS.filter((t) => (t === tier ? !tiers.includes(t) : tiers.includes(t)));
+    setTiers(next);
+    syncUrl(selectedReport, next);
+  }
 
   // Re-fetch pledge table when variant or date range changes (debounced).
   useEffect(() => {
@@ -264,46 +359,39 @@ export default function ReportsPage() {
     setEndDate("");
   }
 
-  // ── PDF generation ───────────────────────────────────────────────────────
-  const handleGeneratePDF = async () => {
-    setGeneratingPDF(true);
+  // ── Export (Excel / PDF) ─────────────────────────────────────────────────
+  const currentQuery = exportQueryFor(selectedReport, startDate, endDate, activeOnly, tiers);
+  const tabLoading = isPledge ? loadingTable : loadingCustomers;
+  const exportDisabled = exporting !== null || tabLoading || appliedQuery !== currentQuery;
+  const visibleExportError = exportError?.query === currentQuery ? exportError.message : null;
+
+  const handleExport = async (format: ExportFormat) => {
+    if (!appliedQuery) return;
+    const query = appliedQuery;
+    setExporting(format);
+    setExportError(null);
     try {
-      if (selectedReport === "customers") {
-        const params = new URLSearchParams({ format: "pdf" });
-        if (startDate) params.set("startDate", startDate);
-        if (endDate) params.set("endDate", endDate);
-        if (activeOnly) params.set("activeOnly", "true");
-        const res = await fetch(`/api/reports/customers?${params}`);
-        if (!res.ok) throw new Error("PDF generation failed");
-        const blob = await res.blob();
-        triggerDownload(blob, "customers.pdf");
-        return;
-      }
-
-      // Active / Released variant — carry status + date range to the API.
-      const res = await fetch(`/api/reports/pledges?${buildPledgeQuery({ format: "pdf" })}`);
+      const res = await fetch(`/api/reports/export?${query}&format=${format}`);
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        if (data?.error === "TOO_MANY_RECORDS") {
-          alert("Too many records to export. Narrow your date range.");
-        } else {
-          alert("Failed to generate PDF. Please try again.");
-        }
+        const data = await res.json().catch(() => null);
+        setExportError({
+          query,
+          message:
+            data?.error === "PDF_ROW_LIMIT" && typeof data.message === "string"
+              ? data.message
+              : `Couldn't create the ${format === "xlsx" ? "Excel file" : "PDF"}. Please try again.`,
+        });
         return;
       }
-
       const blob = await res.blob();
-      const variant = selectedReport; // "active" | "released"
-      const range =
-        startDate || endDate
-          ? `${startDate || "start"}_to_${endDate || "end"}`
-          : `all-time_${ymd(new Date())}`;
-      triggerDownload(blob, `pledges-${variant}_${range}.pdf`);
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `report.${format}`;
+      triggerDownload(blob, filename);
     } catch (err) {
-      console.error(err);
-      alert("Failed to generate PDF. Please try again.");
+      console.error("Report export error:", err);
+      setExportError({ query, message: "Export failed — check your connection and try again." });
     } finally {
-      setGeneratingPDF(false);
+      setExporting(null);
     }
   };
 
@@ -336,23 +424,6 @@ export default function ReportsPage() {
             Customer &amp; pledge reporting center
           </span>
         </h1>
-
-        <button
-          onClick={handleGeneratePDF}
-          disabled={generatingPDF || loadingData}
-          className="bg-[#555B3F] text-white px-5 py-2.5 rounded-[12px] text-[13px] font-bold flex items-center gap-2 transition-colors hover:bg-[#4B5036] disabled:opacity-60 shadow-sm"
-        >
-          {generatingPDF ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <FileText size={16} />
-          )}
-          {selectedReport === "customers"
-            ? "Generate Customer Report"
-            : selectedReport === "released"
-            ? "Generate Released Report"
-            : "Generate Pledge Report"}
-        </button>
       </div>
 
       {/* REPORT SWITCHER */}
@@ -364,7 +435,7 @@ export default function ReportsPage() {
         ] as const).map(({ key, label }) => (
           <button
             key={key}
-            onClick={() => setSelectedReport(key)}
+            onClick={() => selectReport(key)}
             className={`px-7 py-2 rounded-full text-[12px] font-semibold transition-all ${
               selectedReport === key
                 ? "bg-[#555B3F] text-white shadow-sm"
@@ -441,6 +512,38 @@ export default function ReportsPage() {
               </>
             )}
           </div>
+
+          {/* Active Pledges only — multi-select risk-tier filter; none selected = all. */}
+          {selectedReport === "active" && (
+            <div className="w-full flex flex-col gap-1">
+              <span id="tier-filter-label" className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Risk Tier
+              </span>
+              <div role="group" aria-labelledby="tier-filter-label" className="flex flex-wrap items-center gap-2">
+                {REPORT_RISK_TIERS.map((tier) => {
+                  const selected = tiers.includes(tier);
+                  const count = !loadingTable && tierCounts ? tierCounts[tier] : null;
+                  return (
+                    <button
+                      key={tier}
+                      type="button"
+                      onClick={() => toggleTier(tier)}
+                      aria-pressed={selected}
+                      className={`inline-flex items-center gap-2 min-h-[44px] sm:min-h-0 sm:h-9 px-3 rounded-full border text-[12px] font-semibold transition-colors ${
+                        selected
+                          ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                          : "bg-card text-muted-foreground border-border hover:text-foreground"
+                      }`}
+                    >
+                      <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${TIER_DOT[tier]}`} />
+                      {REPORT_RISK_TIER_LABEL[tier]}
+                      {count !== null && <span className="tabular-nums">· {count}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
       {/* SUMMARY STRIP */}
@@ -502,26 +605,61 @@ export default function ReportsPage() {
 
       {/* TABLE SECTION */}
       <div className="mb-6">
-        <div className="flex items-baseline gap-3 mb-6">
-          <h2 className="text-[18px] font-semibold text-[#2C2C2C]">
-            {selectedReport === "customers"
-              ? "Customers"
-              : selectedReport === "released"
-              ? "Released Pledges"
-              : "Active Pledges"}
-          </h2>
-          <span className="text-[12px] text-[#6F6F6F]">
-            {selectedReport === "customers"
-              ? loadingData
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+          <div className="flex items-baseline gap-3">
+            <h2 className="text-[18px] font-semibold text-[#2C2C2C]">
+              {selectedReport === "customers"
+                ? "Customers"
+                : selectedReport === "released"
+                ? "Released Pledges"
+                : "Active Pledges"}
+            </h2>
+            <span className="text-[12px] text-[#6F6F6F]">
+              {selectedReport === "customers"
+                ? loadingData
+                  ? "Loading…"
+                  : `${recordCount} total`
+                : loadingTable
                 ? "Loading…"
-                : `${recordCount} total`
-              : loadingTable
-              ? "Loading…"
-              : selectedReport === "released"
-              ? `${recordCount} released record${recordCount !== 1 ? "s" : ""}`
-              : `${recordCount} active record${recordCount !== 1 ? "s" : ""}`}
-          </span>
+                : selectedReport === "released"
+                ? `${recordCount} released record${recordCount !== 1 ? "s" : ""}`
+                : `${recordCount} active record${recordCount !== 1 ? "s" : ""}`}
+            </span>
+          </div>
+
+          <div className="flex w-full sm:w-auto gap-2">
+            {([
+              { format: "xlsx", label: "Export to Excel", Icon: FileSpreadsheet },
+              { format: "pdf",  label: "Export to PDF",   Icon: FileText },
+            ] as const).map(({ format, label, Icon }) => (
+              <button
+                key={format}
+                type="button"
+                onClick={() => handleExport(format)}
+                disabled={exportDisabled}
+                aria-busy={exporting === format}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-[10px] border border-border bg-card text-foreground text-[13px] font-semibold transition-colors hover:bg-secondary disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {exporting === format ? (
+                  <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Icon size={16} aria-hidden="true" />
+                )}
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {visibleExportError && (
+          <p
+            role="alert"
+            className="-mt-3 mb-6 rounded-[10px] px-3 py-2 text-[13px]"
+            style={{ background: "var(--risk-critical-surface)", color: "var(--risk-critical-foreground)" }}
+          >
+            {visibleExportError}
+          </p>
+        )}
 
         {selectedReport === "customers" ? (
           loadingCustomers ? (
@@ -589,11 +727,11 @@ export default function ReportsPage() {
           /* ── PLEDGE TABLE ── */
           (() => {
             const isReleasedVariant = selectedReport === "released";
-            // Active:   Customer | Date | Pledge | Gold Wt | Silver Wt | Loan | Interest | Receivable | LTV | Status
+            // Active:   Customer | Date | Pledge | Gold Wt | Silver Wt | Loan | Interest | Receivable | LTV | Risk Tier | Status
             // Released: Customer | Date | Released | Pledge | Net Wt | Loan | Interest | Receivable | LTV | Status
             const gridCols = isReleasedVariant
               ? "1.2fr 0.9fr 0.9fr 1fr 0.7fr 1fr 1fr 1fr 0.6fr 0.7fr"
-              : "1.2fr 0.9fr 1fr 0.7fr 0.7fr 1fr 1fr 1fr 0.6fr 0.7fr";
+              : "1.2fr 0.9fr 1fr 0.7fr 0.7fr 1fr 1fr 1fr 0.6fr 0.9fr 0.7fr";
             return (
             <div className="w-full">
               <div
@@ -611,6 +749,7 @@ export default function ReportsPage() {
                 <div className="text-right">Interest</div>
                 <div className="text-right">Receivable</div>
                 <div className="text-right">LTV</div>
+                {!isReleasedVariant && <div className="text-right">Risk Tier</div>}
                 <div className="text-right">Status</div>
               </div>
               {tableRows.length === 0 ? (
@@ -651,6 +790,13 @@ export default function ReportsPage() {
                   <div className="text-right font-semibold" style={{ color: ltvColor(p.ltv) }}>
                     {p.ltv != null ? `${p.ltv.toFixed(1)}%` : "—"}
                   </div>
+                  {!isReleasedVariant && (
+                    <div className="text-right">
+                      <StatusBadge tone={TIER_TONE[p.riskTier ?? "UNKNOWN"]}>
+                        {REPORT_RISK_TIER_LABEL[p.riskTier ?? "UNKNOWN"]}
+                      </StatusBadge>
+                    </div>
+                  )}
                   <div className="text-right">
                     <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${
                       p.status === "ACTIVE"
@@ -715,5 +861,20 @@ export default function ReportsPage() {
       </div>
 
     </div>
+  );
+}
+
+// Suspense boundary for useSearchParams (tab + tier filter come from the URL).
+export default function ReportsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="animate-spin text-primary" size={28} />
+        </div>
+      }
+    >
+      <ReportsPageContent />
+    </Suspense>
   );
 }
