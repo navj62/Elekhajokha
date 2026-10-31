@@ -26,10 +26,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
 
     const sp = req.nextUrl.searchParams;
-    const statusParam = sp.get("status"); // "active" | "released" | null (legacy = all)
+    const statusParam = sp.get("status"); // "active" | "released" (required)
 
-    // ── Validate status (when provided) ───────────────────────────
-    if (statusParam !== null && statusParam !== "active" && statusParam !== "released") {
+    // ── Validate status ───────────────────────────────────────────
+    // The top strip's counts come from /api/reports/summary, not from here.
+    if (statusParam !== "active" && statusParam !== "released") {
       return NextResponse.json(
         { error: "INVALID_STATUS", message: "status must be 'active' or 'released'." },
         { status: 400 }
@@ -48,19 +49,17 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // ── Hard cap (only on the filtered variants) ──────────────────
-    if (statusParam !== null) {
-      const count = await countPledgeReport(user.id, statusParam, range);
-      if (count > PLEDGE_ROW_CAP) {
-        return NextResponse.json(
-          {
-            error: "TOO_MANY_RECORDS",
-            count,
-            message: `Filter returns ${count} records, exceeding the ${PLEDGE_ROW_CAP} limit. Please narrow your date range.`,
-          },
-          { status: 400 }
-        );
-      }
+    // ── Hard cap ──────────────────────────────────────────────────
+    const count = await countPledgeReport(user.id, statusParam, range);
+    if (count > PLEDGE_ROW_CAP) {
+      return NextResponse.json(
+        {
+          error: "TOO_MANY_RECORDS",
+          count,
+          message: `Filter returns ${count} records, exceeding the ${PLEDGE_ROW_CAP} limit. Please narrow your date range.`,
+        },
+        { status: 400 }
+      );
     }
 
     // Active tab: optional risk-tier filter (`tiers=AT_RISK,UNDERWATER`; unknown
@@ -75,14 +74,9 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await getPledgeReportRows(user.id, statusParam, range);
-    const result = toPledgeReportJson(rows);
-
-    // Legacy "all" path returns bare array so the stats strip consumer is unaffected.
-    if (statusParam === null) return NextResponse.json(result);
-
-    return NextResponse.json({ rows: result, totals: pledgeReportTotals(rows) });
+    return NextResponse.json({ rows: toPledgeReportJson(rows), totals: pledgeReportTotals(rows) });
   } catch (err) {
-    console.error(err);
+    console.error("Pledge report failed:", err instanceof Error ? err.message : "unknown");
     return NextResponse.json({ error: "Failed" }, { status: 500 });
   }
 }

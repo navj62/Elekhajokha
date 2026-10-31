@@ -20,7 +20,7 @@ const D = (n: number | string) => new Prisma.Decimal(n);
 
 type PledgeFx = {
   id: string;
-  status: "ACTIVE" | "RELEASED" | "SOLD";
+  status: "ACTIVE" | "OVERDUE" | "RELEASED" | "SOLD";
   pledgeDate: Date;
   releaseDate: Date | null;
   loanAmount: Prisma.Decimal;
@@ -59,6 +59,7 @@ const db = vi.hoisted(() => ({
   customers: [] as unknown[],
   pledgeWheres: [] as unknown[],
   customerWheres: [] as unknown[],
+  customerSelects: [] as unknown[],
   findManyCalls: 0,
   noPrices: false, // simulate an empty MetalPrice table → every LTV is null
 }));
@@ -116,6 +117,13 @@ vi.mock("@/lib/prisma", () => {
           db.pledgeWheres.push(where);
           return (db.pledges as PledgeFx[]).filter((p) => matchPledge(p, where)).length;
         },
+        groupBy: async ({ where }: { by: ["status"]; where: PledgeWhere }) => {
+          db.pledgeWheres.push(where);
+          const counts = new Map<string, number>();
+          for (const p of (db.pledges as PledgeFx[]).filter((p) => matchPledge(p, where)))
+            counts.set(p.status, (counts.get(p.status) ?? 0) + 1);
+          return [...counts].map(([status, n]) => ({ status, _count: { _all: n } }));
+        },
         findMany: async ({ where, orderBy }: { where: PledgeWhere; orderBy: Record<string, string> }) => {
           db.pledgeWheres.push(where);
           db.findManyCalls++;
@@ -128,10 +136,17 @@ vi.mock("@/lib/prisma", () => {
           db.customerWheres.push(where);
           return (db.customers as CustomerFx[]).filter((c) => matchCustomer(c, where)).length;
         },
-        findMany: async ({ where }: { where: CustomerWhere }) => {
+        findMany: async ({ where, select }: {
+          where: CustomerWhere;
+          select?: { pledges?: { where?: { status?: { in: string[] } } } };
+        }) => {
           db.customerWheres.push(where);
+          db.customerSelects.push(select);
           db.findManyCalls++;
-          return sortDesc((db.customers as CustomerFx[]).filter((c) => matchCustomer(c, where)), (c) => c.createdAt);
+          // Honour the nested pledge filter, as the database would.
+          const keep = select?.pledges?.where?.status?.in;
+          return sortDesc((db.customers as CustomerFx[]).filter((c) => matchCustomer(c, where)), (c) => c.createdAt)
+            .map((c) => (keep ? { ...c, pledges: c.pledges.filter((p) => keep.includes(p.status)) } : c));
         },
       },
     },
@@ -141,9 +156,17 @@ vi.mock("@/lib/prisma", () => {
 import { GET as pledgesTab } from "@/app/api/reports/pledges/route";
 import { GET as customersTab } from "@/app/api/reports/customers/route";
 import { GET as exportRoute } from "@/app/api/reports/export/route";
-import { fmtReportDate } from "@/lib/reports/reportQueries";
-import { MONEY_FMT_INDIAN, MONEY_FMT_PLAIN, moneyNumFmt } from "@/lib/reports/reportExport";
-import { REPORT_RISK_TIERS, REPORT_RISK_TIER_LABEL, parseRiskTiers, type ReportRiskTier } from "@/lib/reports/riskTierFilter";
+import { GET as summaryRoute } from "@/app/api/reports/summary/route";
+import { fmtReportDate, istBoundary, parseDateRange, type PledgeReportRow } from "@/lib/reports/reportQueries";
+import { MONEY_FMT_INDIAN, MONEY_FMT_PLAIN, activePledgesTable, moneyNumFmt } from "@/lib/reports/reportExport";
+import {
+  REPORT_RISK_TIERS,
+  REPORT_RISK_TIER_HEX,
+  REPORT_RISK_TIER_LABEL,
+  ltvTierColor,
+  parseRiskTiers,
+  type ReportRiskTier,
+} from "@/lib/reports/riskTierFilter";
 import { getRiskTier } from "@/lib/calculateLTV";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
@@ -217,6 +240,7 @@ beforeEach(() => {
   db.customers = [];
   db.pledgeWheres = [];
   db.customerWheres = [];
+  db.customerSelects = [];
   db.findManyCalls = 0;
   db.noPrices = false;
 });
@@ -634,5 +658,157 @@ describe("export route validation", () => {
     const res = await exportRoute(req("/api/reports/export", { tab: "released", format: "xlsx", startDate: "2026-10-31", endDate: "2026-10-01" }));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("INVALID_RANGE");
+  });
+});
+
+// ── Strict report dates ─────────────────────────────────────────────────────
+
+describe("report date params (strict YYYY-MM-DD)", () => {
+  it("accepts a real calendar date as an IST day boundary", () => {
+    expect(istBoundary("2026-10-31", false)?.toISOString()).toBe("2026-10-30T18:30:00.000Z");
+    expect(istBoundary("2026-10-31", true)?.toISOString()).toBe("2026-10-31T18:29:59.999Z");
+    expect(istBoundary("2028-02-29", false)).not.toBeNull(); // leap day
+  });
+
+  it("rejects a date that doesn't exist, and anything that isn't YYYY-MM-DD", () => {
+    for (const bad of ["2026-02-31", "2027-02-29", "2026-13-01", "2026-00-10", "1", "-1", "2026-1-1", "2026-10-31T00:00:00Z", " 2026-10-31", "abc"])
+      expect(istBoundary(bad, false), bad).toBeNull();
+  });
+
+  it("an empty param means no bound, not an error", () => {
+    expect(parseDateRange("", "")).toEqual({ ok: true, range: {} });
+    expect(parseDateRange(null, null)).toEqual({ ok: true, range: {} });
+  });
+
+  it("every report route answers a bad date with 400 INVALID_DATE", async () => {
+    for (const bad of ["2026-02-31", "1", "-1"]) {
+      const responses = [
+        await pledgesTab(req("/api/reports/pledges", { status: "active", startDate: bad })),
+        await customersTab(req("/api/reports/customers", { endDate: bad })),
+        await exportRoute(req("/api/reports/export", { tab: "released", format: "xlsx", startDate: bad })),
+      ];
+      for (const res of responses) {
+        expect(res.status, bad).toBe(400);
+        expect((await res.json()).error).toBe("INVALID_DATE");
+      }
+    }
+  });
+});
+
+// ── Spreadsheet formula injection ───────────────────────────────────────────
+
+describe("xlsx cells starting with = + - @", () => {
+  it("are written as plain text, never as formulas", async () => {
+    seedCustomers();
+    const evil = ["=HYPERLINK(\"http://x.invalid\",\"x\")", "+1+1", "-2+3", "@SUM(A1:A2)"];
+    (db.customers as CustomerFx[]).slice(0, evil.length).forEach((c, i) => {
+      c.name = evil[i];
+      c.address = evil[(i + 1) % evil.length];
+    });
+    const res = await exportRoute(req("/api/reports/export", { tab: "customers", format: "xlsx" }));
+    const raw = await res.clone().arrayBuffer();
+    const sheetXml = await (await JSZip.loadAsync(raw)).file("xl/worksheets/sheet1.xml")!.async("string");
+    expect(sheetXml).not.toMatch(/<f[ >]/); // no formula element anywhere
+
+    const { body } = await readSheet(res);
+    const cells = body.flatMap((r) => [r[0], r[2]]);
+    for (const e of evil) expect(cells).toContain(e); // round-trips as the literal string
+  });
+});
+
+// ── LTV boundary colour ─────────────────────────────────────────────────────
+
+describe("LTV exactly 65%", () => {
+  it("is Safe in the screen colour helper", () => {
+    expect(getRiskTier(65)).toBe("SAFE");
+    expect(ltvTierColor(65)).toBe(REPORT_RISK_TIER_HEX.SAFE);
+    expect(ltvTierColor(65.01)).toBe(REPORT_RISK_TIER_HEX.WATCH);
+    expect(ltvTierColor(null)).toBe(REPORT_RISK_TIER_HEX.UNKNOWN);
+  });
+
+  it("is Safe in the export (LTV cell colour and tier cell)", () => {
+    const row: PledgeReportRow = {
+      customerName: "A", pledgeDate: new Date(Date.UTC(2026, 9, 1)), releaseDate: null, itemType: "Ring",
+      itemName: "Ring", netWeight: 0, netWeightOfGold: 10, netWeightOfSilver: 0, loanAmount: 1000,
+      interestAccrued: 0, receivableAmount: 1000, marketValue: 1538.46, ltv: 65, riskTier: "SAFE", status: "ACTIVE",
+    };
+    const table = activePledgesTable([row], { count: 1, goldWeight: 10, silverWeight: 0, netWeight: 0, interestAccrued: 0, receivableAmount: 1000, loanAmount: 1000 }, []);
+    const ltvCol = table.columns.findIndex((c) => c.header === "LTV");
+    const tierCol = table.columns.findIndex((c) => c.header === "Risk Tier");
+    expect(table.rows[0][ltvCol].color).toBe(REPORT_RISK_TIER_HEX.SAFE);
+    expect(table.rows[0][tierCol]).toMatchObject({ value: "Safe", color: REPORT_RISK_TIER_HEX.SAFE });
+  });
+});
+
+// ── Customer report: open pledges filtered in the query ─────────────────────
+
+describe("Customer report with closed pledges", () => {
+  // The same open pledges, with and without RELEASED/SOLD history beside them.
+  function seedTwins() {
+    const open = (i: number) => [
+      makePledge(i, { status: "ACTIVE" }),
+      makePledge(i + 200, { status: "OVERDUE" }),
+    ];
+    const closed = (i: number) => [
+      makePledge(i + 400, { status: "RELEASED", loanAmount: D(999999) }),
+      makePledge(i + 600, { status: "SOLD", loanAmount: D(888888) }),
+    ];
+    const mk = (id: string, i: number, pledges: PledgeFx[]): CustomerFx => ({
+      id, userId: "owner", deletedAt: null, name: `C${i}`, mobile: null, address: null,
+      createdAt: new Date(Date.UTC(2026, 9, 1 + i)), pledges,
+    });
+    db.customers = [
+      ...[0, 1, 2].map((i) => mk(`open${i}`, i, open(i))),
+      ...[0, 1, 2].map((i) => mk(`mixed${i}`, i + 10, [...closed(i), ...open(i)])),
+      mk("closedOnly", 20, closed(9)),
+    ];
+  }
+
+  it("asks the database for open pledges only (ACTIVE + OVERDUE)", async () => {
+    seedTwins();
+    const res = await customersTab(req("/api/reports/customers", {}));
+    expect(res.status).toBe(200);
+    const select = db.customerSelects.at(-1) as { pledges: { where: unknown } };
+    expect(select.pledges.where).toEqual({ status: { in: ["ACTIVE", "OVERDUE"] } });
+  });
+
+  it("RELEASED and SOLD history never changes a customer's count, loan or risk score", async () => {
+    seedTwins();
+    const rows = (await (await customersTab(req("/api/reports/customers", {}))).json()) as {
+      id: string; pledgeCount: number; totalLoan: number; riskScore: number; riskTier: string;
+    }[];
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const pick = (id: string) => {
+      const { pledgeCount, totalLoan, riskScore, riskTier } = byId.get(id)!;
+      return { pledgeCount, totalLoan, riskScore, riskTier };
+    };
+    for (const i of [0, 1, 2]) {
+      expect(pick(`mixed${i}`)).toEqual(pick(`open${i}`));
+      expect(pick(`open${i}`).pledgeCount).toBe(2); // ACTIVE + OVERDUE both counted
+    }
+    expect(pick("closedOnly")).toMatchObject({ pledgeCount: 0, totalLoan: 0 });
+    // activeOnly still drops the customer with nothing open.
+    const active = (await (await customersTab(req("/api/reports/customers", { activeOnly: "true" }))).json()) as { id: string }[];
+    expect(active.map((r) => r.id)).not.toContain("closedOnly");
+    expect(active).toHaveLength(6);
+  });
+});
+
+// ── Top strip counts ────────────────────────────────────────────────────────
+
+describe("GET /api/reports/summary (top strip)", () => {
+  it("counts every pledge of live customers and the ACTIVE ones, in the database", async () => {
+    seedPledges(7, 5); // + another tenant, a deleted customer, a SOLD pledge
+    const res = await summaryRoute();
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ totalPledges: 13, activePledges: 7 });
+    expect(db.findManyCalls).toBe(0); // no rows loaded
+    expect(db.pledgeWheres.at(-1)).toEqual({ customer: { userId: "owner", deletedAt: null } });
+  });
+
+  it("the old no-status pledge report path is gone (400)", async () => {
+    const res = await pledgesTab(req("/api/reports/pledges", {}));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("INVALID_STATUS");
   });
 });

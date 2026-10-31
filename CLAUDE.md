@@ -321,6 +321,17 @@ Client component. `variant: "full"` — inline row with TrendingUp icon, "Gold �
 
 Full CRUD task manager for the shop owner. Model: `Task` (`id`, `userId`, `title`, `isDone`, `dueDate?`, `createdAt`, `updatedAt`) — cascades from `User`. Routes: `GET/POST /api/tasks`, `PATCH/DELETE /api/tasks/[taskId]`. Page: `app/(UserDetails)/tasks/page.tsx`. Standard auth pattern (Invariants 1 & 4). No cross-user data. Tasks are private to each shop owner.
 
+## Quick actions (Add Pledge / Release Pledge)
+
+Reach the existing create/release screens from anywhere without the customer page. **Navigation only — no release or create logic lives here.**
+- **Entry points:** dashboard greeting buttons, and the mobile "+" (`aria-label="Quick actions"`) → Quick actions sheet. Both open the same picker via `QuickActionsProvider` / `useQuickActions()` ([components/layout/QuickActions.tsx](components/layout/QuickActions.tsx)), provided by AppShell. Focus returns to the element that started the flow.
+- **Picker** ([components/layout/CustomerPickerSheet.tsx](components/layout/CustomerPickerSheet.tsx), `Sheet size="picker"`): before typing `GET /api/customers/recent[?openOnly=1]` (8 most recently active — `MAX(GREATEST(pledge.createdAt, updatedAt))`, ties by name then id; one parameterized SQL aggregate, no index needed); typing `GET /api/customers/search?q=…&take=20[&filterBy=OPEN]`. Search gained `filterBy=OPEN` (ACTIVE + OVERDUE), `mobile` and `openPledgeCount` per row, and an explicit `take` is now applied to the DB query (callers without `take`, and the in-memory item sorts, keep the 5000 bound).
+- **Add:** routes to `/customers/[id]/pledges/add?from=quick`.
+- **Release:** step 2 in the same sheet lists `GET /api/customers/[id]/open-pledges` (ACTIVE + OVERDUE, oldest first, `dueToday` from `calculateHybridInterest` with each pledge's stored settings); 1 selected → single-release page, several → `release-bulk?ids=…`, both with `?from=quick`.
+- **`?from=quick` contract:** on success the new-pledge panel offers "Back to dashboard" first, and single/bulk release go straight to `/dashboard`; each queues a one-shot toast ([components/ui/Toast.tsx](components/ui/Toast.tsx), `queueToast` → sessionStorage → `consumeQueuedToast()` on dashboard mount). **Without `?from=quick` every page behaves as before.**
+- The single-release page's `canRelease` now accepts OVERDUE (`isOpenPledgeStatus`), matching its PATCH route.
+- Tests: [tests/quickActions.test.ts](tests/quickActions.test.ts).
+
 ## Customer features
 
 ### `Customer.isPinned` (Boolean, default false)
@@ -351,16 +362,15 @@ On a VPS, drive crons via crontab:
 
 ## Reports module
 
-[app/reports/page.tsx](app/reports/page.tsx) — three tabs: **Customer Report**, **Active Pledges**, **Released Pledges**. Shared date-range filter (From/To + quick-select). Stats strip from `/api/reports/pledges` (no `status` param, legacy path). Each tab re-fetches debounced 300ms on date changes. `TOO_MANY_RECORDS` (>5000 rows) surfaced inline. Each tab has **Export to Excel** / **Export to PDF** buttons (see Report export below).
+[app/reports/page.tsx](app/reports/page.tsx) — three tabs: **Customer Report**, **Active Pledges**, **Released Pledges**. Shared date-range filter (From/To + quick-select). Stats strip pledge counts from `GET /api/reports/summary` (`pledgeStripCounts` — one `groupBy`, no rows loaded). Each tab re-fetches debounced 300ms on date changes, with an `AbortController` per request so a superseded response is dropped. `TOO_MANY_RECORDS` (>5000 rows) surfaced inline. Each tab has **Export to Excel** / **Export to PDF** buttons (see Report export below).
 
 All report routes: standard auth pattern. Dates as `YYYY-MM-DD`, interpreted as IST day boundaries via `istBoundary` helper (`+05:30` offset).
 
 - **[app/api/reports/customers/route.ts](app/api/reports/customers/route.ts)** — non-deleted customers, ACTIVE/OVERDUE pledges only for counts/totals (SOLD and RELEASED excluded), live `calculateHybridInterest`, live metal prices (fetched once, falls back to `lastMarketValue`), `computeCustomerRiskScore` per customer.
 
-- **[app/api/reports/pledges/route.ts](app/api/reports/pledges/route.ts)** — three modes:
+- **[app/api/reports/pledges/route.ts](app/api/reports/pledges/route.ts)** — two modes (`status` is required; anything else is 400):
   - **`active`** — filter by `pledgeDate`, 5000-row cap, live LTV/interest via `calculateLTV`. Returns `{ rows, totals }`.
   - **`released`** — filter by `releaseDate`, 5000-row cap. Reads finalized values from `PledgeAudit` where `action: "RELEASED"` (falls back to Pledge row for legacy). SOLD pledges not surfaced here.
-  - **no `status` (legacy)** — stats strip only, bare `rows` array.
 
 Both tab routes are thin wrappers over **[lib/reports/reportQueries.ts](lib/reports/reportQueries.ts)** — the ONLY place the report filters, rows and totals are built. Change a filter there, never inline in a route, or the export stops matching the screen.
 
@@ -444,6 +454,7 @@ Deliberately tracked so reviews focus on real bugs rather than re-discovering th
 - **`pledgeDate` bounds not enforced** on create (future/far-past dates allowed).
 - **No server-side upload SIZE cap** — applies to pledge item photos AND inventory direct-purchase photos. The whole file is read into a Buffer (`await file.arrayBuffer()`) before it is streamed to Cloudinary, so an oversized upload is unbounded decode and storage cost. MIME is *partially* covered: `lib/upload.ts` passes `resource_type: "image"`, so Cloudinary rejects non-images server-side rather than storing arbitrary files.
 - ~~Part-payment flow has no UI.~~ **Implemented.** `POST /api/customers/[customerId]/pledges/[pledgeId]/transactions` records a `Transaction` (standard auth + ownership scoping; validates positive amount, type ∈ {REPAYMENT_PRINCIPAL, REPAYMENT_INTEREST, TOPUP}, optional note ≤1000 chars, optional transactionDate). The pledge detail page (`app/(CustomersDetails)/customers/[customerId]/pledges/[pledgeId]/page.tsx`) has the form — type dropdown, amount, date, submit — plus read-only history. Note: the route stores `amount` as `new Prisma.Decimal(Number(amount))`; it does not adjust the pledge balance (Transactions are a ledger, not applied to accrual).
+- **The Active Pledges report counts ACTIVE only, not OVERDUE.** Nothing in production sets OVERDUE today; if that changes, include OPEN_PLEDGE_STATUSES there.
 - **Inventory reports not built.** Future: a Reports tab reading `action: "SOLD"` audits + `InventoryItem` rows.
 - **No error monitoring** (no Sentry; `console.*` only). **No structured logging.** **Security headers** — the four base headers (X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, HSTS) ARE implemented in `next.config.ts`, plus `Permissions-Policy` and a `Content-Security-Policy-Report-Only` header. Enforcing CSP is still deferred: Next.js App Router, Clerk, and Razorpay all inject inline scripts, so a strict nonce-based policy needs nonce plumbing first — the Report-Only header collects violations in the meantime. **Before switching Report-Only → enforcing (`Content-Security-Policy`), violations must be collected across a real Clerk sign-in flow AND a real Razorpay checkout, and the Clerk origin must change from `*.clerk.accounts.dev` to the production Clerk Frontend API host.** **Backup/DR: Neon defaults only.** **Cron: no retry/dead-letter/alerting on missed runs** (evaluate-risk does now checkpoint-resume and lock against overlapping runs via `CronCheckpoint`; `update-prices` has neither — it is cheap and idempotent, so it hasn't needed them).
 - **Dev/ops scripts tracked in git.** Four one-off scripts are tracked and ship in a clone: [scripts/check-db-state.ts](scripts/check-db-state.ts), [scripts/migrate-item-types.ts](scripts/migrate-item-types.ts), [scripts/reconcile-subscriptions.ts](scripts/reconcile-subscriptions.ts), [scripts/backfill-released-audits.ts](scripts/backfill-released-audits.ts). They contain no secrets and no injection surface, but they are DB-mutating tooling. All four call `assertDbTarget` (dev by default; production only with `ALLOW_PROD_DB=1`). **Accepted for now** given a private repo with few collaborators — documented here so it is a decision, not an oversight. (`backfill-released-audits.ts` was previously documented as untracked; it is tracked.)

@@ -7,6 +7,8 @@ import { StatusBadge, type BadgeTone } from "@/components/ui/DataTable";
 import {
   REPORT_RISK_TIERS,
   REPORT_RISK_TIER_LABEL,
+  customerRiskTierColor,
+  ltvTierColor,
   parseRiskTiers,
   type ReportRiskTier,
 } from "@/lib/reports/riskTierFilter";
@@ -89,25 +91,6 @@ interface TableTotals {
   loanAmount: number;
 }
 
-// LTV thresholds mirror the financial-summary page colors.
-function ltvColor(ltv: number | null): string {
-  if (ltv === null) return "#9E9E9E";
-  if (ltv < 65) return "#4D6B2A";
-  if (ltv <= 75) return "#8A6B17";
-  if (ltv <= 90) return "#9A4B14";
-  return "#B91C1C";
-}
-
-function riskTierColor(tier: string): string {
-  switch (tier) {
-    case "SAFE":     return "#4D6B2A";
-    case "WATCH":    return "#8A6B17";
-    case "AT_RISK":  return "#9A4B14";
-    case "CRITICAL": return "#B91C1C";
-    default:         return "#9E9E9E";
-  }
-}
-
 function formatRiskTier(tier: string): string {
   switch (tier) {
     case "AT_RISK":  return "AT RISK";
@@ -157,7 +140,8 @@ function ReportsPageContent() {
 
   // Data
   const [customers, setCustomers] = useState<CustomerRow[]>([]);
-  const [pledges, setPledges] = useState<PledgeRow[]>([]); // unfiltered — stats strip only
+  // Top strip: counted server-side by /api/reports/summary.
+  const [stripCounts, setStripCounts] = useState<{ totalPledges: number; activePledges: number } | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [adminName, setAdminName] = useState<string>("Admin");
   const [generatedOn] = useState(() => formatDate(new Date()));
@@ -186,13 +170,13 @@ function ReportsPageContent() {
   const isPledge = selectedReport !== "customers";
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // ── Fetch profile, stats, and pledges-for-stats-strip ───────────────────
+  // ── Fetch profile, stats, and the stats-strip pledge counts ─────────────
   const fetchAll = useCallback(async () => {
     setLoadingData(true);
     try {
-      const [profileRes, pledgesRes, dashboardRes] = await Promise.all([
+      const [profileRes, summaryRes, dashboardRes] = await Promise.all([
         fetch("/api/profile"),
-        fetch("/api/reports/pledges"),
+        fetch("/api/reports/summary"),
         fetch("/api/dashboard"),
       ]);
 
@@ -202,7 +186,7 @@ function ReportsPageContent() {
         setAdminName(name);
       }
 
-      if (pledgesRes.ok) setPledges(await pledgesRes.json());
+      if (summaryRes.ok) setStripCounts(await summaryRes.json());
 
       if (dashboardRes.ok) {
         const d = await dashboardRes.json();
@@ -220,25 +204,30 @@ function ReportsPageContent() {
   }, []);
 
   // ── Fetch customer table (filterable by createdAt date range) ────────────
-  const fetchCustomers = useCallback(async () => {
+  // `signal` is aborted by the effect below whenever the filters or the tab
+  // change, so an older response can never replace newer results.
+  const fetchCustomers = useCallback(async (signal: AbortSignal) => {
     setLoadingCustomers(true);
     try {
       const params = new URLSearchParams();
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
       if (activeOnly) params.set("activeOnly", "true");
-      const res = await fetch(`/api/reports/customers?${params}`);
+      const res = await fetch(`/api/reports/customers?${params}`, { signal });
       if (res.ok) {
-        setCustomers(await res.json());
+        const data = await res.json();
+        if (signal.aborted) return;
+        setCustomers(data);
         setAppliedQuery(exportQueryFor("customers", startDate, endDate, activeOnly, []));
       } else {
         setAppliedQuery(null);
       }
     } catch (err) {
+      if (signal.aborted) return; // superseded — not an error
       console.error("Customer fetch error:", err);
       setAppliedQuery(null);
     } finally {
-      setLoadingCustomers(false);
+      if (!signal.aborted) setLoadingCustomers(false);
     }
   }, [startDate, endDate, activeOnly]);
 
@@ -259,12 +248,14 @@ function ReportsPageContent() {
   );
 
   // ── Fetch the filtered table (debounced on date typing) ──────────────────
-  const fetchTable = useCallback(async () => {
+  // Same abort contract as fetchCustomers.
+  const fetchTable = useCallback(async (signal: AbortSignal) => {
     setLoadingTable(true);
     setTableError(null);
     try {
-      const res = await fetch(`/api/reports/pledges?${buildPledgeQuery()}`);
+      const res = await fetch(`/api/reports/pledges?${buildPledgeQuery()}`, { signal });
       const data = await res.json();
+      if (signal.aborted) return;
       const query = exportQueryFor(selectedReport, startDate, endDate, false, tiers);
       if (!res.ok) {
         setTierCounts(null);
@@ -286,12 +277,13 @@ function ReportsPageContent() {
       setTierCounts(data.tierCounts ?? null);
       setAppliedQuery(query);
     } catch (err) {
+      if (signal.aborted) return; // superseded — not an error
       console.error("Pledge table fetch error:", err);
       setTableRows([]);
       setTierCounts(null);
       setAppliedQuery(null);
     } finally {
-      setLoadingTable(false);
+      if (!signal.aborted) setLoadingTable(false);
     }
   }, [buildPledgeQuery, selectedReport, startDate, endDate, tiers]);
 
@@ -315,19 +307,29 @@ function ReportsPageContent() {
   }
 
   // Re-fetch pledge table when variant or date range changes (debounced).
+  // The cleanup aborts the in-flight request too, so a filter or tab change
+  // cancels it rather than letting it land late.
   useEffect(() => {
     if (!isPledge) return;
+    const ac = new AbortController();
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(fetchTable, 300);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    debounceRef.current = setTimeout(() => fetchTable(ac.signal), 300);
+    return () => {
+      ac.abort();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [isPledge, fetchTable]);
 
   // Re-fetch customer table when date range changes or on customer tab mount (debounced).
   useEffect(() => {
     if (isPledge) return;
+    const ac = new AbortController();
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(fetchCustomers, 300);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    debounceRef.current = setTimeout(() => fetchCustomers(ac.signal), 300);
+    return () => {
+      ac.abort();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [isPledge, fetchCustomers]);
 
   // ── Quick-select date ranges (YYYY-MM-DD, local) ─────────────────────────
@@ -406,9 +408,9 @@ function ReportsPageContent() {
 
   // ── Derived stats ────────────────────────────────────────────────────────
   const totalCustomers   = stats?.totalCustomers       ?? customers.length;
-  const totalPledges     = pledges.length;
+  const totalPledges     = stripCounts?.totalPledges ?? 0;
   const portfolioValue   = stats?.totalActiveLoanAmount ?? customers.reduce((s, c) => s + c.totalLoan, 0);
-  const activePledges    = stats?.totalActivePledges   ?? pledges.filter(p => p.status === "ACTIVE").length;
+  const activePledges    = stats?.totalActivePledges   ?? stripCounts?.activePledges ?? 0;
 
   const recordCount = selectedReport === "customers" ? customers.length : tableRows.length;
 
@@ -696,7 +698,7 @@ function ReportsPageContent() {
                 </div>
                 <div className="text-right text-[#6F6F6F] text-[12px]">{c.createdAt}</div>
                 <div className="text-right">
-                  <span className="font-semibold text-[13px]" style={{ color: riskTierColor(c.riskTier) }}>
+                  <span className="font-semibold text-[13px]" style={{ color: customerRiskTierColor(c.riskTier) }}>
                     {c.riskScore}
                   </span>
                   <span className="ml-1 text-[10px] text-[#9E9E9E]">{formatRiskTier(c.riskTier)}</span>
@@ -787,7 +789,7 @@ function ReportsPageContent() {
                   <div className="text-right font-semibold text-[#2C2C2C]">
                     {p.receivableAmount != null ? formatINR(p.receivableAmount) : formatINR(p.loanAmount)}
                   </div>
-                  <div className="text-right font-semibold" style={{ color: ltvColor(p.ltv) }}>
+                  <div className="text-right font-semibold" style={{ color: ltvTierColor(p.ltv) }}>
                     {p.ltv != null ? `${p.ltv.toFixed(1)}%` : "—"}
                   </div>
                   {!isReleasedVariant && (

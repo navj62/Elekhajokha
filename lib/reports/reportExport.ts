@@ -6,7 +6,6 @@
 // Each cell carries a raw value for Excel and a display string that mirrors
 // exactly what the Reports page prints for it.
 import ExcelJS from "exceljs";
-import { getRiskTier, type RiskTier } from "@/lib/calculateLTV";
 import { generateReportPDF, type ReportPdfAlign } from "@/lib/generatePDF";
 import {
   fmtReportDate,
@@ -16,7 +15,10 @@ import {
   type PledgeReportTotals,
 } from "@/lib/reports/reportQueries";
 import {
+  REPORT_RISK_TIER_HEX,
   REPORT_RISK_TIER_LABEL,
+  customerRiskTierColor,
+  ltvTierColor,
   riskTiersLabel,
   type ReportRiskTier,
 } from "@/lib/reports/riskTierFilter";
@@ -71,22 +73,8 @@ const inrFormatter = new Intl.NumberFormat("en-IN", {
 const formatINR = (n: number) => inrFormatter.format(n);
 const grams = (n: number) => `${n.toFixed(2)}g`;
 
-// Same palette as the page's ltvColor / riskTierColor; tiers come from
-// getRiskTier so the boundaries can't drift from the rest of the app.
-const LTV_TIER_HEX: Record<RiskTier, string> = {
-  SAFE: "#4D6B2A",
-  WATCH: "#8A6B17",
-  AT_RISK: "#9A4B14",
-  UNDERWATER: "#B91C1C",
-};
-const CUSTOMER_TIER_HEX: Record<CustomerReportRow["riskTier"], string> = {
-  SAFE: "#4D6B2A",
-  WATCH: "#8A6B17",
-  AT_RISK: "#9A4B14",
-  CRITICAL: "#B91C1C",
-};
-const NULL_HEX = "#9E9E9E";
-const REPORT_TIER_HEX: Record<ReportRiskTier, string> = { ...LTV_TIER_HEX, UNKNOWN: NULL_HEX };
+// Colours come from the palette the Reports page uses (riskTierFilter.ts);
+// tiers come from getRiskTier so the boundaries can't drift from the app.
 const formatRiskTier = (tier: string) => (tier === "AT_RISK" ? "AT RISK" : tier);
 
 /**
@@ -103,15 +91,15 @@ const date = (d: Date | null): ExportCell =>
   d ? { value: excelDate(d), display: fmtReportDate(d) } : { value: null, display: "—" };
 const ltvCell = (ltv: number | null): ExportCell =>
   ltv != null
-    ? { value: ltv, display: `${ltv.toFixed(1)}%`, color: LTV_TIER_HEX[getRiskTier(ltv)] }
-    : { value: null, display: "—", color: NULL_HEX };
+    ? { value: ltv, display: `${ltv.toFixed(1)}%`, color: ltvTierColor(ltv) }
+    : { value: null, display: "—", color: ltvTierColor(null) };
 // Weight and interest render "—" at zero on screen; Excel keeps the number.
 const weight = (n: number): ExportCell => ({ value: n, display: n > 0 ? grams(n) : "—" });
 const money = (n: number): ExportCell => ({ value: n, display: formatINR(n) });
 const tierCell = (t: ReportRiskTier): ExportCell => ({
   value: REPORT_RISK_TIER_LABEL[t],
   display: REPORT_RISK_TIER_LABEL[t],
-  color: REPORT_TIER_HEX[t],
+  color: REPORT_RISK_TIER_HEX[t],
 });
 const statusLabel = (s: string) => (s === "ACTIVE" ? "Active" : "Released");
 
@@ -293,7 +281,7 @@ export function customersTable(
       {
         value: c.riskScore,
         display: `${c.riskScore} ${formatRiskTier(c.riskTier)}`,
-        color: CUSTOMER_TIER_HEX[c.riskTier] ?? NULL_HEX,
+        color: customerRiskTierColor(c.riskTier),
       },
       text(formatRiskTier(c.riskTier)),
     ]),

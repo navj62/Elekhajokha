@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     const rows = await getCustomerReportRows(user.id, parsed.range, activeOnly);
     return NextResponse.json(toCustomerReportJson(rows));
   } catch (err) {
-    console.error(err);
+    console.error("Customer report failed:", err instanceof Error ? err.message : "unknown");
     return NextResponse.json({ error: "Failed" }, { status: 500 });
   }
 }

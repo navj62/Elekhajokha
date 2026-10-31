@@ -11,7 +11,7 @@ import type { CompoundingDuration } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { calculateLTV, daysToUnderwater } from "@/lib/calculateLTV";
 import { computeCustomerRiskScore } from "@/lib/customerRiskScore";
-import { OPEN_PLEDGE_STATUSES, isOpenPledgeStatus } from "@/lib/pledgeConstants";
+import { OPEN_PLEDGE_STATUSES } from "@/lib/pledgeConstants";
 import {
   emptyRiskTierCounts,
   reportRiskTier,
@@ -31,12 +31,14 @@ export interface DateRange {
 
 // Parse an IST-day boundary. <input type="date"> sends "YYYY-MM-DD" with no
 // timezone; treat it as an India/Kolkata (+05:30) wall-clock boundary.
+// Strict: anything else, or a calendar date that doesn't exist (2026-02-31,
+// which Date would silently roll into March), is null → 400 upstream.
 export function istBoundary(dateStr: string, endOfDay: boolean): Date | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-    // Fall back to permissive parse for full ISO strings.
-    const d = new Date(dateStr);
-    return isNaN(d.getTime()) ? null : d;
-  }
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  if (!m) return null;
+  const [y, mo, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const cal = new Date(Date.UTC(y, mo - 1, day));
+  if (cal.getUTCFullYear() !== y || cal.getUTCMonth() !== mo - 1 || cal.getUTCDate() !== day) return null;
   const suffix = endOfDay ? "T23:59:59.999+05:30" : "T00:00:00.000+05:30";
   const d = new Date(`${dateStr}${suffix}`);
   return isNaN(d.getTime()) ? null : d;
@@ -64,10 +66,9 @@ export function parseDateRange(startStr: string | null, endStr: string | null): 
 export const fmtReportDate = (d: Date | string) =>
   new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
-// ── Pledge reports (Active / Released tabs + legacy stats-strip path) ───────
+// ── Pledge reports (Active / Released tabs) ─────────────────────────────────
 
-/** null = legacy "all" path used by the Reports stats strip. */
-export type PledgeReportStatus = "active" | "released" | null;
+export type PledgeReportStatus = "active" | "released";
 
 export function pledgeReportQuery(userId: string, status: PledgeReportStatus, range: DateRange) {
   // Ownership always scoped via relation.
@@ -84,13 +85,9 @@ export function pledgeReportQuery(userId: string, status: PledgeReportStatus, ra
   if (status === "active") {
     where = { ...base, status: "ACTIVE", ...(hasRange ? { pledgeDate: dateFilter } : {}) };
     orderBy = { pledgeDate: "desc" };
-  } else if (status === "released") {
+  } else {
     where = { ...base, status: "RELEASED", ...(hasRange ? { releaseDate: dateFilter } : {}) };
     orderBy = { releaseDate: "desc" };
-  } else {
-    // Legacy "all" path — unfiltered, uncapped.
-    where = base;
-    orderBy = { pledgeDate: "desc" };
   }
   return { where, orderBy };
 }
@@ -215,77 +212,53 @@ export async function getPledgeReportRows(
     });
   }
 
-  if (status === "active") {
-    // ACTIVE — live interest + LTV via the canonical calculateLTV helper
-    // (same path the financial-summary page uses). Prices fetched ONCE.
-    const [goldPrice, silverPrice] = await Promise.all([
-      prisma.metalPrice.findFirst({ where: { metal: "GOLD" }, orderBy: { createdAt: "desc" } }),
-      prisma.metalPrice.findFirst({ where: { metal: "SILVER" }, orderBy: { createdAt: "desc" } }),
-    ]);
-    const goldPpg = goldPrice ? parseFloat(goldPrice.inrPerGram.toString()) : null;
-    const silverPpg = silverPrice ? parseFloat(silverPrice.inrPerGram.toString()) : null;
-    const now = new Date();
+  // ACTIVE — live interest + LTV via the canonical calculateLTV helper
+  // (same path the financial-summary page uses). Prices fetched ONCE.
+  const [goldPrice, silverPrice] = await Promise.all([
+    prisma.metalPrice.findFirst({ where: { metal: "GOLD" }, orderBy: { createdAt: "desc" } }),
+    prisma.metalPrice.findFirst({ where: { metal: "SILVER" }, orderBy: { createdAt: "desc" } }),
+  ]);
+  const goldPpg = goldPrice ? parseFloat(goldPrice.inrPerGram.toString()) : null;
+  const silverPpg = silverPrice ? parseFloat(silverPrice.inrPerGram.toString()) : null;
+  const now = new Date();
 
-    const pledges = await prisma.pledge.findMany({ where, orderBy, include: commonInclude });
-
-    return pledges.map((p) => {
-      const { itemName, itemType } = labelOf(p.items, p._count.items);
-      const goldWeight = Number(p.netWeightOfGold);
-      const silverWeight = Number(p.netWeightOfSilver);
-
-      const ltvResult = calculateLTV({
-        principal: Number(p.loanAmount),
-        rate: Number(p.interestRate),
-        pledgeDate: new Date(p.pledgeDate),
-        currentDate: now,
-        allowCompounding: p.allowCompounding,
-        compoundingDuration: p.compoundingDuration as CompoundingDuration,
-        goldWeight,
-        silverWeight,
-        goldPrice: goldPpg,
-        silverPrice: silverPpg,
-      });
-      // amountOwed = principal + accrued interest (single source of truth).
-      const interestAccrued = ltvResult.amountOwed - Number(p.loanAmount);
-
-      return {
-        customerName: p.customer?.name ?? "—",
-        pledgeDate: p.pledgeDate,
-        releaseDate: null,
-        itemType,
-        itemName,
-        netWeight: 0, // not used for active; split into gold/silver
-        netWeightOfGold: round2(goldWeight),
-        netWeightOfSilver: round2(silverWeight),
-        loanAmount: Number(p.loanAmount),
-        interestAccrued: round2(interestAccrued),
-        receivableAmount: round2(ltvResult.amountOwed),
-        marketValue: ltvResult.marketValue,
-        ltv: ltvResult.ltv,
-        riskTier: reportRiskTier(ltvResult.ltv),
-        status: p.status,
-      };
-    });
-  }
-
-  // Legacy "all" path — stats strip only. No interest/weight/LTV computation.
   const pledges = await prisma.pledge.findMany({ where, orderBy, include: commonInclude });
+
   return pledges.map((p) => {
     const { itemName, itemType } = labelOf(p.items, p._count.items);
+    const goldWeight = Number(p.netWeightOfGold);
+    const silverWeight = Number(p.netWeightOfSilver);
+
+    const ltvResult = calculateLTV({
+      principal: Number(p.loanAmount),
+      rate: Number(p.interestRate),
+      pledgeDate: new Date(p.pledgeDate),
+      currentDate: now,
+      allowCompounding: p.allowCompounding,
+      compoundingDuration: p.compoundingDuration as CompoundingDuration,
+      goldWeight,
+      silverWeight,
+      goldPrice: goldPpg,
+      silverPrice: silverPpg,
+    });
+    // amountOwed = principal + accrued interest (single source of truth).
+    const interestAccrued = ltvResult.amountOwed - Number(p.loanAmount);
+
     return {
       customerName: p.customer?.name ?? "—",
       pledgeDate: p.pledgeDate,
-      releaseDate: p.releaseDate,
+      releaseDate: null,
       itemType,
       itemName,
-      netWeight: 0,
-      netWeightOfGold: 0,
-      netWeightOfSilver: 0,
+      netWeight: 0, // not used for active; split into gold/silver
+      netWeightOfGold: round2(goldWeight),
+      netWeightOfSilver: round2(silverWeight),
       loanAmount: Number(p.loanAmount),
-      interestAccrued: 0,
-      receivableAmount: p.receivableAmount ? Number(p.receivableAmount) : null,
-      marketValue: null,
-      ltv: null,
+      interestAccrued: round2(interestAccrued),
+      receivableAmount: round2(ltvResult.amountOwed),
+      marketValue: ltvResult.marketValue,
+      ltv: ltvResult.ltv,
+      riskTier: reportRiskTier(ltvResult.ltv),
       status: p.status,
     };
   });
@@ -301,6 +274,22 @@ export function pledgeReportTotals(rows: PledgeReportRow[]): PledgeReportTotals 
     // A null receivable displays as the loan amount on screen; the total matches.
     receivableAmount: round2(rows.reduce((s, r) => s + (r.receivableAmount ?? r.loanAmount), 0)),
     loanAmount: round2(rows.reduce((s, r) => s + r.loanAmount, 0)),
+  };
+}
+
+/**
+ * The Reports page's top strip: every pledge of the shop's live customers,
+ * and how many of them are ACTIVE. Counted in the database — no rows loaded.
+ */
+export async function pledgeStripCounts(userId: string) {
+  const groups = await prisma.pledge.groupBy({
+    by: ["status"],
+    where: { customer: { userId, deletedAt: null } },
+    _count: { _all: true },
+  });
+  return {
+    totalPledges: groups.reduce((s, g) => s + g._count._all, 0),
+    activePledges: groups.find((g) => g.status === "ACTIVE")?._count._all ?? 0,
   };
 }
 
@@ -420,9 +409,11 @@ export async function getCustomerReportRows(
       mobile: true,
       address: true,
       createdAt: true,
+      // Only open pledges feed the count, loan and risk score.
+      // OVERDUE is open (non-terminal) like ACTIVE; RELEASED and SOLD are terminal.
       pledges: {
+        where: { status: { in: [...OPEN_PLEDGE_STATUSES] } },
         select: {
-          status: true,
           loanAmount: true,
           interestRate: true,
           pledgeDate: true,
@@ -437,9 +428,7 @@ export async function getCustomerReportRows(
   });
 
   return customers.map((c) => {
-    // Only open pledges — count and current loan outstanding.
-    // OVERDUE is open (non-terminal) like ACTIVE; RELEASED and SOLD are terminal.
-    const activePledges = c.pledges.filter((p) => isOpenPledgeStatus(p.status));
+    const activePledges = c.pledges; // open only — filtered in the query
     const pledgeCount = activePledges.length;
     const totalLoan = activePledges.reduce((s, p) => s + Number(p.loanAmount), 0);
 
