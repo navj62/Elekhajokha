@@ -17,16 +17,21 @@
  * are separate and must be run manually via `tsx` when needed — they are NOT
  * wired to `prisma db seed`.
  *
- * USAGE:
+ * USAGE — DEV (default; dotenv/config loads .env):
  *   npx prisma db seed
  *   # or directly:
  *   npx tsx prisma/seed-defaults.ts
+ * PRODUCTION (deliberate — see CLAUDE.md "Running against production deliberately"):
+ *   DOTENV_CONFIG_PATH=.env.prod.local ALLOW_PROD_DB=1 npx prisma db seed
  */
 
 import "dotenv/config";
 import ws from "ws";
 import { neonConfig } from "@neondatabase/serverless";
 import { prisma } from "../lib/prisma";
+import { assertDbTarget } from "../lib/dbGuard";
+
+assertDbTarget(process.env.DATABASE_URL, "prisma/seed-defaults");
 
 // Neon's serverless driver needs a WebSocket constructor when run outside the
 // app runtime (a plain Node/tsx process). Set before the first query executes.

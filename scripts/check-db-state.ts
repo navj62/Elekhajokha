@@ -1,6 +1,13 @@
-// One-off diagnostic script. Run with: npx tsx scripts/check-db-state.ts
-// Copy this file into your repo's scripts/ folder first.
+// One-off diagnostic script (read-only).
+//
+// Run against DEV (default — .env):
+//   npx tsx -r dotenv/config scripts/check-db-state.ts
+// Run against PRODUCTION (deliberate — see CLAUDE.md "Running against production deliberately"):
+//   ALLOW_PROD_DB=1 npx tsx --env-file=.env --env-file=.env.prod.local scripts/check-db-state.ts
 import { prisma } from "../lib/prisma";
+import { assertDbTarget } from "../lib/dbGuard";
+
+assertDbTarget(process.env.DATABASE_URL, "scripts/check-db-state");
 
 async function main() {
   console.log("=== 1. itemType column type on pledge_items ===");

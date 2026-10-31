@@ -18,16 +18,19 @@
 // IDEMPOTENT: the `pledgeAudits: { none: {} }` anti-join means a second run
 // selects zero pledges and writes nothing. Safe to re-run after an interruption.
 //
-// Run (dry-run first — does everything EXCEPT write):
-//   DATABASE_URL="<url>" npx tsx scripts/backfill-released-audits.ts --dry-run
-//   DATABASE_URL="<url>" npx tsx scripts/backfill-released-audits.ts
-//
-// Or with a local env file:
-//   DOTENV_CONFIG_PATH=.env npx tsx -r dotenv/config scripts/backfill-released-audits.ts --dry-run
+// Run (dry-run first — does everything EXCEPT write). DEV (default — .env):
+//   npx tsx -r dotenv/config scripts/backfill-released-audits.ts --dry-run
+//   npx tsx -r dotenv/config scripts/backfill-released-audits.ts
+// PRODUCTION (deliberate — see CLAUDE.md "Running against production deliberately"):
+//   ALLOW_PROD_DB=1 npx tsx --env-file=.env --env-file=.env.prod.local scripts/backfill-released-audits.ts --dry-run
+//   ALLOW_PROD_DB=1 npx tsx --env-file=.env --env-file=.env.prod.local scripts/backfill-released-audits.ts
 
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { CALCULATION_VERSION } from "@/lib/pledgeConstants";
+import { assertDbTarget } from "@/lib/dbGuard";
+
+assertDbTarget(process.env.DATABASE_URL, "scripts/backfill-released-audits");
 
 const DRY_RUN = process.argv.includes("--dry-run");
 

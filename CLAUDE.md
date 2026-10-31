@@ -47,7 +47,7 @@ npm test          # vitest — unit tests for interest / LTV / customer-risk pur
 
 npx prisma generate          # regenerate the Prisma client
 npx prisma migrate dev       # apply/create migrations (dev)
-npx prisma migrate deploy    # apply migrations in production (never migrate dev on prod)
+npx prisma migrate deploy    # apply pending migrations — dev by default; for production see "Running against production deliberately"
 npx prisma studio            # inspect the DB
 npx prisma db seed           # runs tsx prisma/seed-defaults.ts (idempotently seeds the 10 default PledgeItemType rows)
 ```
@@ -62,6 +62,30 @@ Two things to know before editing it:
 - **CI lints with `eslint.config.ci.mjs`, not `eslint.config.mjs`.** The CI config is identical to the strict local one except the three new-in-Next-16 react-hooks preview rules are disabled (19 tracked sites). Local `npm run lint` stays strict — so a clean CI run does not mean a clean local lint. Fix lint against the local config; the CI config exists only to keep the gate green on those 19 known sites.
 
 CI deliberately does not run `next build` — see Known gaps.
+
+### Which database you are on (dev by default)
+Everything on a developer machine targets the **dev** Neon branch (`ep-old-firefly`) unless production is chosen deliberately.
+- **`.env`** and **`.env.local`** both hold the dev `DATABASE_URL`/`DIRECT_URL`. `next dev`/`build`/`start` read `.env.local` first; the Prisma CLI (`prisma.config.ts` → `import "dotenv/config"`), `prisma db seed`, and `tsx -r dotenv/config` scripts read `.env`.
+- **`.env.prod.local`** holds ONLY the production `DATABASE_URL`/`DIRECT_URL` (`ep-sparkling-wind`). Nothing loads it automatically — not Next.js (it only knows `.env.production.local`, which must NOT be used: `next build`/`start` would load it), not dotenv, not Prisma. All `.env*` files are gitignored (`.gitignore` `.env*`) and none has ever been committed.
+- **[lib/dbGuard.ts](lib/dbGuard.ts)** `assertDbTarget(url, caller)` — fail-closed guard for tooling. Prints the target host; refuses (throws before any connection) unless the host is on the committed `DEV_DB_HOSTS` allowlist (Neon endpoint names on `*.neon.tech`, plus `localhost`/`127.0.0.1` for CI's dummy URL) or `ALLOW_PROD_DB=1` is set. Called from `prisma.config.ts` for every Prisma subcommand except offline ones (`generate`, `validate`, `format`, `version`, `init`, `help`, `debug` — so deploy builds can still `prisma generate` with the production URL), and at the top of every script/seed that touches a DB (`scripts/*.ts`, `prisma/seed-defaults.ts`, the gitignored `prisma/seed-binnu-gold-migration.ts`). **Never call it from [lib/prisma.ts](lib/prisma.ts)** — the deployed app connects to production through that client on purpose. Any new DB-touching script must call it before its first query. Tests: [tests/dbGuard.test.ts](tests/dbGuard.test.ts).
+- Deploys build from git, so they have no `.env*` files; the host's own settings supply `DATABASE_URL` (on Vercel: Project → Settings → Environment Variables).
+
+### Running against production deliberately
+Production is reached only by naming `.env.prod.local` AND setting `ALLOW_PROD_DB=1`. Without the flag every Prisma command and script refuses with `[db-guard] … REFUSED — <host> is not a dev database host` before connecting.
+
+```bash
+# Migrations — check first, then apply. NEVER `migrate dev` / `db push` on production.
+DOTENV_CONFIG_PATH=.env.prod.local ALLOW_PROD_DB=1 npx prisma migrate status
+DOTENV_CONFIG_PATH=.env.prod.local ALLOW_PROD_DB=1 npx prisma migrate deploy
+
+# Seed the default item types
+DOTENV_CONFIG_PATH=.env.prod.local ALLOW_PROD_DB=1 npx prisma db seed
+
+# Scripts: --env-file twice — .env supplies the other keys (e.g. Razorpay),
+# .env.prod.local (loaded second, so it wins) supplies the production DB URLs.
+ALLOW_PROD_DB=1 npx tsx --env-file=.env --env-file=.env.prod.local scripts/reconcile-subscriptions.ts --dry-run
+```
+`DOTENV_CONFIG_PATH` takes a single file, which is enough for the Prisma CLI (it only needs `DATABASE_URL`). Read the host printed by `[db-guard]` before confirming anything. A pipeline that runs `migrate deploy` with the production URL must set `ALLOW_PROD_DB=1` in that environment.
 
 ### Prisma datasource gotcha
 The runtime client and the CLI read their connection string from **different files**, but both currently point at `DATABASE_URL`:
@@ -78,10 +102,11 @@ After ANY schema change — especially enum changes or enum removals — run `np
 ### Migration tracking can lie (real incident)
 `npx prisma migrate status` reported **"Database schema is up to date"** while a migration's DDL had never actually executed against the live database. The migration file existed with correct SQL, and Prisma's `_prisma_migrations` table had it recorded as applied — but the columns were genuinely **absent** from the database, producing `P2022 "column does not exist"` errors at runtime.
 
-When `migrate status` contradicts a runtime column error, the migration-history table is not trustworthy. The ONLY reliable check is to query `information_schema` directly, bypassing Prisma entirely with the raw Neon driver:
+When `migrate status` contradicts a runtime column error, the migration-history table is not trustworthy. The ONLY reliable check is to query `information_schema` directly, bypassing Prisma entirely with the raw Neon driver. Dev by default (`.env`), guarded like every other tool:
 
 ```bash
 npx tsx -r dotenv/config -e "
+require('./lib/dbGuard.ts').assertDbTarget(process.env.DATABASE_URL, 'information_schema check');
 import('@neondatabase/serverless').then(async ({ neon }) => {
   const sql = neon(process.env.DATABASE_URL);
   console.log(await sql\`
@@ -91,6 +116,7 @@ import('@neondatabase/serverless').then(async ({ neon }) => {
 });
 "
 ```
+For production, replace `npx tsx -r dotenv/config` with `ALLOW_PROD_DB=1 npx tsx --env-file=.env --env-file=.env.prod.local` (see "Running against production deliberately"). Use `require()` for the guard: inside `tsx -e`, a dynamic `import()` of a `.ts` file returns it wrapped as a CommonJS default export.
 
 Two things that make this hard to diagnose:
 - **`prisma db execute` does NOT print SELECT results** — it only reports "Script executed successfully". It cannot be used to inspect the DB.
@@ -395,7 +421,7 @@ Cascade caveat — **half closed.** `PledgeAudit` is now `onDelete: Restrict` (m
 **Production checklist:**
 - `CRON_SECRET` and `RAZORPAY_WEBHOOK_SECRET` must be non-empty (Invariant 6).
 - Use a new Clerk **production instance** — fresh keys, recreate JWT template.
-- New clean Neon production database. Run `npx prisma migrate deploy` then `npx prisma db seed`. The seed command runs `prisma/seed-defaults.ts`, which idempotently creates the 10 system-default `PledgeItemType` rows (`isDefault: true`, `userId: null`) and exits 0 whether it created rows or skipped existing ones. It contains no PII and no hardcoded user IDs, and is safe to run repeatedly. Verify in prisma studio that 10 default rows exist.
+- New clean Neon production database. Put its URLs in `.env.prod.local`, then run `DOTENV_CONFIG_PATH=.env.prod.local ALLOW_PROD_DB=1 npx prisma migrate deploy` then `DOTENV_CONFIG_PATH=.env.prod.local ALLOW_PROD_DB=1 npx prisma db seed` (see "Running against production deliberately"). The seed command runs `prisma/seed-defaults.ts`, which idempotently creates the 10 system-default `PledgeItemType` rows (`isDefault: true`, `userId: null`) and exits 0 whether it created rows or skipped existing ones. It contains no PII and no hardcoded user IDs, and is safe to run repeatedly. Verify in prisma studio that 10 default rows exist.
 - Set `NEXT_PUBLIC_BASE_URL` to the production domain.
 - Configure Razorpay webhook URL → `https://yourdomain.com/api/webhook/razorpay` (live mode + KYC).
 - Configure Clerk webhook → `https://yourdomain.com/api/webhook/register` (events: `user.created`, `user.deleted`).
@@ -418,7 +444,7 @@ Deliberately tracked so reviews focus on real bugs rather than re-discovering th
 - ~~Part-payment flow has no UI.~~ **Implemented.** `POST /api/customers/[customerId]/pledges/[pledgeId]/transactions` records a `Transaction` (standard auth + ownership scoping; validates positive amount, type ∈ {REPAYMENT_PRINCIPAL, REPAYMENT_INTEREST, TOPUP}, optional note ≤1000 chars, optional transactionDate). The pledge detail page (`app/(CustomersDetails)/customers/[customerId]/pledges/[pledgeId]/page.tsx`) has the form — type dropdown, amount, date, submit — plus read-only history. Note: the route stores `amount` as `new Prisma.Decimal(Number(amount))`; it does not adjust the pledge balance (Transactions are a ledger, not applied to accrual).
 - **Inventory reports not built.** Future: a Reports tab reading `action: "SOLD"` audits + `InventoryItem` rows.
 - **No error monitoring** (no Sentry; `console.*` only). **No structured logging.** **Security headers** — the four base headers (X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, HSTS) ARE implemented in `next.config.ts`, plus `Permissions-Policy` and a `Content-Security-Policy-Report-Only` header. Enforcing CSP is still deferred: Next.js App Router, Clerk, and Razorpay all inject inline scripts, so a strict nonce-based policy needs nonce plumbing first — the Report-Only header collects violations in the meantime. **Before switching Report-Only → enforcing (`Content-Security-Policy`), violations must be collected across a real Clerk sign-in flow AND a real Razorpay checkout, and the Clerk origin must change from `*.clerk.accounts.dev` to the production Clerk Frontend API host.** **Backup/DR: Neon defaults only.** **Cron: no retry/dead-letter/alerting on missed runs** (evaluate-risk does now checkpoint-resume and lock against overlapping runs via `CronCheckpoint`; `update-prices` has neither — it is cheap and idempotent, so it hasn't needed them).
-- **Dev/ops scripts tracked in git.** Three one-off scripts are tracked and ship in a clone: [scripts/check-db-state.ts](scripts/check-db-state.ts), [scripts/migrate-item-types.ts](scripts/migrate-item-types.ts), [scripts/reconcile-subscriptions.ts](scripts/reconcile-subscriptions.ts). They contain no secrets and no injection surface, but they are DB-mutating tooling. **Accepted for now** given a private repo with few collaborators — documented here so it is a decision, not an oversight. (A fourth, `scripts/backfill-released-audits.ts`, currently exists in the working tree **untracked** — it does not ship in a clone. Decide tracked-or-deleted before it drifts.)
+- **Dev/ops scripts tracked in git.** Four one-off scripts are tracked and ship in a clone: [scripts/check-db-state.ts](scripts/check-db-state.ts), [scripts/migrate-item-types.ts](scripts/migrate-item-types.ts), [scripts/reconcile-subscriptions.ts](scripts/reconcile-subscriptions.ts), [scripts/backfill-released-audits.ts](scripts/backfill-released-audits.ts). They contain no secrets and no injection surface, but they are DB-mutating tooling. All four call `assertDbTarget` (dev by default; production only with `ALLOW_PROD_DB=1`). **Accepted for now** given a private repo with few collaborators — documented here so it is a decision, not an oversight. (`backfill-released-audits.ts` was previously documented as untracked; it is tracked.)
 - **Customer PII in git history.** Two ledger-import scripts (`prisma/seed.ts`, `prisma/seed-ledger-entries-batch2.ts`) contained real customer PII (names, regions, loan amounts transcribed from a physical ledger) and used `new PrismaClient()` in violation of Invariant 9. They were **removed from the working tree** so they no longer ship to future clones, but they **remain in git history** — a history purge (`git filter-repo`/BFG + force-push) was **deliberately not performed**. The repo must stay private. `prisma db seed` now runs the PII-free `prisma/seed-defaults.ts`.
 - **No `.env.example`.** Onboarding a new developer means reconstructing the env-var list from the checklist below. Optional: add a `.env.example` with placeholder values only (no real secrets) for developer onboarding.
 - **`pledgeDate` is not validated server-side.** [app/api/customers/[customerId]/pledges/route.ts](app/api/customers/[customerId]/pledges/route.ts) checks the field is present and nothing else — no upper bound (future dates), no lower bound, no format check. `compoundingDuration` gets an allowlist and the money fields get explicit bounds; dates were missed. A malformed value reaches `new Date(pledgeDate)` as `Invalid Date` and surfaces as a Prisma 500 where it should be a clean 400. The `min`/`max` on the pledge-add date input are a **UI affordance only** and enforce nothing. The route is authed and tenant-scoped, so the realistic case is a malformed request from our own client — robustness, not security.

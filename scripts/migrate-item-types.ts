@@ -2,10 +2,16 @@
  * One-time script: convert uppercase enum strings stored in pledge_items.itemType
  * to human-readable title-case labels after the ItemType enum was dropped.
  *
- * Run: npx tsx scripts/migrate-item-types.ts
+ * Run against DEV (default — .env):
+ *   npx tsx -r dotenv/config scripts/migrate-item-types.ts
+ * Run against PRODUCTION (deliberate — see CLAUDE.md "Running against production deliberately"):
+ *   ALLOW_PROD_DB=1 npx tsx --env-file=.env --env-file=.env.prod.local scripts/migrate-item-types.ts
  */
 
 import { prisma } from "../lib/prisma";
+import { assertDbTarget } from "../lib/dbGuard";
+
+assertDbTarget(process.env.DATABASE_URL, "scripts/migrate-item-types");
 
 async function main() {
   const result = await prisma.$executeRaw`

@@ -7,14 +7,20 @@
 // reports the subscription `active`/`authenticated`. Anything else is logged
 // and left untouched for a human to decide.
 //
-// Run (dry-run first — does everything EXCEPT write):
-//   DOTENV_CONFIG_PATH=.env npx tsx -r dotenv/config scripts/reconcile-subscriptions.ts --dry-run
-//   DOTENV_CONFIG_PATH=.env npx tsx -r dotenv/config scripts/reconcile-subscriptions.ts
+// Run (dry-run first — does everything EXCEPT write). DEV (default — .env):
+//   npx tsx -r dotenv/config scripts/reconcile-subscriptions.ts --dry-run
+//   npx tsx -r dotenv/config scripts/reconcile-subscriptions.ts
+// PRODUCTION (deliberate — see CLAUDE.md "Running against production deliberately"):
+//   ALLOW_PROD_DB=1 npx tsx --env-file=.env --env-file=.env.prod.local scripts/reconcile-subscriptions.ts --dry-run
+//   ALLOW_PROD_DB=1 npx tsx --env-file=.env --env-file=.env.prod.local scripts/reconcile-subscriptions.ts
 
 import Razorpay from "razorpay";
 import { prisma } from "@/lib/prisma";
 import { SubscriptionStatus } from "@prisma/client";
 import { subscriptionGrantsAccess, subscriptionEndDate } from "@/lib/razorpaySubscription";
+import { assertDbTarget } from "@/lib/dbGuard";
+
+assertDbTarget(process.env.DATABASE_URL, "scripts/reconcile-subscriptions");
 
 const DRY_RUN = process.argv.includes("--dry-run");
 
