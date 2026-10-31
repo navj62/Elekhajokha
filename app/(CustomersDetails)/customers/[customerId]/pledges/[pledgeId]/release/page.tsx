@@ -2,13 +2,15 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   Loader2, CheckCircle, ArrowLeft, Calendar,
   AlertTriangle, RefreshCw, Phone, MapPin, Info, Archive,
 } from "lucide-react";
 
 import { calculateHybridInterest } from "@/lib/interest";
+import { isOpenPledgeStatus } from "@/lib/pledgeConstants";
+import { queueToast } from "@/components/ui/Toast";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                                */
@@ -113,6 +115,9 @@ export default function ReleasePledgePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [released, setReleased] = useState(false);
+  // Reached from the quick-action Release sheet: on success, back to the
+  // dashboard with a toast. Without ?from=quick the page is unchanged.
+  const fromQuick = useSearchParams().get("from") === "quick";
 
   /* ── Fetch pledge ── */
   async function loadPledge() {
@@ -156,7 +161,8 @@ export default function ReleasePledgePage() {
     );
   }, [pledge, releaseDate, isBeforePledge, allowCompounding, compoundingDuration]);
 
-  const canRelease = pledge?.status === "ACTIVE" && calc !== null && !isBeforePledge;
+  // Open = ACTIVE or OVERDUE, matching the PATCH route (was ACTIVE-only).
+  const canRelease = !!pledge && isOpenPledgeStatus(pledge.status) && calc !== null && !isBeforePledge;
 
   /* ── Payment history totals ── */
   const txnTotals = useMemo(() => {
@@ -190,6 +196,11 @@ export default function ReleasePledgePage() {
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Failed to release pledge");
+      }
+      if (fromQuick && pledge) {
+        queueToast(`Released 1 pledge for ${pledge.customer.name}`);
+        router.push("/dashboard");
+        return;
       }
       setReleased(true);
     } catch (err) {

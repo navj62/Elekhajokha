@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   Camera,
@@ -21,6 +21,7 @@ import StickyActions from "@/components/ui/StickyActions";
 import { PLEDGE_FORM_REQUIRED_KEYS } from "@/lib/pledgeFormKeys";
 import { metalContent } from "@/lib/weights";
 import { checkInterestRate } from "@/lib/interestRate";
+import { queueToast } from "@/components/ui/Toast";
 import type { CompoundingDurationValue, PledgeDefaults } from "@/lib/pledgeDefaults";
 
 /* ------------------------------------------------------------------ */
@@ -289,6 +290,9 @@ export default function AddPledgePage() {
 
   const [saving, setSaving] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  // Opened from a dashboard / "+" quick action: the success panel leads back
+  // to the dashboard. Without ?from=quick the page behaves exactly as before.
+  const fromQuick = useSearchParams().get("from") === "quick";
   const [newPledgeId, setNewPledgeId] = useState<string | null>(null);
 
   const [itemTypeGroups, setItemTypeGroups] = useState<ItemTypeGroup>({ defaults: [], custom: [] });
@@ -1056,6 +1060,31 @@ export default function AddPledgePage() {
           <div className="flex size-14 items-center justify-center rounded-full bg-[var(--card-alt)] border border-border">
             <Check className="text-primary" size={24} strokeWidth={2.5} />
           </div>
+          {fromQuick ? (
+          <div className="flex w-full flex-col gap-3">
+            <button
+              onClick={() => {
+                queueToast(`Pledge added for ${customer?.name ?? "customer"}`);
+                router.push("/dashboard");
+              }}
+              className="w-full min-h-11 rounded-[12px] bg-primary text-primary-foreground text-[14px] font-bold hover:opacity-90 transition-opacity"
+            >
+              Back to dashboard
+            </button>
+            <button
+              onClick={resetForm}
+              className="w-full min-h-11 rounded-[12px] bg-card border border-primary text-primary text-[14px] font-bold hover:bg-accent transition-colors"
+            >
+              Add another pledge
+            </button>
+            <button
+              onClick={() => router.push(`/customers/${customerId}/pledges/${newPledgeId}`)}
+              className="w-full min-h-11 rounded-[12px] bg-card border border-primary text-primary text-[14px] font-bold hover:bg-accent transition-colors"
+            >
+              Go to pledge detail
+            </button>
+          </div>
+          ) : (
           <div className="flex w-full flex-col gap-3">
             <button
               onClick={() => router.push(`/customers/${customerId}/pledges/${newPledgeId}`)}
@@ -1070,6 +1099,7 @@ export default function AddPledgePage() {
               Add another pledge
             </button>
           </div>
+          )}
         </div>
       </Sheet>
 

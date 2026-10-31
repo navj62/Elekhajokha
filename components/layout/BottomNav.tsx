@@ -90,12 +90,13 @@ export default function BottomNav({
           );
         })}
 
-        {/* Centre FAB — raised above the bar, primary create action */}
+        {/* Centre FAB — raised above the bar; opens the Quick actions sheet */}
         <div className="relative flex w-16 shrink-0 items-start justify-center">
           <button
             type="button"
             onClick={onCreate}
-            aria-label="New pledge"
+            aria-label="Quick actions"
+            aria-haspopup="dialog"
             data-slot="bottom-nav-fab"
             className="absolute -top-5 z-45 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg ring-4 ring-sidebar transition-transform active:scale-95"
           >

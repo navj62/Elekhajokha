@@ -94,8 +94,9 @@ export function isNavActive(pathname: string, href: string) {
 /*                                                                     */
 /*  There is no top-level /pledges/add route: pledge creation lives at */
 /*  /customers/[customerId]/pledges/add and REQUIRES a customer. The   */
-/*  FAB therefore opens a customer picker first, then routes to that   */
-/*  customer's pledge-add page.                                        */
+/*  FAB therefore opens the Quick actions sheet (Add / Release Pledge, */
+/*  components/layout/QuickActions.tsx), whose customer picker routes  */
+/*  to that customer's pledge-add page.                                */
 /* ------------------------------------------------------------------ */
 export const pledgeAddHref = (customerId: string) => `/customers/${customerId}/pledges/add`;
 

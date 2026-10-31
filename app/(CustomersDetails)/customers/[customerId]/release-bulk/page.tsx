@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Loader2, ArrowLeft, AlertTriangle, CheckCircle2, MapPin, Phone } from "lucide-react";
 import { calculateHybridInterest } from "@/lib/interest";
+import { queueToast } from "@/components/ui/Toast";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -113,6 +114,9 @@ function BulkReleaseInner() {
   const customerId = params.customerId;
 
   const idsParam = searchParams.get("ids") ?? "";
+  // Reached from the quick-action Release sheet: on success, back to the
+  // dashboard with a toast. Without ?from=quick the page is unchanged.
+  const fromQuick = searchParams.get("from") === "quick";
   const ids = idsParam.split(",").map((s) => s.trim()).filter(Boolean);
 
   const [releaseDate, setReleaseDate] = useState(() => new Date().toISOString().split("T")[0]);
@@ -291,6 +295,12 @@ function BulkReleaseInner() {
 
       // Success — the server committed atomically (all-or-nothing).
       setShowConfirm(false);
+      if (fromQuick) {
+        const n = data.releasedCount as number;
+        queueToast(`Released ${n} pledge${n !== 1 ? "s" : ""} for ${customerName}`);
+        router.push("/dashboard");
+        return;
+      }
       setSuccessToast(`${data.releasedCount} pledge${data.releasedCount !== 1 ? "s" : ""} released successfully`);
       setTimeout(() => router.push(`/customers/${customerId}`), 1100);
     } catch {

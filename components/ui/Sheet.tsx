@@ -23,13 +23,14 @@ import { cn } from "@/lib/utils";
 /*  A sheet therefore always covers the bottom nav and FAB.            */
 /* ------------------------------------------------------------------ */
 
-type SheetSize = "sm" | "md" | "lg" | "full";
+type SheetSize = "sm" | "md" | "lg" | "picker" | "full";
 type SheetSide = "responsive" | "bottom" | "center";
 
 const SIZE_CLASS: Record<SheetSize, string> = {
   sm: "lg:max-w-[380px]",
   md: "lg:max-w-[480px]",
   lg: "lg:max-w-[640px]",
+  picker: "lg:max-w-[560px]", // quick-action customer picker
   full: "lg:max-w-[calc(100vw-4rem)]",
 };
 
@@ -56,6 +57,8 @@ export interface SheetProps {
   header?: React.ReactNode;
   className?: string;
   bodyClassName?: string;
+  /** Radix pass-through: preventDefault() to manage where focus returns on close. */
+  onCloseAutoFocus?: (event: Event) => void;
 }
 
 export function Sheet({
@@ -71,6 +74,7 @@ export function Sheet({
   header,
   className,
   bodyClassName,
+  onCloseAutoFocus,
 }: SheetProps) {
   const contentRef = React.useRef<HTMLDivElement>(null);
   const drag = React.useRef<{ startY: number; startT: number; active: boolean }>({
@@ -134,7 +138,8 @@ export function Sheet({
           className={cn(
             "fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]",
             "data-[state=open]:animate-in data-[state=open]:fade-in-0",
-            "data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
+            "data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
+            "motion-reduce:data-[state=open]:animate-none motion-reduce:data-[state=closed]:animate-none"
           )}
         />
         <DialogPrimitive.Content
@@ -143,10 +148,13 @@ export function Sheet({
           onEscapeKeyDown={blockIfLocked}
           onPointerDownOutside={blockIfLocked}
           onInteractOutside={blockIfLocked}
+          onCloseAutoFocus={onCloseAutoFocus}
           style={open && dragY ? { transform: `translateY(${dragY}px)`, transition: "none" } : undefined}
           className={cn(
             "fixed z-51 flex flex-col overflow-hidden bg-card text-card-foreground shadow-2xl",
             "max-h-[85dvh] focus:outline-none",
+            // Reduced motion: appear/disappear without slide or zoom.
+            "motion-reduce:data-[state=open]:animate-none motion-reduce:data-[state=closed]:animate-none",
             isBottom && [
               "inset-x-0 bottom-0 w-full rounded-t-[22px] border-t border-border",
               "data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom",

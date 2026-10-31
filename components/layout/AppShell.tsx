@@ -13,7 +13,7 @@ import MetalRateStrip from "@/components/inventory/MetalRateStrip";
 import { navFor, isNavActive } from "./navConfig";
 import BottomNav from "./BottomNav";
 import MoreSheet from "./MoreSheet";
-import CustomerPickerSheet from "./CustomerPickerSheet";
+import { QuickActionsProvider, useQuickActions } from "./QuickActions";
 
 /* ------------------------------------------------------------------ */
 /*  The one application shell.                                         */
@@ -32,9 +32,22 @@ import CustomerPickerSheet from "./CustomerPickerSheet";
 /* ------------------------------------------------------------------ */
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <QuickActionsProvider>
+      <AppShellFrame>{children}</AppShellFrame>
+    </QuickActionsProvider>
+  );
+}
+
+/** Mobile "+" → the Quick actions sheet (Add Pledge / Release Pledge). */
+function QuickActionsBottomNav({ onMore }: { onMore: () => void }) {
+  const { openQuickActions } = useQuickActions();
+  return <BottomNav onMore={onMore} onCreate={openQuickActions} />;
+}
+
+function AppShellFrame({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const { language, setLanguage, t } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const { isLoaded, isSignedIn, user } = useUser();
@@ -153,9 +166,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Mobile-only nav surfaces */}
-      <BottomNav onMore={() => setMoreOpen(true)} onCreate={() => setPickerOpen(true)} />
+      <QuickActionsBottomNav onMore={() => setMoreOpen(true)} />
       <MoreSheet open={moreOpen} onOpenChange={setMoreOpen} />
-      <CustomerPickerSheet open={pickerOpen} onOpenChange={setPickerOpen} />
     </div>
   );
 }

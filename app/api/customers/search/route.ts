@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth }                      from "@clerk/nextjs/server";
 import { prisma }                    from "@/lib/prisma";
 import { PledgeStatus, Prisma } from "@prisma/client";
+import { OPEN_PLEDGE_STATUSES } from "@/lib/pledgeConstants";
 
 // Safety cap only — far above any realistic shop size, but bounded so a
 // pathological account can never hang the page. The customer list page has no
@@ -41,10 +42,13 @@ export async function GET(req: NextRequest) {
     const { searchParams } = req.nextUrl;
     const search   = searchParams.get("q")?.trim() ?? "";
     const sortBy   = searchParams.get("sortBy")    ?? ""; // name-asc, name-desc, address-asc, address-desc, itemname-asc, itemname-desc, itemtype-*, most-pledges, recent-update, oldest, newest (default)
-    const filterBy = searchParams.get("filterBy")  ?? "ALL"; // ALL, ACTIVE, RELEASED, OVERDUE, PINNED
-    const take     = Math.min(
-      parseInt(searchParams.get("take") ?? String(DEFAULT_TAKE), 10) || DEFAULT_TAKE,
-      MAX_RESULTS
+    const filterBy = searchParams.get("filterBy")  ?? "ALL"; // ALL, ACTIVE, RELEASED, OVERDUE, OPEN (ACTIVE+OVERDUE), PINNED
+    const takeParam = searchParams.get("take");
+    // 1..MAX_RESULTS. 0 / non-numeric → the default; negative → 1 (a negative
+    // Prisma take would read from the end of the list).
+    const take     = Math.max(
+      1,
+      Math.min(parseInt(takeParam ?? String(DEFAULT_TAKE), 10) || DEFAULT_TAKE, MAX_RESULTS)
     );
 
     const where: Prisma.CustomerWhereInput = {
@@ -52,10 +56,13 @@ export async function GET(req: NextRequest) {
       deletedAt: null,
     };
 
-    let statusFilter: PledgeStatus | undefined = undefined;
+    // A pledge-status condition, applied wherever the filter used to be a
+    // single status. OPEN = ACTIVE + OVERDUE (the isOpenPledgeStatus set).
+    let statusFilter: Prisma.PledgeWhereInput["status"] | undefined = undefined;
     if (filterBy === "ACTIVE") statusFilter = PledgeStatus.ACTIVE;
     if (filterBy === "RELEASED") statusFilter = PledgeStatus.RELEASED;
     if (filterBy === "OVERDUE") statusFilter = PledgeStatus.OVERDUE;
+    if (filterBy === "OPEN") statusFilter = { in: [...OPEN_PLEDGE_STATUSES] };
     
     if (filterBy === "PINNED") {
       where.isPinned = true;
@@ -111,13 +118,21 @@ export async function GET(req: NextRequest) {
       orderBy.push({ createdAt: "desc" }); // "newest" or default
     }
 
+    // An explicit `take` is applied to the DB query itself (+1 to detect
+    // hasMore), so a picker asking for 50 never loads thousands of rows.
+    // Without `take` — and for the item-label sorts, which reorder in memory
+    // and so need the full set — the query keeps today's MAX_RESULTS bound.
+    const dbTake =
+      takeParam !== null && !sortBy.startsWith("item") ? take + 1 : MAX_RESULTS;
+
     const customers = await prisma.customer.findMany({
       where,
       orderBy,
-      take: MAX_RESULTS, // hard safety bound on the DB query itself
+      take: dbTake, // hard safety bound on the DB query itself
       select: {
         id:     true,
         name:   true,
+        mobile: true,
         region: true,
         address: true,
         isPinned: true,
@@ -171,6 +186,21 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    // Open (ACTIVE + OVERDUE) pledge count per returned customer — one
+    // grouped query over this page's ids. Separate from `pledgeCount`, whose
+    // existing meaning (ACTIVE, or the filterBy status) is unchanged.
+    const openCounts = customers.length
+      ? await prisma.pledge.groupBy({
+          by: ["customerId"],
+          where: {
+            customerId: { in: customers.map((c) => c.id) },
+            status: { in: [...OPEN_PLEDGE_STATUSES] },
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const openCountOf = new Map(openCounts.map((r) => [r.customerId, r._count._all]));
+
     const mapped = customers.map((cust) => {
       // `pledges` holds at most one row (take: 1 above). A customer with no
       // pledges — or none matching the status filter — yields undefined here
@@ -180,9 +210,11 @@ export async function GET(req: NextRequest) {
       return {
         id:          cust.id,
         name:        cust.name,
+        mobile:      cust.mobile,
         region:      cust.region || cust.address, 
         isPinned:    cust.isPinned,
         pledgeCount: cust._count.pledges,
+        openPledgeCount: openCountOf.get(cust.id) ?? 0,
         latestItem:  latestItem ? buildItemLabel(latestItem) : null,
       };
     });
@@ -228,7 +260,7 @@ export async function GET(req: NextRequest) {
       }
     );
   } catch (err) {
-    console.error("CUSTOMER SEARCH ERROR:", err);
+    console.error("CUSTOMER SEARCH ERROR:", err instanceof Error ? err.message : "unknown");
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }

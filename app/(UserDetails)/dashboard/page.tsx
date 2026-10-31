@@ -9,7 +9,11 @@ import {
   ArrowRight,
   Wallet,
   Percent,
+  Plus,
+  Undo2,
 } from "lucide-react";
+import { useQuickActions } from "@/components/layout/QuickActions";
+import Toast, { consumeQueuedToast } from "@/components/ui/Toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/components/providers/LanguageProvider";
@@ -709,6 +713,13 @@ export default function DashboardPage() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [snapshotLoading, setSnapshotLoading] = useState(true);
   const [regionsExplorerOpen, setRegionsExplorerOpen] = useState(false);
+  const { openPicker } = useQuickActions();
+
+  // One-shot confirmation handed over by a quick-action flow
+  // ("Pledge added for …" / "Released N pledges for …").
+  useEffect(() => {
+    consumeQueuedToast();
+  }, []);
 
   /* ---- Fetch dashboard snapshot ---- */
   const loadSnapshot = useCallback(async () => {
@@ -792,21 +803,46 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: "var(--background)", fontFamily: "'DM Sans', sans-serif" }}>
 
-      {/* ── Greeting ── */}
-      <section className="mb-6">
-        <h1
-          className="text-[30px] sm:text-[36px] font-bold tracking-tight mb-1"
-          style={{ color: "var(--foreground)" }}
-        >
-          {dashboard?.user?.firstName
-            ? `${getGreeting()}, ${dashboard.user.firstName}.`
-            : `${getGreeting()}.`}
-        </h1>
-        {dashboard?.user?.shopName && (
-          <p className="text-[13px] font-medium" style={{ color: "var(--muted-foreground)" }}>
-            {dashboard.user.shopName}
-          </p>
-        )}
+      <Toast />
+
+      {/* ── Greeting + quick actions ── */}
+      <section className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="min-w-0">
+          <h1
+            className="text-[30px] sm:text-[36px] font-bold tracking-tight mb-1"
+            style={{ color: "var(--foreground)" }}
+          >
+            {dashboard?.user?.firstName
+              ? `${getGreeting()}, ${dashboard.user.firstName}.`
+              : `${getGreeting()}.`}
+          </h1>
+          {dashboard?.user?.shopName && (
+            <p className="text-[13px] font-medium" style={{ color: "var(--muted-foreground)" }}>
+              {dashboard.user.shopName}
+            </p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 lg:flex lg:shrink-0">
+          <button
+            type="button"
+            onClick={() => openPicker("add")}
+            aria-haspopup="dialog"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] bg-primary px-5 text-[14px] font-bold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            <Plus size={18} strokeWidth={2.5} aria-hidden="true" />
+            Add Pledge
+          </button>
+          <button
+            type="button"
+            onClick={() => openPicker("release")}
+            aria-haspopup="dialog"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-[12px] border border-border bg-card px-5 text-[14px] font-bold text-foreground transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            <Undo2 size={18} strokeWidth={2.5} aria-hidden="true" />
+            Release Pledge
+          </button>
+        </div>
       </section>
 
       {/* ═══════════════════════════════════════════════════════════ */}
