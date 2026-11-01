@@ -9,20 +9,31 @@ import { NextRequest } from "next/server";
 const db = vi.hoisted(() => ({
   item: null as null | { id: string; ownerId: string; status: string; acquiredAt: Date },
   updateMany: vi.fn(),
+  cashEntries: vi.fn(),
 }));
 
 vi.mock("@clerk/nextjs/server", () => ({
   auth: async () => ({ userId: "clerk_1" }),
 }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prisma = {
     user: { findUnique: async () => ({ id: "user_1" }) },
     inventoryItem: {
       findFirst: async () => db.item,
       updateMany: db.updateMany,
     },
-  },
+  };
+  // The sale runs in a $transaction with its cash entry; the fake passes
+  // itself through as the transaction client.
+  return { prisma: { ...prisma, $transaction: async (fn: (tx: unknown) => unknown) => fn(prisma) } };
+});
+
+// The cash-entry SQL is covered against a real DB (tests/cashBook.db.test.ts);
+// here it only records what the route asked to write.
+vi.mock("@/lib/cashBook", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/cashBook")>()),
+  recordCashEntries: db.cashEntries,
 }));
 
 import { POST } from "@/app/api/inventory/[id]/sell/route";
@@ -47,6 +58,8 @@ beforeEach(() => {
   db.item = { id: "item_1", ownerId: "user_1", status: "IN_STOCK", acquiredAt: ACQUIRED };
   db.updateMany.mockReset();
   db.updateMany.mockResolvedValue({ count: 1 });
+  db.cashEntries.mockReset();
+  db.cashEntries.mockResolvedValue(["entry_1"]);
 });
 
 afterEach(() => {
@@ -57,7 +70,28 @@ async function expectValidation(res: Response, message: string) {
   expect(res.status).toBe(400);
   expect(await res.json()).toEqual({ error: "VALIDATION", message });
   expect(db.updateMany).not.toHaveBeenCalled();
+  expect(db.cashEntries).not.toHaveBeenCalled();
 }
+
+describe("cash book", () => {
+  it("a sale writes exactly one INVENTORY_SOLD entry, IN, the sold price", async () => {
+    const res = await sell({ buyerName: " Asha " });
+    expect(res.status).toBe(200);
+    expect(db.cashEntries).toHaveBeenCalledTimes(1);
+    const [, userId, entries] = db.cashEntries.mock.calls[0];
+    expect(userId).toBe("user_1");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ kind: "INVENTORY_SOLD", direction: "IN", partyName: "Asha", inventoryItemId: "item_1" });
+    expect(entries[0].amount.toFixed(2)).toBe("25000.00");
+  });
+
+  it("an already-sold item (count 0) writes no entry", async () => {
+    db.updateMany.mockResolvedValue({ count: 0 });
+    const res = await sell({});
+    expect(res.status).toBe(409);
+    expect(db.cashEntries).not.toHaveBeenCalled();
+  });
+});
 
 describe("sale date", () => {
   it("before the acquired date → 400, no write", async () => {

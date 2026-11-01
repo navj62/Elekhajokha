@@ -1,14 +1,14 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useClerk } from "@clerk/nextjs";
 import { ChevronRight, Globe, LogOut, Moon, Sun } from "lucide-react";
 
 import { Sheet } from "@/components/ui/Sheet";
 import { useLanguage } from "@/components/providers/LanguageProvider";
 import { useTheme } from "@/components/providers/ThemeProvider";
-import { navFor } from "./navConfig";
+import { navFor, isNavActive } from "./navConfig";
 
 /**
  * Secondary navigation for mobile — everything that does not fit in the
@@ -27,6 +27,7 @@ export default function MoreSheet({
   onOpenChange: (o: boolean) => void;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { t, language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const { signOut } = useClerk();
@@ -46,6 +47,7 @@ export default function MoreSheet({
             key={href}
             icon={<Icon size={18} />}
             label={t(key)}
+            aria-current={isNavActive(pathname, href) ? "page" : undefined}
             trailing={<ChevronRight size={16} />}
             onClick={go(href)}
           />

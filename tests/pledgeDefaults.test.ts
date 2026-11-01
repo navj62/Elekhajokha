@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 
 const db = vi.hoisted(() => ({
   pledgeCreates: [] as Record<string, unknown>[],
+  cashEntries: [] as { userId: string; entries: Record<string, unknown>[] }[],
   userUpserts: [] as { create: Record<string, unknown>; update: Record<string, unknown> }[],
   metadataWrites: [] as unknown[],
   user: {
@@ -32,8 +33,8 @@ vi.mock("@clerk/nextjs/server", () => ({
 
 vi.mock("@/lib/upload", () => ({ uploadImage: async () => "https://example.invalid/x.jpg" }));
 
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const prisma = {
     user: {
       findUnique: async ({ where, select }: { where: { clerkUserId: string }; select?: Record<string, boolean> }) => {
         if (where.clerkUserId !== "clerk_owner") return null;
@@ -53,6 +54,18 @@ vi.mock("@/lib/prisma", () => ({
         return { id: "p1", ...data };
       },
     },
+  };
+  // Pledge create runs in a $transaction with its cash entry; the fake
+  // passes itself through as the transaction client.
+  return { prisma: { ...prisma, $transaction: async (fn: (tx: unknown) => unknown) => fn(prisma) } };
+});
+
+// Cash-entry SQL is covered against a real DB (tests/cashBook.db.test.ts).
+vi.mock("@/lib/cashBook", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/cashBook")>()),
+  recordCashEntries: async (_tx: unknown, userId: string, entries: Record<string, unknown>[]) => {
+    db.cashEntries.push({ userId, entries });
+    return entries.map((_, i) => `e${i}`);
   },
 }));
 
@@ -64,6 +77,7 @@ import { parsePledgeDefaults } from "@/lib/pledgeDefaults";
 
 beforeEach(() => {
   db.pledgeCreates = [];
+  db.cashEntries = [];
   db.userUpserts = [];
   db.metadataWrites = [];
   db.user = { id: "owner", defaultInterestRate: null, defaultAllowCompounding: null, defaultCompoundingDuration: null };
@@ -108,7 +122,15 @@ describe("interest rate rule (> 0, ≤ 100, ≤ 2 decimals)", () => {
     const res = await postPledge(pledgeForm({ interestRate: rate }));
     expect(res.status).toBe(accepted ? 201 : 400);
     expect(db.pledgeCreates).toHaveLength(accepted ? 1 : 0);
-    if (accepted) expect(String(db.pledgeCreates[0].interestRate)).toBe(String(Number(rate)));
+    // Exactly one PLEDGE_CREATED cash entry per created pledge, none on a 400.
+    expect(db.cashEntries).toHaveLength(accepted ? 1 : 0);
+    if (accepted) {
+      expect(String(db.pledgeCreates[0].interestRate)).toBe(String(Number(rate)));
+      expect(db.cashEntries[0].userId).toBe("owner");
+      expect(db.cashEntries[0].entries).toHaveLength(1);
+      expect(db.cashEntries[0].entries[0]).toMatchObject({ kind: "PLEDGE_CREATED", direction: "OUT", pledgeId: "p1", customerId: "c1" });
+      expect(String(db.cashEntries[0].entries[0].amount)).toBe("50000");
+    }
   });
 
   it("explains which part of the rule failed", () => {

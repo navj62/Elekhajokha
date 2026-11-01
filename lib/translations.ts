@@ -16,6 +16,7 @@ export const translations: Record<Language, Record<string, string>> = {
     nav_customer: "Customer",
     nav_reports: "Reports",
     nav_inventory: "Inventory",
+    nav_cash_book: "Cash book",
     nav_settings: "Settings",
 
     // Dashboard
@@ -231,6 +232,7 @@ export const translations: Record<Language, Record<string, string>> = {
     nav_customer: "ग्राहक",
     nav_reports: "रिपोर्ट",
     nav_inventory: "भंडार",
+    nav_cash_book: "रोकड़ बही",
     nav_settings: "सेटिंग्स",
 
     // Dashboard

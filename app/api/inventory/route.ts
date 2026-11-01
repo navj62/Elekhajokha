@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { uploadImage } from "@/lib/upload";
+import { recordCashEntries, errorTag } from "@/lib/cashBook";
 
 export async function GET(req: NextRequest) {
   try {
@@ -208,27 +209,39 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const item = await prisma.inventoryItem.create({
-      data: {
-        ownerId:          user.id,
-        sourceType:       "DIRECT_PURCHASE",
-        description,
-        itemType:         validType.label,
-        metalType:        metalTypeNormalized,
-        purity:           purity != null ? new Prisma.Decimal(purity) : null,
-        grossWeight:       new Prisma.Decimal(grossWeight),
-        netWeightOfGold:   new Prisma.Decimal(netWeightOfGold),
-        netWeightOfSilver: new Prisma.Decimal(netWeightOfSilver),
-        acquiredCost:     new Prisma.Decimal(acquiredCost),
-        acquiredAt:       acquiredAtDate,
-        acquiredMetalRate: acquiredMetalRate !== null
-          ? new Prisma.Decimal(acquiredMetalRate) : null,
-        sellerName,
-        sellerIdNum,
-        notes,
-        photoUrl,
-        status:           "IN_STOCK",
-      },
+    // The item and the cash paid to the seller commit together.
+    const item = await prisma.$transaction(async (tx) => {
+      const created = await tx.inventoryItem.create({
+        data: {
+          ownerId:          user.id,
+          sourceType:       "DIRECT_PURCHASE",
+          description,
+          itemType:         validType.label,
+          metalType:        metalTypeNormalized,
+          purity:           purity != null ? new Prisma.Decimal(purity) : null,
+          grossWeight:       new Prisma.Decimal(grossWeight),
+          netWeightOfGold:   new Prisma.Decimal(netWeightOfGold),
+          netWeightOfSilver: new Prisma.Decimal(netWeightOfSilver),
+          acquiredCost:     new Prisma.Decimal(acquiredCost),
+          acquiredAt:       acquiredAtDate,
+          acquiredMetalRate: acquiredMetalRate !== null
+            ? new Prisma.Decimal(acquiredMetalRate) : null,
+          sellerName,
+          sellerIdNum,
+          notes,
+          photoUrl,
+          status:           "IN_STOCK",
+        },
+      });
+      await recordCashEntries(tx, user.id, [{
+        kind:            "INVENTORY_BOUGHT",
+        direction:       "OUT",
+        amount:          created.acquiredCost,
+        partyName:       sellerName,
+        inventoryItemId: created.id,
+        eventAt:         acquiredAtDate,
+      }]);
+      return created;
     });
 
     return NextResponse.json(
@@ -236,7 +249,7 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
-    console.error("POST /api/inventory failed:", err);
+    console.error("POST /api/inventory failed:", errorTag(err));
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }

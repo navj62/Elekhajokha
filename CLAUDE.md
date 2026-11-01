@@ -33,6 +33,7 @@ These are hard rules. When editing or reviewing code, treat any violation as a b
 11. **Inventory acquisition snapshots are immutable.** `InventoryItem.amountOwedAt` is computed via `calculateHybridInterest` at the exact sale/acquisition date and stored ONCE. Never recompute it, never overwrite it, and never derive it from `Pledge.receivableAmount`. Net position (`acquiredCost - amountOwedAt`) and sale profit (`soldPrice - acquiredCost`) are ALWAYS derived at display time — never stored as fields. `InventoryItem.netWeightOfGold`/`netWeightOfSilver` are also immutable after creation.
 
 12. **SOLD and RELEASED audit rows are structurally indistinguishable.** When a pledge is added to inventory, its `PledgeAudit` row (`action: "SOLD"`) mirrors the RELEASED audit row field-for-field: same `CALCULATION_VERSION`, same `Prisma.Decimal` wrapping, same null-guarded metal-price/market-value/LTV snapshot pattern. The only difference is the `action` field. Reporting code relies on this parity.
+13. **Every money action writes exactly one cash entry, in the same transaction as the action.** Pledge create, release (single and bulk), sell-to-inventory, inventory buy, inventory sell, and a part-payment/top-up `Transaction` each write their `CashEntry` through `recordCashEntries` ([lib/cashBook.ts](lib/cashBook.ts)) inside the action's own `$transaction` — never after it, never in a second request. If the action rolls back, so does the entry; if the entry can't be written (day closed, unique index), the action rolls back too. Unique indexes `(pledgeId, kind)`, `(inventoryItemId, kind)`, `transactionId`, `reversesEntryId` enforce "one per action" at the DB. Any new money-moving write path MUST do the same. See Cash book below.
 
 ## Commands
 
@@ -317,6 +318,37 @@ Client page showing on-screen receipt after a direct purchase. Fetches from `GET
 ### MetalRateStrip (`components/inventory/MetalRateStrip.tsx`)
 Client component. `variant: "full"` — inline row with TrendingUp icon, "Gold ₹X/g · Silver ₹Y/g · Updated N min ago." `variant: "compact"` — two stacked lines at text-[11px] for the sidebar. Fetches `/api/market-rates` on mount. Graceful loading/error/null-rate states. Used in three places: sidebar shell [components/layout/AppShell.tsx](components/layout/AppShell.tsx) (compact), the buy-item page (full), and the inventory list page header (full).
 
+## Cash book
+
+Daily cash register per shop: `/cash-book?date=YYYY-MM-DD` (day page) and the dashboard "Today's cash" card ([components/dashboard/TodayCashCard.tsx](components/dashboard/TodayCashCard.tsx)). Logic in [lib/cashBook.ts](lib/cashBook.ts) (server, raw SQL) and [lib/cashBookShared.ts](lib/cashBookShared.ts) (client-safe parsers, labels, drawer arithmetic). Migrations `20261031210006_cash_book`, `20261031210240_cash_book_checks`.
+
+**Tables.**
+- `CashDay` (`cash_days`) — one row per `(userId, date)`, `date` is `@db.Date` (an IST calendar day). `carriedOpening` (previous day's counted closing if it was counted, else its expected closing — stored as carried), `openingOverride` (owner's edit, stored separately so the page can show "edited" and the difference), `countedCash` + `countedAt` (optional drawer count, repeatable until midnight). Rows are created lazily by the first write of the day.
+- `CashEntry` (`cash_entries`) — `direction` IN/OUT, `amount` + `originalAmount` (`Decimal(12,2)`, CHECK ≥ 0), `mode` CASH/UPI/BANK (default CASH; **only CASH counts toward the drawer**, UPI/BANK are totalled separately), `kind` (`PLEDGE_CREATED` out, `PLEDGE_RELEASED` in, `PLEDGE_SOLD` out = `max(buyPrice − owed, 0)` — a ₹0 entry reads "Debt settled, no cash", `INVENTORY_BOUGHT` out, `INVENTORY_SOLD` in, `REPAYMENT` in, `TOPUP` out, `REVERSAL`, `MANUAL`), `partyName` (copied at write time, so it survives deletes), `eventDate` (backdated action, shown "dated 31 Oct"), `note`, `editedAt`. Links `customerId`/`pledgeId`/`inventoryItemId`/`transactionId`/`reversesEntryId` are all `onDelete: SetNull` — entries outlive what they point at. `User` cascades.
+
+**"Today" is decided in SQL, in IST.** Every write computes the day from `now() AT TIME ZONE 'Asia/Kolkata'` inside the same statement that upserts-and-locks today's `cash_days` row (`ON CONFLICT DO UPDATE` = row lock). `now()` is the transaction start, so the entry's day and the locked day always agree, even across midnight. Never compute the day in JS or accept it from the client. Writes from the cash-book page send the date they were looking at (`expectDay`); if it is no longer today the statement matches zero rows → `DAY_CLOSED` → 409, and the page reloads.
+
+**Past days are read-only.** A day is closed when its date is before today (IST) — derived, no cron, no close button. No edit, delete, mode toggle, opening edit or count on a past day; the GET still serves it for browsing.
+
+**One entry per action, same transaction** (Invariant 13). Lock order is always pledge → day (pledge delete takes `FOR UPDATE` on the pledge; transactions POST takes `FOR SHARE`) so paths can't deadlock. Bulk release writes all its entries in one statement at the end of its transaction — all or nothing. Server derives userId, date, kind, direction and amount for automatic entries; the client never supplies them.
+
+**Editing.**
+- Automatic entries: amount, mode and note editable until midnight; direction and kind fixed; **never deletable** (`NOT_DELETABLE` 409). `originalAmount` is kept and the row shows "edited · was ₹X". A reversed entry can't be edited (`ENTRY_REVERSED`); a REVERSAL's amount is fixed.
+- Manual entries: add / edit / delete until midnight. Amount > 0, ≤ 2 dp, ≤ ₹10,00,00,000; direction IN/OUT; mode CASH/UPI/BANK; note ≤ 500 chars.
+- Every edit/delete/toggle is one guarded statement that locks the day row and re-checks "today", ownership and kind in its `WHERE`.
+
+**Reversals on pledge delete.** Deleting a pledge (only allowed while open, see Pledge delete safety) writes a `REVERSAL` entry on today's page for each of its live entries (loan, repayments, top-ups), in the same transaction as the delete. The originals stay on their own day, marked "reversed"; their `pledgeId` goes null via SetNull but `partyName` keeps the name.
+
+**No backfill before go-live.** Pledges, releases and sales before the migration have no cash entries, and imported ledger data (`seed-binnu-gold-migration.ts`, `scripts/backfill-released-audits.ts`) deliberately writes none — the cash book starts empty on the day it ships. Don't add a backfill: the historical drawer was never counted, so any reconstructed figure would be invented.
+
+**APIs** (standard auth pattern, Invariants 1 & 4): `GET /api/cash-book?date=` (summary + entries, 2 queries), `GET /api/cash-book/summary` (today, 1 query — the card), `PATCH /api/cash-book/day` (`openingCash` / `countedCash`), `POST /api/cash-book/entries` (manual), `PATCH/DELETE /api/cash-book/entries/[id]`. Logs carry only error codes (`errorTag`), never names or amounts.
+
+**Tests.** [tests/cashBook.test.ts](tests/cashBook.test.ts) — pure parsing/arithmetic, runs in `npm test` and CI. [tests/cashBook.db.test.ts](tests/cashBook.db.test.ts) — end to end against the **dev** DB (real routes, real SQL; only Clerk mocked): every action's entry, rollback, bulk all-or-nothing, past-day 409, midnight boundary, concurrent writes, edit/delete rules, reversals, carry-over, tenant isolation. Skipped unless `CASHBOOK_DB_TESTS=1`; run it with:
+```bash
+npm run test:db   # = CASHBOOK_DB_TESTS=1 vitest run tests/cashBook.db.test.ts
+```
+It loads `.env` and calls `assertDbTarget` (refuses non-dev hosts — never run it with `ALLOW_PROD_DB=1`). All rows hang off throwaway `cbtest_` users and are deleted at the end. Route fakes in other tests (`inventorySell`, `pledgeDefaults`) need a pass-through `$transaction` and a mocked `recordCashEntries`.
+
 ## Tasks module
 
 Full CRUD task manager for the shop owner. Model: `Task` (`id`, `userId`, `title`, `isDone`, `dueDate?`, `createdAt`, `updatedAt`) — cascades from `User`. Routes: `GET/POST /api/tasks`, `PATCH/DELETE /api/tasks/[taskId]`. Page: `app/(UserDetails)/tasks/page.tsx`. Standard auth pattern (Invariants 1 & 4). No cross-user data. Tasks are private to each shop owner.
@@ -518,7 +550,7 @@ These were deliberately decided during Phase 1. Future sessions must respect the
 - **Single design system:** shadcn's semantic token *names* now carry the Olive brand's *values* (not shadcn's default achromatic palette). Don't revert to shadcn defaults or reintroduce a second token system.
 - **`.dark` is the live dark-mode class; `.dark-mode` has been removed.** `ThemeProvider` toggles `.dark`. (Prior to this, `.dark-mode` was the only live class and `.dark` was dead — see MOBILE_AUDIT.md corrections.)
 - **Nav has one source of truth: `navConfig.ts`**, with each item tagged `surfaces: ["sidebar","bottom","more"]`. Do not fork the nav list for mobile vs. desktop — extend the `surfaces` tagging instead of duplicating entries.
-- **Mobile shell:** bottom nav (4 items) + FAB (opens a Customer Picker → routes to `/customers/[customerId]/pledges/add`) + More sheet (5 route items + 3 account controls). No hamburger drawer on mobile.
+- **Mobile shell:** bottom nav (4 items) + FAB (opens a Customer Picker → routes to `/customers/[customerId]/pledges/add`) + More sheet (6 route items — Cash book added after Phase 1 — + 3 account controls). No hamburger drawer on mobile.
 - **Desktop shell:** existing sidebar retained, using prefix-match active state (not exact-match).
 - **Sheet primitive (`components/ui/Sheet.tsx`) is the ONLY modal/sheet component.** Do not hand-roll new `fixed inset-0` modals — the codebase already has 9 of those from before this redesign; route new work through Sheet instead of adding a 10th ad hoc modal.
 - **Z-scale contract:** content `z-0`, sticky action bar `z-30`, bottom nav `z-40`, FAB `z-45`, sheet backdrop `z-50`, sheet content `z-51`. Documented in `navConfig.ts` — don't diverge from it.

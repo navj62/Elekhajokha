@@ -9,6 +9,7 @@ import {
   isOpenPledgeStatus,
   LTV_MAX_5_2,
 } from "@/lib/pledgeConstants";
+import { recordCashEntries, errorTag, type NewCashEntry } from "@/lib/cashBook";
 
 type RouteContext = {
   params: Promise<{ customerId: string }>;
@@ -54,7 +55,7 @@ export async function POST(req: Request, context: RouteContext) {
     /* ---- Customer ownership guard -------------------------------- */
     const customer = await prisma.customer.findFirst({
       where:  { id: customerId, userId: user.id, deletedAt: null },
-      select: { id: true },
+      select: { id: true, name: true },
     });
     if (!customer)
       return NextResponse.json({ error: "Customer not found" }, { status: 404 });
@@ -182,6 +183,11 @@ export async function POST(req: Request, context: RouteContext) {
           const goldPpg   = goldPrice   ? parseFloat(goldPrice.inrPerGram.toString())   : null;
           const silverPpg = silverPrice ? parseFloat(silverPrice.inrPerGram.toString()) : null;
 
+          // One PLEDGE_RELEASED cash entry per pledge, written in ONE statement
+          // after the loop — still inside this transaction, so the batch and
+          // its entries are all-or-nothing together.
+          const cashEntries: NewCashEntry[] = [];
+
           for (const inputPledge of inputPledges) {
             // Fetch the pledge fresh inside the transaction.
             const pledge = await tx.pledge.findFirst({
@@ -265,9 +271,20 @@ export async function POST(req: Request, context: RouteContext) {
               },
             });
 
+            cashEntries.push({
+              kind:       "PLEDGE_RELEASED",
+              direction:  "IN",
+              amount:     new Prisma.Decimal(calc.receivableAmount),
+              partyName:  customer.name,
+              customerId,
+              pledgeId:   pledge.id,
+              eventAt:    releaseDateObj,
+            });
             releasedIds.push(pledge.id);
             totalReceivable += calc.receivableAmount;
           }
+
+          await recordCashEntries(tx, user.id, cashEntries);
         },
         { timeout: 30000 }
       );
@@ -289,7 +306,7 @@ export async function POST(req: Request, context: RouteContext) {
           { status: 403 }
         );
       }
-      console.error("BULK RELEASE ERROR:", err);
+      console.error("BULK RELEASE ERROR:", errorTag(err));
       return NextResponse.json({ error: "Server Error" }, { status: 500 });
     }
 
@@ -300,7 +317,7 @@ export async function POST(req: Request, context: RouteContext) {
       totalReceivable,
     });
   } catch (err) {
-    console.error("BULK RELEASE ERROR:", err);
+    console.error("BULK RELEASE ERROR:", errorTag(err));
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }

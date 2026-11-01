@@ -8,6 +8,7 @@ import {
   ShoppingBag,
   Bell,
   ListChecks,
+  Wallet,
 
   type LucideIcon,
 } from "lucide-react";
@@ -47,6 +48,7 @@ export const NAV: readonly NavItem[] = [
   { key: "nav_customer",      href: "/customers",     icon: Users,           surfaces: ["sidebar", "bottom"] },
   { key: "nav_reports",       href: "/reports",       icon: BarChart3,       surfaces: ["sidebar", "more"] },
   { key: "nav_inventory",     href: "/inventory",     icon: Archive,         surfaces: ["sidebar", "more"] },
+  { key: "nav_cash_book",     href: "/cash-book",     icon: Wallet,          surfaces: ["sidebar", "more"] },
   { key: "nav_settings",      href: "/profile",       icon: Settings,        surfaces: ["sidebar", "more"] },
   // TODO(i18n): "Buy Inventory" is a raw English label, not a translation key.
   { key: "Buy Inventory",     href: "/inventory/buy", icon: ShoppingBag,     surfaces: ["sidebar"] },
@@ -68,7 +70,7 @@ export const NAV: readonly NavItem[] = [
 const SURFACE_ORDER: Record<NavSurface, readonly string[]> = {
   sidebar: [],
   bottom: ["/dashboard", "/pledgeList", "/customers"],
-  more: ["/inventory", "/reports", "/notifications", "/tasks", "/profile"],
+  more: ["/cash-book", "/inventory", "/reports", "/notifications", "/tasks", "/profile"],
 };
 
 export function navFor(surface: NavSurface): NavItem[] {

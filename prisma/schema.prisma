@@ -45,6 +45,8 @@ model User {
   financialSnapshot      FinancialSnapshot[]
   customItemTypes        PledgeItemType[]
   inventoryItems         InventoryItem[]
+  cashDays               CashDay[]
+  cashEntries            CashEntry[]
 
   @@index([razorpaySubscriptionId])
   @@index([subscriptionStatus, isActive])
@@ -72,6 +74,7 @@ model Customer {
   user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   pledges         Pledge[]
   alerts          PledgeAlert[]
+  cashEntries     CashEntry[]
 
   @@index([userId, deletedAt])
   @@index([name])
@@ -110,6 +113,7 @@ model Pledge {
   transactions        Transaction[]
   alerts              PledgeAlert[]
   inventoryItem       InventoryItem?
+  cashEntries         CashEntry[]
 
   @@index([status, createdAt])
   @@index([customerId, status])
@@ -233,6 +237,7 @@ model Transaction {
   note      String?
   createdAt DateTime        @default(now())
   pledge    Pledge          @relation(fields: [pledgeId], references: [id], onDelete: Cascade)
+  cashEntry CashEntry?
 
   @@index([pledgeId, createdAt(sort: Desc)])
   @@map("transactions")
@@ -426,10 +431,107 @@ model InventoryItem {
   notes          String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+  cashEntries    CashEntry[]
 
   @@index([ownerId, status])
   @@index([ownerId, sourceType])
   @@index([ownerId, createdAt])
   @@index([sourcePledgeId])
   @@map("inventory_items")
+}
+// ─── Cash book ────────────────────────────────────────────────────────────
+// One row per shop per IST calendar day that saw any cash-book activity.
+// "Closed" is NOT stored: any date before today (IST) is closed, today is
+// open. Every write targets today only, decided in SQL from
+// now() AT TIME ZONE 'Asia/Kolkata' inside the statement that locks this row
+// (lib/cashBook.ts). Rows for past days are therefore never written again.
+model CashDay {
+  id              String    @id @default(uuid())
+  userId          String
+  date            DateTime  @db.Date
+  // Opening carried from the previous day when this row was created:
+  // its counted cash if counted, else its expected closing. Null on the
+  // first day ever (or when the previous day had no opening either).
+  carriedOpening  Decimal?  @db.Decimal(14, 2)
+  // Owner's edit of today's opening. Kept apart from carriedOpening so the
+  // page can show "edited" and the difference.
+  openingOverride Decimal?  @db.Decimal(14, 2)
+  // Latest "count drawer" figure; repeatable until midnight.
+  countedCash     Decimal?  @db.Decimal(14, 2)
+  countedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@map("cash_days")
+}
+
+// One row per cash movement. Automatic entries are written in the SAME
+// transaction as the action that causes them, and the per-action unique
+// indexes below make "exactly one entry per action" a database rule.
+// Source links are SetNull so deleting a pledge keeps its entries (with the
+// partyName snapshot) — the delete writes REVERSAL entries instead.
+model CashEntry {
+  id               String        @id @default(uuid())
+  userId           String
+  // IST day the entry was RECORDED on.
+  date             DateTime      @db.Date
+  direction        CashDirection
+  // Current amount (owner-editable until midnight) and the amount as first
+  // written. They differ only after an edit.
+  amount           Decimal       @db.Decimal(12, 2)
+  originalAmount   Decimal       @db.Decimal(12, 2)
+  mode             CashMode      @default(CASH)
+  kind             CashKind
+  // Customer / seller / buyer name, copied at write time.
+  partyName        String?
+  customerId       String?
+  pledgeId         String?
+  inventoryItemId  String?
+  transactionId    String?       @unique
+  reversesEntryId  String?       @unique
+  // The action's own IST date when it differs from `date` (backdated).
+  eventDate        DateTime?     @db.Date
+  note             String?
+  editedAt         DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer         Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  pledge           Pledge?       @relation(fields: [pledgeId], references: [id], onDelete: SetNull)
+  inventoryItem    InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: SetNull)
+  transaction      Transaction?  @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  reversesEntry    CashEntry?    @relation("CashReversal", fields: [reversesEntryId], references: [id], onDelete: SetNull)
+  reversedBy       CashEntry?    @relation("CashReversal")
+
+  // FK first, so each also serves the SetNull scan when its parent is deleted.
+  @@unique([pledgeId, kind])
+  @@unique([inventoryItemId, kind])
+  @@index([customerId])
+  @@index([userId, date, createdAt])
+  @@map("cash_entries")
+}
+
+enum CashDirection {
+  IN
+  OUT
+}
+
+enum CashMode {
+  CASH
+  UPI
+  BANK
+}
+
+enum CashKind {
+  PLEDGE_CREATED
+  PLEDGE_RELEASED
+  PLEDGE_SOLD
+  INVENTORY_BOUGHT
+  INVENTORY_SOLD
+  REPAYMENT
+  TOPUP
+  REVERSAL
+  MANUAL
 }

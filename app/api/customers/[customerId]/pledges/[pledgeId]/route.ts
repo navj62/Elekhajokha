@@ -9,6 +9,7 @@ import {
   isOpenPledgeStatus,
   LTV_MAX_5_2,
 } from "@/lib/pledgeConstants";
+import { recordCashEntries, reversePledgeEntries, errorTag } from "@/lib/cashBook";
 
 type RouteContext = {
   params: Promise<{
@@ -45,6 +46,7 @@ export async function PATCH(req: Request, context: RouteContext) {
         customerId,                       // ✅ scoped to customer in URL
         customer: { userId: user.id },
       },
+      include: { customer: { select: { name: true } } },
     });
     if (!pledge)
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
@@ -160,6 +162,18 @@ export async function PATCH(req: Request, context: RouteContext) {
           },
         });
 
+        // Cash collected = the receivable as calculated now. Part-payments are
+        // not netted off; the owner can edit the entry until midnight.
+        await recordCashEntries(tx, user.id, [{
+          kind:       "PLEDGE_RELEASED",
+          direction:  "IN",
+          amount:     new Prisma.Decimal(calc.receivableAmount),
+          partyName:  pledge.customer.name,
+          customerId,
+          pledgeId,
+          eventAt:    releaseDateObj,
+        }]);
+
         return tx.pledge.findUnique({
           where:   { id: pledgeId },
           include: { items: true },
@@ -174,7 +188,7 @@ export async function PATCH(req: Request, context: RouteContext) {
     return NextResponse.json({ pledge: updated });
 
   } catch (err) {
-    console.error("PLEDGE RELEASE ERROR:", err);
+    console.error("PLEDGE RELEASE ERROR:", errorTag(err));
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }
@@ -401,20 +415,49 @@ export async function DELETE(req: Request, context: RouteContext) {
     // Tenant guard: deleteMany, not delete, so the ownership predicate lives in
     // the WHERE clause of the destructive write itself instead of in control
     // flow. Mirrors the atomic updateMany guard on the release / sell paths.
-    const result = await prisma.pledge.deleteMany({
-      where: {
-        id:         pledgeId,
-        customerId,
-        customer: { userId: user.id },
-      },
-    });
-    if (result.count === 0)
+    //
+    // Cash book: the pledge's cash entries are kept (their links go NULL via
+    // onDelete: SetNull, the name stays on the entry) and each is cancelled by
+    // a REVERSAL on today's page, in the same transaction. The pledge row is
+    // locked first so lock order (pledge → day) matches the release / sell /
+    // transaction paths and the two cannot deadlock.
+    let deleted: number;
+    try {
+      deleted = await prisma.$transaction(async (tx) => {
+        const locked = await tx.$queryRaw<{ id: string }[]>`
+          SELECT p.id FROM "pledges" p
+          JOIN "customers" c ON c.id = p."customerId"
+          WHERE p.id = ${pledgeId} AND p."customerId" = ${customerId} AND c."userId" = ${user.id}
+            AND p.status IN ('ACTIVE', 'OVERDUE')
+          FOR UPDATE OF p`;
+        if (locked.length === 0) return 0;
+
+        await reversePledgeEntries(tx, user.id, pledgeId);
+
+        const result = await tx.pledge.deleteMany({
+          where: {
+            id:         pledgeId,
+            customerId,
+            customer: { userId: user.id },
+          },
+        });
+        return result.count;
+      });
+    } catch (err) {
+      // A release/sale that committed after the checks above leaves an audit
+      // row, and the Restrict FK refuses the delete (P2003) — report it as
+      // the same clean error the audit guard gives.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003")
+        return NextResponse.json({ error: "AUDIT_RECORDS_EXIST" }, { status: 400 });
+      throw err;
+    }
+    if (deleted === 0)
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
 
     return NextResponse.json({ success: true });
 
   } catch (err) {
-    console.error("PLEDGE DELETE ERROR:", err);
+    console.error("PLEDGE DELETE ERROR:", errorTag(err));
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }

@@ -5,6 +5,7 @@ import { uploadImage } from "@/lib/upload";
 import { metalContent } from "@/lib/weights";
 import { Prisma, MetalType, CompoundingDuration } from "@prisma/client";
 import { checkInterestRate } from "@/lib/interestRate";
+import { recordCashEntries, errorTag } from "@/lib/cashBook";
 
 type RouteContext = {
   params: Promise<{ customerId: string }>;
@@ -198,34 +199,51 @@ export async function POST(req: NextRequest, context: RouteContext) {
       .filter(i => i.metalType === "SILVER")
       .reduce((sum, i) => sum + metalContent(i.netWeight, i.purity), 0);
 
-    // ── Create pledge + items in one transaction ──────────────────
-    const pledge = await prisma.pledge.create({
-      data: {
-        customerId,
-        pledgeDate:          new Date(pledgeDate),
-        loanAmount:          toDecimal(loanAmount),
-        interestRate:        toDecimal(rateCheck.value),
-        allowCompounding,
-        compoundingDuration: compoundingDuration as CompoundingDuration,
-        status:              "ACTIVE",
-        remark,
-        itemPhoto,
-        netWeightOfGold:    new Prisma.Decimal(netWeightOfGold),
-        netWeightOfSilver:  new Prisma.Decimal(netWeightOfSilver),
-        items: {
-          create: rawItems.map(item => ({
-            itemType:         String(item.itemType).trim(),
-            metalType:        item.metalType as MetalType,
-            itemName:         item.itemName  || null,
-            quantity:         Number(item.quantity) || 1,
-            grossWeight:      toDecimal(item.grossWeight),
-            netWeight:        toDecimal(item.netWeight),
-            purity:           toDecimal(item.purity),
-            netWeightOfMetal: new Prisma.Decimal(metalContent(item.netWeight, item.purity).toFixed(3)),
-          })),
+    // ── Create pledge + items + its cash entry in one transaction ──
+    // The loan paid out is the PLEDGE_CREATED cash entry; it commits or
+    // rolls back with the pledge (lib/cashBook.ts).
+    const loan = toDecimal(loanAmount);
+    const pledgeDateObj = new Date(pledgeDate);
+    const pledge = await prisma.$transaction(async (tx) => {
+      const created = await tx.pledge.create({
+        data: {
+         customerId,
+          pledgeDate:          pledgeDateObj,
+          loanAmount:          loan,
+          interestRate:        toDecimal(rateCheck.value),
+          allowCompounding,
+          compoundingDuration: compoundingDuration as CompoundingDuration,
+          status:              "ACTIVE",
+          remark,
+          itemPhoto,
+          netWeightOfGold:    new Prisma.Decimal(netWeightOfGold),
+          netWeightOfSilver:  new Prisma.Decimal(netWeightOfSilver),
+          items: {
+            create: rawItems.map(item => ({
+              itemType:         String(item.itemType).trim(),
+              metalType:        item.metalType as MetalType,
+              itemName:         item.itemName  || null,
+              quantity:         Number(item.quantity) || 1,
+              grossWeight:      toDecimal(item.grossWeight),
+              netWeight:        toDecimal(item.netWeight),
+              purity:           toDecimal(item.purity),
+              netWeightOfMetal: new Prisma.Decimal(metalContent(item.netWeight, item.purity).toFixed(3)),
+            })),
+          },
         },
-      },
-      include: { items: true },
+        include: { items: true },
+      });
+
+      await recordCashEntries(tx, user.id, [{
+        kind:       "PLEDGE_CREATED",
+        direction:  "OUT",
+        amount:     loan,
+        partyName:  customer.name,
+        customerId,
+        pledgeId:   created.id,
+        eventAt:    pledgeDateObj,
+      }]);
+      return created;
     });
 
     return NextResponse.json(
@@ -234,7 +252,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     );
 
   } catch (err) {
-    console.error("PLEDGE CREATE ERROR:", err);
+    console.error("PLEDGE CREATE ERROR:", errorTag(err));
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }

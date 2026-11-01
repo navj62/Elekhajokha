@@ -9,6 +9,7 @@ import {
   isOpenPledgeStatus,
   LTV_MAX_5_2,
 } from "@/lib/pledgeConstants";
+import { recordCashEntries, errorTag } from "@/lib/cashBook";
 
 type RouteContext = {
   params: Promise<{ customerId: string; pledgeId: string }>;
@@ -39,6 +40,7 @@ export async function POST(req: Request, context: RouteContext) {
         items: {
           select: { itemType: true, metalType: true, itemName: true, purity: true, grossWeight: true },
         },
+        customer: { select: { name: true } },
       },
     });
 
@@ -188,7 +190,7 @@ export async function POST(req: Request, context: RouteContext) {
           metalType === "SILVER" ? silverPpg :
           null;
 
-        await tx.inventoryItem.create({
+        const item = await tx.inventoryItem.create({
           data: {
             ownerId:           user.id,
             sourceType:        "PLEDGE_SALE",
@@ -209,7 +211,24 @@ export async function POST(req: Request, context: RouteContext) {
             notes:             typeof notes === "string" && notes.trim() ? notes.trim() : null,
             status:            "IN_STOCK",
           },
+          select: { id: true },
         });
+
+        // Cash paid to the customer = acquisition cost − amount owed, floored
+        // at 0 (the same formula the sell page shows). The debt itself cancels
+        // without cash; a ₹0 entry still records the settlement.
+        const owed = new Prisma.Decimal(calc.receivableAmount);
+        const cost = new Prisma.Decimal(buyPrice).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+        await recordCashEntries(tx, user.id, [{
+          kind:            "PLEDGE_SOLD",
+          direction:       "OUT",
+          amount:          Prisma.Decimal.max(cost.minus(owed), 0),
+          partyName:       pledge.customer.name,
+          customerId,
+          pledgeId,
+          inventoryItemId: item.id,
+          eventAt:         saleDateObj,
+        }]);
       }, { timeout: 30000 });
     } catch (err: unknown) {
       if (err instanceof Error && err.message === "NOT_ACTIVE") {
@@ -224,7 +243,7 @@ export async function POST(req: Request, context: RouteContext) {
     return NextResponse.json({ success: true, message: "Pledge added to inventory." });
 
   } catch (err) {
-    console.error("PLEDGE SELL ERROR:", err);
+    console.error("PLEDGE SELL ERROR:", errorTag(err));
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }

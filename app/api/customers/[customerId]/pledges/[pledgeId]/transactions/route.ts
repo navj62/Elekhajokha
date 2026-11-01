@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { recordCashEntries, errorTag } from "@/lib/cashBook";
+import { parseCashAmount } from "@/lib/cashBookShared";
+import { isOpenPledgeStatus, OPEN_PLEDGE_STATUSES } from "@/lib/pledgeConstants";
 
 type RouteContext = {
   params: Promise<{
@@ -37,11 +40,11 @@ async function getAuthorizedPledge(customerId: string, pledgeId: string) {
       customerId,                    // ✅ scoped to customer in URL
       customer: { userId: user.id },
     },
-    select: { id: true, status: true },
+    select: { id: true, status: true, customer: { select: { name: true } } },
   });
   if (!pledge) return { error: "Pledge not found", status: 404 as const };
 
-  return { pledge };
+  return { pledge, userId: user.id };
 }
 
 /* ================================================================== */
@@ -61,9 +64,18 @@ export async function POST(req: Request, context: RouteContext) {
     if (amount === undefined || amount === null)
       return NextResponse.json({ error: "Amount is required" }, { status: 400 });
 
-    const amountNum = Number(amount);
-    if (isNaN(amountNum) || amountNum <= 0)
-      return NextResponse.json({ error: "Amount must be a positive number" }, { status: 400 });
+    // > 0, at most 2 decimals, at most ₹10,00,00,000 — the cash book's rule.
+    const amountCheck = parseCashAmount(amount);
+    if (!amountCheck.ok)
+      return NextResponse.json({ error: amountCheck.message }, { status: 400 });
+
+    // Part-payments only on open loans. Re-checked under a row lock below,
+    // so a release committing in between cannot slip one in.
+    if (!isOpenPledgeStatus(result.pledge.status))
+      return NextResponse.json(
+        { error: "PLEDGE_CLOSED", message: "Payments can only be recorded on active pledges." },
+        { status: 409 }
+      );
 
     if (!type || !VALID_TYPES.includes(type as TransactionType))
       return NextResponse.json(
@@ -85,20 +97,56 @@ export async function POST(req: Request, context: RouteContext) {
       createdAt = parsed;
     }
 
-    const transaction = await prisma.transaction.create({
-      data: {
-        pledgeId,
-        amount:    new Prisma.Decimal(amountNum),
-        type:      type as TransactionType,
-        note:      note?.toString().trim() || null,
-        createdAt,
-      },
-    });
+    // The transaction and its REPAYMENT / TOPUP cash entry commit together.
+    // `createdAt` above is the transaction's own (possibly backdated) date;
+    // the cash entry lands on today and carries that date as eventDate.
+    let transaction;
+    try {
+      transaction = await prisma.$transaction(async (tx) => {
+        // FOR SHARE blocks a concurrent release/sale (an UPDATE) until commit,
+        // and is taken before the day row, matching the other paths' order.
+        const open = await tx.$queryRaw<{ id: string }[]>`
+          SELECT p.id FROM "pledges" p
+          JOIN "customers" c ON c.id = p."customerId"
+          WHERE p.id = ${pledgeId} AND p."customerId" = ${customerId} AND c."userId" = ${result.userId}
+            AND p.status::text IN (${Prisma.join([...OPEN_PLEDGE_STATUSES])})
+          FOR SHARE OF p`;
+        if (open.length === 0) throw new Error("PLEDGE_CLOSED");
+
+        const created = await tx.transaction.create({
+          data: {
+            pledgeId,
+            amount:    new Prisma.Decimal(amountCheck.value),
+            type:      type as TransactionType,
+            note:      note?.toString().trim() || null,
+            createdAt,
+          },
+        });
+        const isTopup = created.type === "TOPUP";
+        await recordCashEntries(tx, result.userId, [{
+          kind:          isTopup ? "TOPUP" : "REPAYMENT",
+          direction:     isTopup ? "OUT" : "IN",
+          amount:        created.amount,
+          partyName:     result.pledge.customer.name,
+          customerId,
+          transactionId: created.id,
+          eventAt:       createdAt,
+        }]);
+        return created;
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === "PLEDGE_CLOSED")
+        return NextResponse.json(
+          { error: "PLEDGE_CLOSED", message: "Payments can only be recorded on active pledges." },
+          { status: 409 }
+        );
+      throw err;
+    }
 
     return NextResponse.json({ transaction }, { status: 201 });
 
   } catch (err) {
-    console.error("POST /transactions error:", err);
+    console.error("POST /transactions error:", errorTag(err));
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

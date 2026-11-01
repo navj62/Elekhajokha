@@ -7,7 +7,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:db": "CASHBOOK_DB_TESTS=1 vitest run tests/cashBook.db.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed-defaults.ts"

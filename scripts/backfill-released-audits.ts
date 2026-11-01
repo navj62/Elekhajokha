@@ -9,7 +9,9 @@
 // never created audit rows, so those two surfaces show nothing. This script
 // writes the audit rows the read paths expect. It does NOT change any read path.
 //
-// SCOPE: writes to PledgeAudit ONLY. Pledge rows are read-only here.
+// SCOPE: writes to PledgeAudit ONLY. Pledge rows are read-only here. It
+// writes no cash-book entries on purpose: the cash book starts at go-live, so
+// historical releases never appear in it (see the cash_book migrations).
 //
 // createdAt is set to Pledge.releaseDate on purpose — monthly-performance
 // buckets on PledgeAudit.createdAt, so the now() default would dump every

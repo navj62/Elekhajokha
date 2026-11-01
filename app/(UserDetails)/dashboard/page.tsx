@@ -40,6 +40,7 @@ import {
   AgingAnalysisSkeleton,
 } from "@/components/dashboard/AgingAnalysisSection";
 import { RegionsExplorerOverlay } from "@/components/dashboard/RegionsExplorerOverlay";
+import TodayCashCard from "@/components/dashboard/TodayCashCard";
 import {
   AgingSpineSection,
   AgingSpineSkeleton,
@@ -965,6 +966,7 @@ export default function DashboardPage() {
 
         {/* Right Column */}
         <section className="space-y-6">
+          <TodayCashCard />
           <RegionDistribution regions={dashboard?.regions} onViewAllRegions={() => setRegionsExplorerOpen(true)} />
           <MetalPortfolio
             portfolio={dashboard?.portfolio ?? null}

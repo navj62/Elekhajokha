@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { saleDateError, buyerMobileError } from "@/lib/inventorySale";
+import { recordCashEntries, errorTag } from "@/lib/cashBook";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -59,27 +60,44 @@ export async function POST(req: NextRequest, context: RouteContext) {
     // Atomic guard: the status predicate lives in the WHERE clause so two
     // concurrent sells can't both pass an app-code check and overwrite each
     // other. Mirrors the pledge release / pledge-sell updateMany pattern.
-    const result = await prisma.inventoryItem.updateMany({
-      where: {
-        id,
-        ownerId: user.id,
-        status:  "IN_STOCK",
-      },
-      data: {
-        status:      "SOLD",
-        soldAt:      soldAtDate,
-        soldPrice:   new Prisma.Decimal(soldPrice),
-        buyerName:   typeof buyerName  === "string" ? buyerName.trim()  || null : null,
-        buyerMobile: typeof buyerMobile === "string" ? buyerMobile.trim() || null : null,
-        saleNotes:   typeof saleNotes  === "string" ? saleNotes.trim()  || null : null,
-      },
-    });
+    // The sale and its INVENTORY_SOLD cash entry commit together.
+    const price = new Prisma.Decimal(soldPrice).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+    const buyer = typeof buyerName === "string" ? buyerName.trim() || null : null;
+    try {
+      await prisma.$transaction(async (tx) => {
+        const result = await tx.inventoryItem.updateMany({
+          where: {
+            id,
+            ownerId: user.id,
+            status:  "IN_STOCK",
+          },
+          data: {
+            status:      "SOLD",
+            soldAt:      soldAtDate,
+            soldPrice:   price,
+            buyerName:   buyer,
+            buyerMobile: typeof buyerMobile === "string" ? buyerMobile.trim() || null : null,
+            saleNotes:   typeof saleNotes  === "string" ? saleNotes.trim()  || null : null,
+          },
+        });
+        if (result.count === 0) throw new Error("ALREADY_SOLD");
 
-    if (result.count === 0) {
-      return NextResponse.json(
-        { error: "ALREADY_SOLD", message: "Item is already sold." },
-        { status: 409 }
-      );
+        await recordCashEntries(tx, user.id, [{
+          kind:            "INVENTORY_SOLD",
+          direction:       "IN",
+          amount:          price,
+          partyName:       buyer,
+          inventoryItemId: id,
+          eventAt:         soldAtDate,
+        }]);
+      });
+    } catch (err) {
+      if (err instanceof Error && err.message === "ALREADY_SOLD")
+        return NextResponse.json(
+          { error: "ALREADY_SOLD", message: "Item is already sold." },
+          { status: 409 }
+        );
+      throw err;
     }
 
     const updated = await prisma.inventoryItem.findFirst({
@@ -88,7 +106,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
 
     return NextResponse.json({ item: updated });
   } catch (err) {
-    console.error("POST /api/inventory/[id]/sell failed:", err);
+    console.error("POST /api/inventory/[id]/sell failed:", errorTag(err));
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }
