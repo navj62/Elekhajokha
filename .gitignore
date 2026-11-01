@@ -48,4 +48,6 @@ src/generated/
 # One-time local ledger migrations — contain real customer PII, never commit
 *_migration.xlsx
 prisma/seed-*-migration.ts
+/seed-*-migration.ts
 seed-migration-log.json
+seed-active-migration-log.json
