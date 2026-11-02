@@ -47,8 +47,9 @@ async function whyNotWritten(userId: string, id: string) {
 /* ------------------------------------------------------------------ */
 /*  PATCH /api/cash-book/entries/[id]                                   */
 /*  Body: { date, amount?, mode?, note?, direction? }                   */
-/*  Any entry on today's page: amount, mode, note (REVERSAL: mode and   */
-/*  note only). MANUAL also direction. originalAmount never changes.    */
+/*  Any entry on today's page: amount, mode, note (REVERSAL: note only).*/
+/*  MANUAL also direction. Only PLEDGE_SOLD may be edited to ₹0.        */
+/*  originalAmount never changes.                                       */
 /* ------------------------------------------------------------------ */
 export async function PATCH(req: Request, context: RouteContext) {
   try {
@@ -69,12 +70,14 @@ export async function PATCH(req: Request, context: RouteContext) {
     const edit: CashEntryEdit = {};
     if ("amount" in body) {
       if (entry.kind === "REVERSAL") return bad("A reversal's amount always matches the entry it cancels.");
-      // Manual entries need > 0; an automatic one may be 0 (a ₹0 sale settlement).
-      const v = parseCashAmount(body.amount, { allowZero: entry.kind !== "MANUAL" });
+      // Every amount is > 0 except a pledge sold to the shop, which may be a
+      // ₹0 "debt settled, no cash" entry.
+      const v = parseCashAmount(body.amount, { allowZero: entry.kind === "PLEDGE_SOLD" });
       if (!v.ok) return bad(v.message);
       edit.amount = v.value;
     }
     if ("mode" in body) {
+      if (entry.kind === "REVERSAL") return bad("A reversal's mode always matches the entry it cancels.");
       const v = parseCashMode(body.mode);
       if (!v.ok) return bad(v.message);
       edit.mode = v.value;

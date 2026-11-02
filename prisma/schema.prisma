@@ -449,12 +449,11 @@ model CashDay {
   id              String    @id @default(uuid())
   userId          String
   date            DateTime  @db.Date
-  // Opening carried from the previous day when this row was created:
-  // its counted cash if counted, else its expected closing. Null on the
-  // first day ever (or when the previous day had no opening either).
-  carriedOpening  Decimal?  @db.Decimal(14, 2)
-  // Owner's edit of today's opening. Kept apart from carriedOpening so the
-  // page can show "edited" and the difference.
+  // The carried opening (previous day's counted cash, else its expected
+  // closing) is NOT stored: it is worked out on every read from the earlier
+  // days, which never change (lib/cashBook.ts carriedOpeningSql).
+  // Owner's edit of today's opening. Kept apart from the carried value so
+  // the page can show "edited" and the difference.
   openingOverride Decimal?  @db.Decimal(14, 2)
   // Latest "count drawer" figure; repeatable until midnight.
   countedCash     Decimal?  @db.Decimal(14, 2)

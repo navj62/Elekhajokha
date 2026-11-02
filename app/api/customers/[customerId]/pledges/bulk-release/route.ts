@@ -83,11 +83,16 @@ export async function POST(req: Request, context: RouteContext) {
       );
     }
 
-    const inputPledges: InputPledge[] = (rawPledges as Array<Record<string, unknown>>).map((p) => ({
-      id:                  p.id as string,
-      allowCompounding:    safeAllow(p.allowCompounding),
-      compoundingDuration: safeDuration(p.compoundingDuration),
-    }));
+    // Sorted by id: the transaction below locks the pledges in this order, so
+    // two overlapping bulk releases always lock in the same order and cannot
+    // deadlock — the later one waits, then finds the pledge released (409).
+    const inputPledges: InputPledge[] = (rawPledges as Array<Record<string, unknown>>)
+      .map((p) => ({
+        id:                  p.id as string,
+        allowCompounding:    safeAllow(p.allowCompounding),
+        compoundingDuration: safeDuration(p.compoundingDuration),
+      }))
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
     const ids = inputPledges.map((p) => p.id);
     const releaseDateObj = new Date(releaseDate);

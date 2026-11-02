@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { recordCashEntries, errorTag } from "@/lib/cashBook";
 import { parseCashAmount } from "@/lib/cashBookShared";
+import { transactionDateError } from "@/lib/pledgeTransaction";
 import { isOpenPledgeStatus, OPEN_PLEDGE_STATUSES } from "@/lib/pledgeConstants";
 
 type RouteContext = {
@@ -40,7 +41,7 @@ async function getAuthorizedPledge(customerId: string, pledgeId: string) {
       customerId,                    // ✅ scoped to customer in URL
       customer: { userId: user.id },
     },
-    select: { id: true, status: true, customer: { select: { name: true } } },
+    select: { id: true, status: true, pledgeDate: true, customer: { select: { name: true } } },
   });
   if (!pledge) return { error: "Pledge not found", status: 404 as const };
 
@@ -58,7 +59,9 @@ export async function POST(req: Request, context: RouteContext) {
     if ("error" in result)
       return NextResponse.json({ error: result.error }, { status: result.status });
 
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      return NextResponse.json({ error: "VALIDATION", message: "Body must be a JSON object." }, { status: 400 });
     const { amount, type, note, transactionDate } = body;
 
     if (amount === undefined || amount === null)
@@ -83,18 +86,22 @@ export async function POST(req: Request, context: RouteContext) {
         { status: 400 }
       );
 
-    if (note !== undefined && note !== null && typeof note === "string" && note.length > 1000)
+    if (note !== undefined && note !== null && typeof note !== "string")
+      return NextResponse.json({ error: "VALIDATION", message: "Note must be text" }, { status: 400 });
+    if (typeof note === "string" && note.length > 1000)
       return NextResponse.json(
         { error: "VALIDATION", message: "Note must be at most 1000 characters" },
         { status: 400 }
       );
 
+    // Optional; when given: strict YYYY-MM-DD, not in the future, not before
+    // the pledge date (IST days). Stored at that day's UTC midnight, as before.
     let createdAt = new Date();
-    if (transactionDate) {
-      const parsed = new Date(transactionDate);
-      if (isNaN(parsed.getTime()))
-        return NextResponse.json({ error: "Invalid transaction date" }, { status: 400 });
-      createdAt = parsed;
+    if (transactionDate !== undefined && transactionDate !== null) {
+      const dateError = transactionDateError(transactionDate, result.pledge.pledgeDate, new Date());
+      if (dateError)
+        return NextResponse.json({ error: "VALIDATION", message: dateError }, { status: 400 });
+      createdAt = new Date(`${transactionDate}T00:00:00.000Z`);
     }
 
     // The transaction and its REPAYMENT / TOPUP cash entry commit together.
@@ -118,7 +125,7 @@ export async function POST(req: Request, context: RouteContext) {
             pledgeId,
             amount:    new Prisma.Decimal(amountCheck.value),
             type:      type as TransactionType,
-            note:      note?.toString().trim() || null,
+            note:      typeof note === "string" ? note.trim() || null : null,
             createdAt,
           },
         });

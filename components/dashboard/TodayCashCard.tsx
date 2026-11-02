@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowRight, Wallet } from "lucide-react";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { fmtINR } from "@/components/ui/DetailParts";
+import { num, fmtSigned } from "@/lib/cashBookShared";
 import type { CashDayJson } from "@/lib/cashBook";
 
 /* ------------------------------------------------------------------ */
@@ -12,13 +13,6 @@ import type { CashDayJson } from "@/lib/cashBook";
 /*  One request, one query (GET /api/cash-book/summary). Refetches when */
 /*  the tab regains focus, so a sale made on another device shows up.   */
 /* ------------------------------------------------------------------ */
-
-const num = (s: string | null) => (s === null ? null : Number(s));
-
-function fmtSigned(s: string) {
-  const n = Number(s);
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmtINR(Math.abs(n))}`;
-}
 
 function SummaryRow({ label, value, sub }: { label: string; value: React.ReactNode; sub?: React.ReactNode }) {
   return (

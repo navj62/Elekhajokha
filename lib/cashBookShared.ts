@@ -5,34 +5,32 @@
  *
  * The server half (SQL, locking, writes) is lib/cashBook.ts.
  */
+import { fmtINR } from "@/components/ui/DetailParts";
 
-export const CASH_DIRECTIONS = ["IN", "OUT"] as const;
+const CASH_DIRECTIONS = ["IN", "OUT"] as const;
 export const CASH_MODES = ["CASH", "UPI", "BANK"] as const;
-export const CASH_KINDS = [
-  "PLEDGE_CREATED",
-  "PLEDGE_RELEASED",
-  "PLEDGE_SOLD",
-  "INVENTORY_BOUGHT",
-  "INVENTORY_SOLD",
-  "REPAYMENT",
-  "TOPUP",
-  "REVERSAL",
-  "MANUAL",
-] as const;
-
 export type CashDirectionValue = (typeof CASH_DIRECTIONS)[number];
 export type CashModeValue = (typeof CASH_MODES)[number];
-export type CashKindValue = (typeof CASH_KINDS)[number];
+export type CashKindValue =
+  | "PLEDGE_CREATED"
+  | "PLEDGE_RELEASED"
+  | "PLEDGE_SOLD"
+  | "INVENTORY_BOUGHT"
+  | "INVENTORY_SOLD"
+  | "REPAYMENT"
+  | "TOPUP"
+  | "REVERSAL"
+  | "MANUAL";
 
 /** ₹10,00,00,000 — same ceiling as a pledge's loan amount. */
-export const CASH_MAX_AMOUNT = 100_000_000;
+const CASH_MAX_AMOUNT = 100_000_000;
 export const CASH_NOTE_MAX = 500;
 
 /* ------------------------------------------------------------------ */
 /*  Input parsing                                                       */
 /* ------------------------------------------------------------------ */
 
-export type Parsed<T> = { ok: true; value: T } | { ok: false; message: string };
+type Parsed<T> = { ok: true; value: T } | { ok: false; message: string };
 
 const MONEY_RE = /^\d{1,10}(\.\d{1,2})?$/;
 
@@ -88,7 +86,7 @@ export function isIsoDay(value: unknown): value is string {
 const toPaise = (s: string) => Math.round(Number(s) * 100);
 const fromPaise = (p: number) => (p / 100).toFixed(2);
 
-export interface DayFigures {
+interface DayFigures {
   /** Carried from the previous day (counted cash, else expected closing). */
   carriedOpening: string | null;
   /** Owner's edit of the opening, if any. */
@@ -98,7 +96,7 @@ export interface DayFigures {
   countedCash: string | null;
 }
 
-export interface ResolvedDay {
+interface ResolvedDay {
   opening: string | null;
   /** Override set and different from what was carried. */
   openingEdited: boolean;
@@ -136,7 +134,7 @@ export function resolveDay(d: DayFigures): ResolvedDay {
 /*  Labels                                                              */
 /* ------------------------------------------------------------------ */
 // TODO(i18n): English-only, like the other redesigned pages.
-export const CASH_KIND_LABEL: Record<CashKindValue, string> = {
+const CASH_KIND_LABEL: Record<CashKindValue, string> = {
   PLEDGE_CREATED: "Loan given",
   PLEDGE_RELEASED: "Pledge released",
   PLEDGE_SOLD: "Pledge sold to shop",
@@ -158,4 +156,17 @@ export const CASH_MODE_LABEL: Record<CashModeValue, string> = {
 export function cashEntryTitle(kind: CashKindValue, amount: string): string {
   if (kind === "PLEDGE_SOLD" && toPaise(amount) === 0) return "Debt settled, no cash";
   return CASH_KIND_LABEL[kind];
+}
+
+/* ------------------------------------------------------------------ */
+/*  Display helpers (day page + dashboard card)                         */
+/* ------------------------------------------------------------------ */
+
+/** A 2-dp money string from the API as a number; null stays null. */
+export const num = (s: string | null) => (s === null ? null : Number(s));
+
+/** "+₹1,200", "−₹50" or "₹0" for a signed 2-dp money string. */
+export function fmtSigned(s: string) {
+  const n = Number(s);
+  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmtINR(Math.abs(n))}`;
 }

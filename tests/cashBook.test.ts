@@ -11,7 +11,10 @@ import {
   isIsoDay,
   resolveDay,
   cashEntryTitle,
+  num,
+  fmtSigned,
 } from "@/lib/cashBookShared";
+import { fmtINR } from "@/components/ui/DetailParts";
 
 describe("parseCashAmount", () => {
   it("accepts up to 2 decimals and returns the canonical string", () => {
@@ -90,5 +93,17 @@ describe("cashEntryTitle", () => {
     expect(cashEntryTitle("PLEDGE_SOLD", "0.00")).toBe("Debt settled, no cash");
     expect(cashEntryTitle("PLEDGE_SOLD", "10.00")).toBe("Pledge sold to shop");
     expect(cashEntryTitle("MANUAL", "0.00")).toBe("Manual entry");
+  });
+});
+
+describe("display helpers", () => {
+  it("num keeps null, parses money strings", () => {
+    expect(num(null)).toBeNull();
+    expect(num("1250.50")).toBe(1250.5);
+  });
+  it("fmtSigned: + for positive, − for negative, none for zero", () => {
+    expect(fmtSigned("100.00")).toBe(`+${fmtINR(100)}`);
+    expect(fmtSigned("-10.00")).toBe(`−${fmtINR(10)}`);
+    expect(fmtSigned("0.00")).toBe(fmtINR(0));
   });
 });

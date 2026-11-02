@@ -27,6 +27,8 @@ import {
   CASH_NOTE_MAX,
   isIsoDay,
   parseCashAmount,
+  num,
+  fmtSigned,
   type CashDirectionValue,
   type CashModeValue,
 } from "@/lib/cashBookShared";
@@ -39,8 +41,6 @@ import type { CashDayJson, CashEntryJson } from "@/lib/cashBook";
 /* ------------------------------------------------------------------ */
 
 type DayData = { day: CashDayJson; entries: CashEntryJson[] };
-
-const num = (s: string | null) => (s === null ? null : Number(s));
 
 function addDays(day: string, n: number) {
   const d = new Date(`${day}T00:00:00.000Z`);
@@ -60,10 +60,6 @@ function fmtTime(iso: string | Date) {
 }
 function fmtSignedAmount(direction: CashDirectionValue, amount: string) {
   return `${direction === "IN" ? "+" : "−"}${fmtINR(Number(amount))}`;
-}
-function fmtSigned(s: string) {
-  const n = Number(s);
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmtINR(Math.abs(n))}`;
 }
 
 function sourceHref(e: CashEntryJson): { href: string; label: string } | null {
@@ -292,14 +288,18 @@ function CashBookDay() {
     e.preventDefault();
     if (!day || !sheet || typeof sheet !== "object") return;
     const entry = sheet.entry;
-    const body: Record<string, unknown> = { date: day.date, mode: fMode, note: fNote };
+    const body: Record<string, unknown> = { date: day.date, note: fNote };
+    // A reversal's amount and mode mirror the entry it cancels; only its note changes.
     if (entry.kind !== "REVERSAL") {
-      const amount = amountOrError(entry.kind !== "MANUAL");
+      body.mode = fMode;
+      // Only a pledge sold to the shop can be ₹0 ("debt settled, no cash").
+      const amount = amountOrError(entry.kind === "PLEDGE_SOLD");
       if (amount === null) return;
       if (amount !== entry.amount) body.amount = amount;
     }
     if (entry.kind === "MANUAL") body.direction = fDirection;
     if ((entry.note ?? "") === fNote.trim()) delete body.note;
+    if (Object.keys(body).length === 1) { setSheet(null); return; } // nothing changed
     run(`/api/cash-book/entries/${entry.id}`, "PATCH", body);
   }
   function deleteEntry() {
@@ -602,7 +602,7 @@ function CashBookDay() {
                 {e.amountEdited && <Row label="Original amount" value={fmtINR(Number(e.originalAmount))} />}
                 {e.reversed && <Row label="Status" value="Reversed (pledge deleted)" />}
                 {e.kind === "REVERSAL" && <Row label="Cancels" value="An entry of a deleted pledge" />}
-                {!editable && <Row label="Mode" value={<ModeChip mode={e.mode} />} />}
+                {(!editable || e.kind === "REVERSAL") && <Row label="Mode" value={<ModeChip mode={e.mode} />} />}
                 {!editable && e.note && <Row label="Note" value={e.note} />}
               </dl>
 
@@ -614,7 +614,9 @@ function CashBookDay() {
                   {e.kind !== "REVERSAL" && (
                     <AmountField label="Amount (₹)" value={fAmount} onChange={setFAmount} invalid={formError !== null} autoFocus={false} />
                   )}
-                  <ChoiceGroup legend="Mode" value={fMode} options={CASH_MODES} onChange={setFMode} labels={CASH_MODE_LABEL} />
+                  {e.kind !== "REVERSAL" && (
+                    <ChoiceGroup legend="Mode" value={fMode} options={CASH_MODES} onChange={setFMode} labels={CASH_MODE_LABEL} />
+                  )}
                   <NoteField value={fNote} onChange={setFNote} />
                   {e.kind !== "MANUAL" && (
                     <p className="text-[12px] text-muted-foreground-subtle">

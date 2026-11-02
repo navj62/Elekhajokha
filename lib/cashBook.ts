@@ -43,26 +43,38 @@ export function istDateOf(ts: Prisma.Sql): Prisma.Sql {
 export const DAY_CLOSED = "DAY_CLOSED";
 
 /**
- * Opening carried into day `d` from the latest earlier day row: its counted
- * cash if a count was entered, else its expected closing (opening + cash in
- * − cash out, CASH mode only). NULL when there is no earlier day, or the
- * earlier day's opening was never set and nothing was counted.
- * One backward index probe on cash_days(userId, date) + one day of entries.
+ * Opening carried into day `d`: the previous day's counted cash if it was
+ * counted, else its expected closing (opening + cash in − cash out, CASH mode
+ * only). Worked out on every read, never stored — earlier days can't change,
+ * so the answer is stable, and an entry that a transaction begun before
+ * midnight commits late onto the earlier day is still counted.
+ *
+ * A day's opening is its owner-set opening, else the carried one, so the
+ * chain is anchored at the latest earlier day with a count or an owner-set
+ * opening; the days after it have neither, and only their entries matter:
+ *   counted anchor:      counted cash + CASH net of the days after it;
+ *   opening-only anchor: opening + CASH net of its own day and the days after.
+ * NULL when no earlier day has either (no opening has ever been set).
+ * One backward index probe on cash_days(userId, date) + one range scan of
+ * cash_entries(userId, date).
  */
 function carriedOpeningSql(userId: string, d: Prisma.Sql): Prisma.Sql {
   return Prisma.sql`(
-    SELECT COALESCE(
-      p."countedCash",
-      COALESCE(p."openingOverride", p."carriedOpening") + COALESCE((
-        SELECT SUM(CASE WHEN e.direction = 'IN' THEN e.amount ELSE -e.amount END)
-        FROM "cash_entries" e
-        WHERE e."userId" = p."userId" AND e.date = p.date AND e.mode = 'CASH'
-      ), 0)
-    )
-    FROM "cash_days" p
-    WHERE p."userId" = ${userId} AND p.date < ${d}
-    ORDER BY p.date DESC
-    LIMIT 1
+    SELECT COALESCE(a."countedCash", a."openingOverride") + COALESCE((
+      SELECT SUM(CASE WHEN e.direction = 'IN' THEN e.amount ELSE -e.amount END)
+      FROM "cash_entries" e
+      WHERE e."userId" = ${userId} AND e.mode = 'CASH'
+        AND e.date >= a.date AND e.date < ${d}
+        AND (a."countedCash" IS NULL OR e.date > a.date)
+    ), 0)
+    FROM (
+      SELECT p.date, p."countedCash", p."openingOverride"
+      FROM "cash_days" p
+      WHERE p."userId" = ${userId} AND p.date < ${d}
+        AND (p."countedCash" IS NOT NULL OR p."openingOverride" IS NOT NULL)
+      ORDER BY p.date DESC
+      LIMIT 1
+    ) a
   )`;
 }
 
@@ -76,8 +88,8 @@ function lockTodaySql(userId: string, expectDay?: string): Prisma.Sql {
   return Prisma.sql`
     t AS (SELECT ${IST_TODAY} AS d ${guard}),
     day AS (
-      INSERT INTO "cash_days" (id, "userId", date, "carriedOpening", "createdAt", "updatedAt")
-      SELECT gen_random_uuid()::text, ${userId}, t.d, ${carriedOpeningSql(userId, Prisma.sql`t.d`)}, ${NOW_UTC}, ${NOW_UTC}
+      INSERT INTO "cash_days" (id, "userId", date, "createdAt", "updatedAt")
+      SELECT gen_random_uuid()::text, ${userId}, t.d, ${NOW_UTC}, ${NOW_UTC}
       FROM t
       ON CONFLICT ("userId", date) DO UPDATE SET "updatedAt" = ${NOW_UTC}
       RETURNING id, date
@@ -163,8 +175,36 @@ export async function recordCashEntries(
  * the pledge's transactions cascade with it.
  */
 export async function reversePledgeEntries(db: Db, userId: string, pledgeId: string): Promise<number> {
-  const written = await db.$queryRaw<{ id: string }[]>(Prisma.sql`
-    WITH ${lockTodaySql(userId)}
+  const written = await db.$queryRaw<{ id: string }[]>(reversePledgeEntriesSql(userId, pledgeId));
+  return written.length;
+}
+
+/**
+ * The pledge's entries are read straight from the unique indexes — its own
+ * entries by (pledgeId, kind), its repayments / top-ups by transactionId —
+ * never by scanning the shop's whole history. Each branch returns the
+ * columns the reversal copies, so there is no second lookup. No entry
+ * matches both branches (repayment / top-up entries carry no pledgeId).
+ * `tx_entries` is MATERIALIZED so the shop filter is applied after the
+ * transactionId lookup instead of steering it onto the (userId, …) index.
+ * Exported for the EXPLAIN test.
+ */
+export function reversePledgeEntriesSql(userId: string, pledgeId: string): Prisma.Sql {
+  return Prisma.sql`
+    WITH ${lockTodaySql(userId)},
+    tx_entries AS MATERIALIZED (
+      SELECT ce.id, ce."userId", ce.kind, ce.date, ce.direction, ce.amount, ce.mode, ce."partyName", ce."customerId"
+      FROM "transactions" tr
+      JOIN "cash_entries" ce ON ce."transactionId" = tr.id
+      WHERE tr."pledgeId" = ${pledgeId}
+    ),
+    o AS (
+      SELECT ce.id, ce."userId", ce.kind, ce.date, ce.direction, ce.amount, ce.mode, ce."partyName", ce."customerId"
+      FROM "cash_entries" ce
+      WHERE ce."pledgeId" = ${pledgeId}
+      UNION ALL
+      SELECT * FROM tx_entries
+    )
     INSERT INTO "cash_entries" (
       id, "userId", date, direction, amount, "originalAmount", mode, kind,
       "partyName", "customerId", "reversesEntryId", "eventDate", "createdAt", "updatedAt"
@@ -177,17 +217,12 @@ export async function reversePledgeEntries(db: Db, userId: string, pledgeId: str
       CASE WHEN o.date <> day.date THEN o.date END,
       ${NOW_UTC}, ${NOW_UTC}
     FROM day
-    CROSS JOIN "cash_entries" o
+    CROSS JOIN o
     WHERE o."userId" = ${userId}
       AND o.kind <> 'REVERSAL'
-      AND (
-        o."pledgeId" = ${pledgeId}
-        OR o."transactionId" IN (SELECT tr.id FROM "transactions" tr WHERE tr."pledgeId" = ${pledgeId})
-      )
       AND NOT EXISTS (SELECT 1 FROM "cash_entries" r WHERE r."reversesEntryId" = o.id)
     RETURNING id
-  `);
-  return written.length;
+  `;
 }
 
 /* ------------------------------------------------------------------ */
@@ -204,10 +239,11 @@ export interface CashEntryEdit {
 
 /**
  * Applies `edit` iff the entry is the caller's, is on today's page (and
- * today is still `expectDay`), and has not been reversed. REVERSAL amounts
- * are fixed (they mirror the original) and only MANUAL entries change
- * direction; both are enforced in the WHERE clause too. `editedAt` is set
- * when amount or note change — a mode toggle is not an "edit".
+ * today is still `expectDay`), and has not been reversed. A REVERSAL's
+ * amount and mode are fixed (they mirror the original), only MANUAL entries
+ * change direction, and only a PLEDGE_SOLD amount may be 0; all enforced in
+ * the WHERE clause too. `editedAt` is set when amount or note change — a
+ * mode toggle is not an "edit".
  * Returns false when no row qualified; the caller classifies why.
  */
 export async function editCashEntry(
@@ -241,6 +277,8 @@ export async function editCashEntry(
       AND e.date = t.d
       AND NOT EXISTS (SELECT 1 FROM "cash_entries" r WHERE r."reversesEntryId" = e.id)
       AND (NOT ${setAmount}::boolean OR e.kind <> 'REVERSAL')
+      AND (NOT ${setAmount}::boolean OR ${edit.amount ?? null}::numeric > 0 OR e.kind = 'PLEDGE_SOLD')
+      AND (NOT ${setMode}::boolean OR e.kind <> 'REVERSAL')
       AND (NOT ${setDirection}::boolean OR e.kind = 'MANUAL')
     RETURNING e.id
   `);
@@ -292,10 +330,10 @@ export async function updateCashDay(
   const rows = await db.$queryRaw<{ id: string }[]>(Prisma.sql`
     WITH t AS (SELECT ${IST_TODAY} AS d WHERE ${IST_TODAY} = ${expectDay}::date)
     INSERT INTO "cash_days" (
-      id, "userId", date, "carriedOpening", "openingOverride", "countedCash", "countedAt", "createdAt", "updatedAt"
+      id, "userId", date, "openingOverride", "countedCash", "countedAt", "createdAt", "updatedAt"
     )
     SELECT
-      gen_random_uuid()::text, ${userId}, t.d, ${carriedOpeningSql(userId, Prisma.sql`t.d`)},
+      gen_random_uuid()::text, ${userId}, t.d,
       ${patch.openingOverride ?? null}::numeric,
       ${patch.countedCash ?? null}::numeric,
       CASE WHEN ${setCount}::boolean THEN ${NOW_UTC} END,
@@ -315,7 +353,7 @@ export async function updateCashDay(
 /*  Reads                                                               */
 /* ------------------------------------------------------------------ */
 
-export interface CashDaySummaryRow {
+interface CashDaySummaryRow {
   date: string;
   today: string;
   carriedOpening: Prisma.Decimal | null;
@@ -330,8 +368,8 @@ export interface CashDaySummaryRow {
 }
 
 /**
- * The day's row (or, when it has none, the opening it WOULD carry) plus its
- * totals, in one statement. `day` null = today. Exported as SQL for EXPLAIN.
+ * The day's row, its carried opening (worked out, see carriedOpeningSql) and
+ * its totals, in one statement. `day` null = today. Exported as SQL for EXPLAIN.
  */
 export function daySummarySql(userId: string, day: string | null): Prisma.Sql {
   const d = day ? Prisma.sql`${day}::date` : IST_TODAY;
@@ -340,7 +378,7 @@ export function daySummarySql(userId: string, day: string | null): Prisma.Sql {
     SELECT
       t.d::text AS date,
       t.today::text AS today,
-      CASE WHEN cd.id IS NULL THEN ${carriedOpeningSql(userId, Prisma.sql`t.d`)} ELSE cd."carriedOpening" END AS "carriedOpening",
+      ${carriedOpeningSql(userId, Prisma.sql`t.d`)} AS "carriedOpening",
       cd."openingOverride", cd."countedCash", cd."countedAt",
       s.cash_in AS "cashIn", s.cash_out AS "cashOut", s.other_in AS "otherIn", s.other_out AS "otherOut",
       s.n AS "entryCount"
@@ -363,7 +401,7 @@ export async function getCashDaySummary(db: Db, userId: string, day: string | nu
   return rows[0];
 }
 
-export interface CashEntryRow {
+interface CashEntryRow {
   id: string;
   date: string;
   direction: CashDirection;
@@ -390,7 +428,7 @@ export interface CashEntryRow {
  * description, and whether a reversal exists — in one statement. Every join
  * is on a primary key or the unique reversesEntryId index.
  */
-export function dayEntriesSql(userId: string, day: string): Prisma.Sql {
+function dayEntriesSql(userId: string, day: string): Prisma.Sql {
   return Prisma.sql`
     SELECT
       e.id, e.date::text AS date, e.direction, e.amount, e."originalAmount", e.mode, e.kind,

@@ -244,6 +244,11 @@ describe.skipIf(!RUN)("cash book (dev DB)", { timeout: 120_000 }, () => {
     expect(ePaid.inventoryItemId).toBe(p.inventoryItem!.id);
     const eZero = sold.find((e) => e.pledgeId === zero)!;
     expect(eZero.amount.toFixed(2)).toBe("0.00");
+
+    // A sale's cash may be edited down to a ₹0 settlement (the one kind allowed 0).
+    const toZero = await cbEntry.PATCH(json("/x", "PATCH", { date: today, amount: "0" }), ctx({ id: ePaid.id }));
+    expect(toZero.status).toBe(200);
+    expect((await prisma.cashEntry.findUniqueOrThrow({ where: { id: ePaid.id } })).amount.toFixed(2)).toBe("0.00");
   });
 
   it("direct purchase → INVENTORY_BOUGHT OUT; sale → INVENTORY_SOLD IN once; failed sale rolls back", async () => {
@@ -294,10 +299,53 @@ describe.skipIf(!RUN)("cash book (dev DB)", { timeout: 120_000 }, () => {
     expect(rep.eventDate?.toISOString().slice(0, 10)).toBe(yesterday);
     expect(rows.find((e) => e.kind === "TOPUP")!.direction).toBe("OUT");
 
+    // transactionDate: strict YYYY-MM-DD, not in the future, not before the
+    // pledge date (5 days ago). Body must be a JSON object; note must be text.
+    for (const bad of ["2026-1-5", `${today}T10:00:00.000Z`, addDays(today, 1), addDays(today, -6), "", 12345]) {
+      expect((await post({ amount: 10, type: "TOPUP", transactionDate: bad })).status).toBe(400);
+    }
+    expect((await post({ amount: 10, type: "TOPUP", note: { text: "x" } })).status).toBe(400);
+    expect((await post([{ amount: 10, type: "TOPUP" }])).status).toBe(400);
+    const malformed = await txns.POST(
+      new NextRequest("http://test/x", { method: "POST", headers: { "content-type": "application/json" }, body: "{not json" }),
+      ctx({ customerId: t.customerId, pledgeId: id }),
+    );
+    expect(malformed.status).toBe(400);
+    expect(await prisma.transaction.count({ where: { pledgeId: id } })).toBe(2);
+    // The pledge's own day is allowed.
+    expect((await post({ amount: 10, type: "TOPUP", transactionDate: addDays(today, -5), note: "  given  " })).status).toBe(201);
+    const onPledgeDay = await prisma.transaction.findFirstOrThrow({ where: { pledgeId: id, amount: 10 } });
+    expect(onPledgeDay.createdAt.toISOString()).toBe(`${addDays(today, -5)}T00:00:00.000Z`);
+    expect(onPledgeDay.note).toBe("given");
+
     await prisma.pledge.update({ where: { id }, data: { status: "RELEASED" } });
     expect((await post({ amount: 50, type: "REPAYMENT_PRINCIPAL" })).status).toBe(409);
-    expect(await prisma.transaction.count({ where: { pledgeId: id } })).toBe(2);
-    expect((await entriesOf(t.id)).filter((e) => e.transactionId !== null)).toHaveLength(2);
+    expect(await prisma.transaction.count({ where: { pledgeId: id } })).toBe(3);
+    expect((await entriesOf(t.id)).filter((e) => e.transactionId !== null)).toHaveLength(3);
+  });
+
+  it("overlapping bulk releases in opposite order: one wins, the other gets 409 — never a deadlock", async () => {
+    const t = await tenant("bulkrace");
+    as(t);
+    const req = (ids: string[]) => json(`/x`, "POST", {
+      releaseDate: new Date().toISOString(),
+      pledges: ids.map((id) => ({ id, allowCompounding: false, compoundingDuration: "YEARLY" })),
+    });
+    for (let round = 0; round < 3; round++) {
+      const ids = [
+        await createPledge(t, "1000", addDays(today, -10)),
+        await createPledge(t, "2000", addDays(today, -10)),
+        await createPledge(t, "3000", addDays(today, -10)),
+      ];
+      const results = await Promise.all([
+        bulk.POST(req(ids), ctx({ customerId: t.customerId })),
+        bulk.POST(req([...ids].reverse()), ctx({ customerId: t.customerId })),
+      ]);
+      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+      const released = (await entriesOf(t.id)).filter((e) => e.kind === "PLEDGE_RELEASED" && ids.includes(e.pledgeId!));
+      expect(released).toHaveLength(3);
+      expect(await prisma.pledgeAudit.count({ where: { pledgeId: { in: ids } } })).toBe(3);
+    }
   });
 
   it("writes aimed at a past day are refused (409) and change nothing", async () => {
@@ -393,6 +441,11 @@ describe.skipIf(!RUN)("cash book (dev DB)", { timeout: 120_000 }, () => {
     expect(row.originalAmount.toFixed(2)).toBe("8000.00");
     expect(row.editedAt).not.toBeNull();
 
+    // Only a pledge sold to the shop may be ₹0; a loan entry stays > 0 — route and SQL.
+    expect((await cbEntry.PATCH(json("/x", "PATCH", { date: today, amount: "0" }), ctx({ id: entry.id }))).status).toBe(400);
+    expect(await cashBook.editCashEntry(prisma, t.id, entry.id, today, { amount: "0.00" })).toBe(false);
+    expect((await prisma.cashEntry.findUniqueOrThrow({ where: { id: entry.id } })).amount.toFixed(2)).toBe("7999.50");
+
     expect((await cbEntry.PATCH(json("/x", "PATCH", { date: today, direction: "IN" }), ctx({ id: entry.id }))).status).toBe(400);
     const del = await cbEntry.DELETE(new NextRequest(`http://test/x?date=${today}`, { method: "DELETE" }), ctx({ id: entry.id }));
     expect(del.status).toBe(409);
@@ -460,6 +513,31 @@ describe.skipIf(!RUN)("cash book (dev DB)", { timeout: 120_000 }, () => {
     expect((await blocked.json()).error).toBe("ENTRY_REVERSED");
     const rev = await cbEntry.PATCH(json("/x", "PATCH", { date: today, amount: "1" }), ctx({ id: reversals[0].id }));
     expect(rev.status).toBe(400);
+
+    // A reversal's mode is fixed too — route and SQL; only its note changes.
+    const revMode = await cbEntry.PATCH(json("/x", "PATCH", { date: today, mode: "UPI" }), ctx({ id: reversals[0].id }));
+    expect(revMode.status).toBe(400);
+    expect(await cashBook.editCashEntry(prisma, t.id, reversals[0].id, today, { mode: "UPI" })).toBe(false);
+    const revNote = await cbEntry.PATCH(json("/x", "PATCH", { date: today, note: "entered twice" }), ctx({ id: reversals[0].id }));
+    expect(revNote.status).toBe(200);
+    const revRow = await prisma.cashEntry.findUniqueOrThrow({ where: { id: reversals[0].id } });
+    expect(revRow).toMatchObject({ mode: "CASH", note: "entered twice" });
+  });
+
+  it("pledge-delete reversal lookup uses the unique indexes, not a scan of the shop's entries", async () => {
+    const t = await tenant("explain");
+    // EXPLAIN only plans the INSERT; nothing runs. Seq scans are discouraged
+    // so the tiny test tables still show which indexes the query can use.
+    const plan = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SET LOCAL enable_seqscan = off`;
+      return tx.$queryRaw<{ "QUERY PLAN": string }[]>(
+        Prisma.sql`EXPLAIN (COSTS OFF) ${cashBook.reversePledgeEntriesSql(t.id, "no-such-pledge")}`,
+      );
+    });
+    const text = plan.map((r) => r["QUERY PLAN"]).join("\n");
+    expect(text).toContain('"cash_entries_pledgeId_kind_key"');
+    expect(text).toContain('"cash_entries_transactionId_key"');
+    expect(text).not.toContain("cash_entries_userId_date_createdAt_idx");
   });
 
   it("opening: first day unset; carries counted cash, else expected (CASH only); edit shows difference", async () => {
@@ -487,12 +565,10 @@ describe.skipIf(!RUN)("cash book (dev DB)", { timeout: 120_000 }, () => {
     v = await getDay();
     expect(v.body.day).toMatchObject({ carriedOpening: "1300.00", opening: "1300.00", openingEdited: false });
 
-    // Writing today freezes the carried value on today's row.
+    // Writing today creates today's row; the carried value is still worked out the same.
     expect((await cbEntries.POST(json("/x", "POST", { date: today, direction: "OUT", amount: "2000" }))).status).toBe(201);
-    const row = await prisma.cashDay.findFirstOrThrow({ where: { userId: expected.id, date: dbDate(today) } });
-    expect(row.carriedOpening?.toFixed(2)).toBe("1300.00");
     v = await getDay();
-    expect(v.body.day).toMatchObject({ expected: "-700.00", negativeDrawer: true });
+    expect(v.body.day).toMatchObject({ carriedOpening: "1300.00", expected: "-700.00", negativeDrawer: true });
 
     // Owner edit: kept apart, difference shown; null clears it.
     expect((await cbDayPatch.PATCH(json("/x", "PATCH", { date: today, openingCash: "1400" }))).status).toBe(200);
@@ -511,6 +587,38 @@ describe.skipIf(!RUN)("cash book (dev DB)", { timeout: 120_000 }, () => {
     expect((await cbDayPatch.PATCH(json("/x", "PATCH", { date: today, countedCash: "1240" }))).status).toBe(200);
     const s = await cbSummary.GET();
     expect((await s.json()).day).toMatchObject({ expected: "1250.00", countedCash: "1240.00", countDifference: "-10.00" });
+  });
+
+  it("carried opening is worked out on read: chains across days; a late entry on yesterday still carries", async () => {
+    // 3 days ago: owner-set opening 1000, +500 cash, +300 UPI (ignored).
+    // 2 days ago: a row with no opening and no count, −200 cash. Yesterday: nothing yet.
+    const t = await tenant("carry");
+    as(t);
+    const d3 = dbDate(addDays(today, -3));
+    const d2 = dbDate(addDays(today, -2));
+    await prisma.cashDay.createMany({ data: [{ userId: t.id, date: d3, openingOverride: 1000 }, { userId: t.id, date: d2 }] });
+    await prisma.cashEntry.createMany({
+      data: [
+        { userId: t.id, date: d3, direction: "IN", amount: 500, originalAmount: 500, kind: "MANUAL" },
+        { userId: t.id, date: d3, direction: "IN", amount: 300, originalAmount: 300, kind: "MANUAL", mode: "UPI" },
+        { userId: t.id, date: d2, direction: "OUT", amount: 200, originalAmount: 200, kind: "MANUAL" },
+      ],
+    });
+    expect((await getDay(addDays(today, -2))).body.day.carriedOpening).toBe("1500.00");
+    expect((await getDay()).body.day.carriedOpening).toBe("1300.00");
+
+    // Today's first write creates today's row. Then a transaction that began
+    // before midnight commits an entry onto yesterday: it must still carry.
+    expect((await cbEntries.POST(json("/x", "POST", { date: today, direction: "IN", amount: "50" }))).status).toBe(201);
+    await prisma.cashDay.create({ data: { userId: t.id, date: dbDate(yesterday) } });
+    await prisma.cashEntry.create({
+      data: { userId: t.id, date: dbDate(yesterday), direction: "IN", amount: 70, originalAmount: 70, kind: "MANUAL" },
+    });
+    expect((await getDay()).body.day).toMatchObject({ carriedOpening: "1370.00", opening: "1370.00", expected: "1420.00" });
+
+    // A count on yesterday becomes the anchor: what it counted carries, its own entries don't add again.
+    await prisma.cashDay.update({ where: { userId_date: { userId: t.id, date: dbDate(yesterday) } }, data: { countedCash: 1000 } });
+    expect((await getDay()).body.day.carriedOpening).toBe("1000.00");
   });
 
   it("tenant isolation: another shop sees none of it and can't touch it", async () => {

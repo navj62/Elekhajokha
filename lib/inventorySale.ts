@@ -5,7 +5,7 @@
  */
 
 /** A date's calendar day in IST, as YYYY-MM-DD. */
-function istDay(d: Date): string {
+export function istDay(d: Date): string {
   return d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
 }
 

@@ -1,0 +1,13 @@
+-- Cash book (lib/cashBook.ts), follow-up to 20261031210006_cash_book.
+--
+-- The carried opening is no longer stored on cash_days: it is worked out on
+-- every read from the earlier days (carriedOpeningSql). Storing it froze the
+-- value when the day's first write happened, so an entry committed late onto
+-- the previous day (a transaction begun before midnight) was never carried.
+-- The value is derivable, so nothing is lost by dropping it.
+--
+-- Deploy order: the code that stops writing this column must be live BEFORE
+-- this runs — the previous code inserts "carriedOpening" on every money
+-- action and would fail once the column is gone. The new code never reads or
+-- writes it, so it runs fine with the column still present.
+ALTER TABLE "cash_days" DROP COLUMN "carriedOpening";
