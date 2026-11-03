@@ -39,15 +39,22 @@ export async function PATCH(req: Request, context: RouteContext) {
 
     const { customerId, pledgeId } = await context.params;
 
-    // ✅ Verify pledge belongs to this customer AND this user
-    const pledge = await prisma.pledge.findFirst({
-      where: {
-        id:         pledgeId,
-        customerId,                       // ✅ scoped to customer in URL
-        customer: { userId: user.id },
-      },
-      include: { customer: { select: { name: true } } },
-    });
+    // ✅ Verify pledge belongs to this customer AND this user. The latest
+    // metal prices are global (not tenant data) and needed only for the audit
+    // snapshot, so they are read in the same round trip; nothing is written
+    // until the ownership and status checks below have passed.
+    const [pledge, goldPrice, silverPrice] = await Promise.all([
+      prisma.pledge.findFirst({
+        where: {
+          id:         pledgeId,
+          customerId,                       // ✅ scoped to customer in URL
+          customer: { userId: user.id },
+        },
+        include: { customer: { select: { name: true } } },
+      }),
+      prisma.metalPrice.findFirst({ where: { metal: "GOLD"   }, orderBy: { createdAt: "desc" } }),
+      prisma.metalPrice.findFirst({ where: { metal: "SILVER" }, orderBy: { createdAt: "desc" } }),
+    ]);
     if (!pledge)
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
     if (!isOpenPledgeStatus(pledge.status))
@@ -85,12 +92,7 @@ export async function PATCH(req: Request, context: RouteContext) {
       safeCompoundingDuration
     );
 
-    // ── Fetch latest metal prices ─────────────────────────────────
-    const [goldPrice, silverPrice] = await Promise.all([
-      prisma.metalPrice.findFirst({ where: { metal: "GOLD"   }, orderBy: { createdAt: "desc" } }),
-      prisma.metalPrice.findFirst({ where: { metal: "SILVER" }, orderBy: { createdAt: "desc" } }),
-    ]);
-
+    // ── Latest metal prices (read above, alongside the pledge) ────
     const goldPpg   = goldPrice   ? parseFloat(goldPrice.inrPerGram.toString())   : null;
     const silverPpg = silverPrice ? parseFloat(silverPrice.inrPerGram.toString()) : null;
 
@@ -121,9 +123,8 @@ export async function PATCH(req: Request, context: RouteContext) {
         : null;
 
     // ── Transaction with race-condition guard ─────────────────────
-    let updated;
     try {
-      updated = await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx) => {
         const result = await tx.pledge.updateMany({
           where: { id: pledgeId, status: { in: [...OPEN_PLEDGE_STATUSES] } }, // ✅ guard against double-release
           data: {
@@ -173,11 +174,6 @@ export async function PATCH(req: Request, context: RouteContext) {
           pledgeId,
           eventAt:    releaseDateObj,
         }]);
-
-        return tx.pledge.findUnique({
-          where:   { id: pledgeId },
-          include: { items: true },
-        });
       });
     } catch (err: unknown) {
       if (err instanceof Error && err.message === "ALREADY_RELEASED")
@@ -185,7 +181,17 @@ export async function PATCH(req: Request, context: RouteContext) {
       throw err;
     }
 
-    return NextResponse.json({ pledge: updated });
+    // No re-read of the pledge: no caller uses the response body beyond
+    // res.ok, and these are the values the transaction just wrote.
+    return NextResponse.json({
+      pledge: {
+        id:               pledgeId,
+        status:           "RELEASED",
+        releaseDate:      releaseDateObj,
+        totalInterest:    calc.totalInterest,
+        receivableAmount: calc.receivableAmount,
+      },
+    });
 
   } catch (err) {
     console.error("PLEDGE RELEASE ERROR:", errorTag(err));

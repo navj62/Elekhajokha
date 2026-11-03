@@ -4,7 +4,6 @@ import React, { useEffect, useState, useCallback, Suspense } from "react";
 import {
   Users,
   Archive,
-  DollarSign,
   IndianRupee,
   ArrowRight,
   Wallet,
@@ -18,19 +17,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/components/providers/LanguageProvider";
 import { getStatusKey } from "@/lib/translations";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+import dynamic from "next/dynamic";
 import {
   MonthlyPerformanceSection,
   MonthlyPerformanceSkeleton,
@@ -45,6 +32,12 @@ import {
   AgingSpineSection,
   AgingSpineSkeleton,
 } from "@/components/dashboard/spine/AgingSpineSection";
+import type { AgingFetch, SpineData } from "@/components/dashboard/spine/types";
+import { dmSans } from "@/lib/fonts";
+
+
+// recharts is only needed below the fold; keep it out of the initial bundle.
+const LazyMetalDonut = dynamic(() => import("@/components/dashboard/MetalDonut"), { ssr: false });
 
 /* ================================================================== */
 /*  Types                                                               */
@@ -78,11 +71,6 @@ interface DashboardData {
   trend: {
     ltvChange: number | null;
     direction: "up" | "down" | "flat" | null;
-  };
-  mtd: {
-    newPledges: number;
-    releasedPledges: number;
-    loanAmount: number;
   };
   stats?: {
     totalCustomers: number;
@@ -125,21 +113,6 @@ interface DashboardData {
     name: string;
     count: number;
   }[];
-  tasks?: {
-    id: string;
-    text: string;
-    done: boolean;
-  }[];
-  charts?: {
-    pledges: { month: string; added: number; released: number }[];
-    loans: { month: string; disbursed: number; recovered: number }[];
-    customers: { month: string; added: number }[];
-    loanSummary: {
-      totalDisbursed: number;
-      totalRecovered: number;
-      recoveryRate: number;
-    };
-  };
 }
 
 /* ================================================================== */
@@ -185,295 +158,6 @@ function AnimatedCounter({
   }, [value, duration]);
 
   return <>{format(count)}</>;
-}
-
-/* ================================================================== */
-/*  Custom Chart Tooltip                                                */
-/* ================================================================== */
-
-interface ChartTooltipProps {
-  active?: boolean;
-  label?: string | number;
-  payload?: Array<{ color?: string; name?: string; value?: number | string }>;
-}
-
-function ChartTooltipContent({ active, payload, label }: ChartTooltipProps) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div
-      style={{
-        background: "#fff",
-        border: "1px solid #ECEAE4",
-        borderRadius: 10,
-        padding: "10px 14px",
-        boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
-        fontSize: 12,
-        fontWeight: 500,
-      }}
-    >
-      <p style={{ fontWeight: 700, marginBottom: 4, color: "#2C2C2C" }}>{label}</p>
-      {payload.map((entry, i: number) => (
-        <p key={i} style={{ color: entry.color, margin: "2px 0" }}>
-          {entry.name}: {typeof entry.value === "number" && entry.value >= 1000
-            ? `₹${(entry.value).toLocaleString("en-IN")}`
-            : entry.value}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-/* ================================================================== */
-/*  Loan Overview (Tabbed Chart)                                        */
-/* ================================================================== */
-
-type ChartTab = "pledges" | "loanAmount" | "customers";
-
-function LoanOverview({ charts }: { charts?: DashboardData["charts"] }) {
-  const [activeTab, setActiveTab] = useState<ChartTab>("pledges");
-  const [isTransitioning, setIsTransitioning] = useState(false);
-
-  const switchTab = (tab: ChartTab) => {
-    if (tab === activeTab) return;
-    setIsTransitioning(true);
-    setTimeout(() => {
-      setActiveTab(tab);
-      setTimeout(() => setIsTransitioning(false), 50);
-    }, 200);
-  };
-
-  const tabs: { key: ChartTab; label: string }[] = [
-    { key: "pledges", label: "Pledges" },
-    { key: "loanAmount", label: "Loan Amount" },
-    { key: "customers", label: "Customers" },
-  ];
-
-  const pledgesData = charts?.pledges || [];
-  const loansData = charts?.loans || [];
-  const customersData = charts?.customers || [];
-
-  const { totalDisbursed, totalRecovered, recoveryRate } = charts?.loanSummary || {
-    totalDisbursed: 0,
-    totalRecovered: 0,
-    recoveryRate: 0,
-  };
-
-  const hasPledges = pledgesData.some(d => d.added > 0 || d.released > 0);
-  const hasLoans = loansData.some(d => d.disbursed > 0 || d.recovered > 0);
-  const hasCustomers = customersData.some(d => d.added > 0);
-
-  return (
-    <div
-      className="rounded-[18px] p-7 flex flex-col h-full"
-      style={{ backgroundColor: "var(--card)", border: "1px solid var(--border)" }}
-    >
-      {/* Header */}
-      <div className="flex justify-between items-start mb-1">
-        <div>
-          <h2 className="text-[17px] font-bold" style={{ color: "var(--foreground)" }}>
-            Loan Overview
-          </h2>
-          <p className="text-[12px] font-medium mt-0.5" style={{ color: "var(--muted-foreground-subtle)" }}>
-            Monthly disbursement vs collection performance
-          </p>
-        </div>
-        {/* Tab switcher */}
-        <div
-          className="flex items-center gap-0 rounded-full p-[3px]"
-          style={{ backgroundColor: "var(--background)" }}
-        >
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => switchTab(tab.key)}
-              className="px-4 py-[6px] rounded-full text-[11px] font-bold transition-all duration-200"
-              style={{
-                backgroundColor: activeTab === tab.key ? "#565C3F" : "transparent",
-                color: activeTab === tab.key ? "#fff" : "var(--muted-foreground-subtle)",
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Loan Amount summary strip */}
-      {activeTab === "loanAmount" && hasLoans && (
-        <div
-          className="grid grid-cols-3 gap-4 mt-4 mb-2 px-1 transition-all duration-300"
-          style={{ opacity: isTransitioning ? 0 : 1 }}
-        >
-          <div className="text-center">
-            <p className="text-[10px] font-bold tracking-wider text-[var(--muted-foreground-subtle)] uppercase">
-              Total Disbursed
-            </p>
-            <p className="text-[16px] md:text-[20px] font-bold mt-0.5" style={{ color: "var(--foreground)" }}>
-              ₹{totalDisbursed >= 100000 ? (totalDisbursed / 100000).toFixed(1) + "L" : totalDisbursed.toLocaleString("en-IN")}
-            </p>
-          </div>
-          <div className="text-center border-x" style={{ borderColor: "var(--border)" }}>
-            <p className="text-[10px] font-bold tracking-wider text-[var(--muted-foreground-subtle)] uppercase">
-              Recovered
-            </p>
-            <p className="text-[16px] md:text-[20px] font-bold mt-0.5" style={{ color: "var(--foreground)" }}>
-              ₹{totalRecovered >= 100000 ? (totalRecovered / 100000).toFixed(1) + "L" : totalRecovered.toLocaleString("en-IN")}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-[10px] font-bold tracking-wider text-[var(--muted-foreground-subtle)] uppercase">
-              Recovery Rate
-            </p>
-            <p className="text-[16px] md:text-[20px] font-bold mt-0.5" style={{ color: "var(--foreground)" }}>
-              {recoveryRate.toFixed(1)}%
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Chart area */}
-      <div
-        className="mt-3 transition-all duration-300 flex-1 min-h-[300px]"
-        style={{
-          opacity: isTransitioning ? 0 : 1,
-          transform: isTransitioning ? "translateY(8px)" : "translateY(0)",
-        }}
-      >
-        <ResponsiveContainer width="100%" height="100%">
-          {activeTab === "pledges" ? (
-            hasPledges ? (
-              <BarChart data={pledgesData} barGap={3} barSize={18}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ECEAE4" vertical={false} />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 11, fontWeight: 700, fill: "#9E9E9E" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#9E9E9E" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={30}
-                  allowDecimals={false}
-                />
-                <Tooltip content={<ChartTooltipContent />} cursor={{ fill: "rgba(0,0,0,0.02)" }} />
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: 11, fontWeight: 600, paddingTop: 12 }}
-                />
-                <Bar
-                  dataKey="added"
-                  name="Pledges Added"
-                  fill="#565C3F"
-                  radius={[4, 4, 0, 0]}
-                  animationDuration={600}
-                />
-                <Bar
-                  dataKey="released"
-                  name="Pledges Released"
-                  fill="#DADBCF"
-                  radius={[4, 4, 0, 0]}
-                  animationDuration={600}
-                />
-              </BarChart>
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--muted-foreground-subtle)]">
-                <Archive size={32} className="mb-2 opacity-20" />
-                <span className="text-[13px] font-medium">No pledge activity available.</span>
-              </div>
-            )
-          ) : activeTab === "loanAmount" ? (
-            hasLoans ? (
-              <BarChart data={loansData} barGap={3} barSize={18}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ECEAE4" vertical={false} />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 11, fontWeight: 700, fill: "#9E9E9E" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#9E9E9E" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={40}
-                  tickFormatter={(v) => {
-                    if (v >= 100000) return `${(v / 100000).toFixed(0)}L`;
-                    if (v >= 1000) return `${(v / 1000).toFixed(0)}K`;
-                    return v;
-                  }}
-                />
-                <Tooltip content={<ChartTooltipContent />} cursor={{ fill: "rgba(0,0,0,0.02)" }} />
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: 11, fontWeight: 600, paddingTop: 12 }}
-                />
-                <Bar
-                  dataKey="disbursed"
-                  name="Loan Disbursed"
-                  fill="#565C3F"
-                  radius={[4, 4, 0, 0]}
-                  animationDuration={600}
-                />
-                <Bar
-                  dataKey="recovered"
-                  name="Amount Recovered"
-                  fill="#DADBCF"
-                  radius={[4, 4, 0, 0]}
-                  animationDuration={600}
-                />
-              </BarChart>
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--muted-foreground-subtle)]">
-                <DollarSign size={32} className="mb-2 opacity-20" />
-                <span className="text-[13px] font-medium">No loan data available.</span>
-              </div>
-            )
-          ) : (
-            hasCustomers ? (
-              <BarChart data={customersData} barSize={24}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ECEAE4" vertical={false} />
-                <XAxis
-                  dataKey="month"
-                  tick={{ fontSize: 11, fontWeight: 700, fill: "#9E9E9E" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#9E9E9E" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={30}
-                  allowDecimals={false}
-                />
-                <Tooltip content={<ChartTooltipContent />} cursor={{ fill: "rgba(0,0,0,0.02)" }} />
-                <Legend
-                  iconType="circle"
-                  iconSize={8}
-                  wrapperStyle={{ fontSize: 11, fontWeight: 600, paddingTop: 12 }}
-                />
-                <Bar
-                  dataKey="added"
-                  name="Customers Added"
-                  fill="#565C3F"
-                  radius={[4, 4, 0, 0]}
-                  animationDuration={600}
-                />
-              </BarChart>
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center text-[var(--muted-foreground-subtle)]">
-                <Users size={32} className="mb-2 opacity-20" />
-                <span className="text-[13px] font-medium">No customer growth data available.</span>
-              </div>
-            )
-          )}
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
 }
 
 /* ================================================================== */
@@ -565,18 +249,11 @@ function MetalDonut({
     { name: "Silver", value: silverValue, color: METAL_COLORS.silver },
   ];
 
+  // The fixed-height wrapper stays here, so the card keeps its size while the
+  // chart chunk loads.
   return (
     <div className="h-[160px]">
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie data={data} dataKey="value" nameKey="name" innerRadius={50} outerRadius={72} paddingAngle={2} stroke="none">
-            {data.map((d) => (
-              <Cell key={d.name} fill={d.color} />
-            ))}
-          </Pie>
-          <Tooltip formatter={(value, name) => [tooltipFormatter(Number(value)), String(name)]} />
-        </PieChart>
-      </ResponsiveContainer>
+      <LazyMetalDonut data={data} tooltipFormatter={tooltipFormatter} />
     </div>
   );
 }
@@ -742,6 +419,26 @@ export default function DashboardPage() {
     loadSnapshot();
   }, [loadSnapshot]);
 
+  /* ---- Fetch aging analysis — once, in parallel with the snapshot ---- */
+  // Shared by the spine and the aging table, so the route is called once.
+  const [aging, setAging] = useState<AgingFetch>({ status: "loading" });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/dashboard/aging-analysis", { cache: "no-store" });
+        if (!res.ok) throw new Error("request failed");
+        const data = (await res.json()) as SpineData;
+        if (!cancelled) setAging({ status: "ready", data });
+      } catch {
+        if (!cancelled) setAging({ status: "error" });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const statsToUse = dashboard?.stats || {
     totalCustomers: 0,
     totalActivePledges: 0,
@@ -802,7 +499,7 @@ export default function DashboardPage() {
   /* ================================================================ */
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "var(--background)", fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="min-h-screen" style={{ backgroundColor: "var(--background)", fontFamily: `${dmSans.style.fontFamily}, sans-serif` }}>
 
       <Toast />
 
@@ -857,6 +554,7 @@ export default function DashboardPage() {
             <AgingSpineSection
               snapshot={dashboard?.snapshot ?? null}
               ltvChange={dashboard?.trend?.ltvChange ?? null}
+              aging={aging}
             />
           </Suspense>
         )}
@@ -982,7 +680,7 @@ export default function DashboardPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       <section className="mb-10">
         <Suspense fallback={<AgingAnalysisSkeleton />}>
-          <AgingAnalysisSection />
+          <AgingAnalysisSection aging={aging} />
         </Suspense>
       </section>
 
@@ -1183,10 +881,6 @@ export default function DashboardPage() {
         onClose={() => setRegionsExplorerOpen(false)}
       />
 
-      {/* Font import */}
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-      `}</style>
     </div>
   );
 }

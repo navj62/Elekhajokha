@@ -129,15 +129,20 @@ export default function CustomersPage() {
     }
   }, [search, sortBy, filterBy, showToast]);
 
+  // Debounce only while typing. The first load and sort/filter changes fetch
+  // straight away — there is nothing to wait for.
+  const lastSearchRef = useRef(search);
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const controller = new AbortController();
-    debounceRef.current = setTimeout(() => fetchCustomers(controller.signal), DEBOUNCE_MS);
+    const typing = search !== lastSearchRef.current;
+    lastSearchRef.current = search;
+    debounceRef.current = setTimeout(() => fetchCustomers(controller.signal), typing ? DEBOUNCE_MS : 0);
     return () => {
       controller.abort();
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [fetchCustomers]);
+  }, [fetchCustomers, search]);
 
   const togglePin = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -345,8 +350,13 @@ export default function CustomersPage() {
                     <th className="px-6 py-3.5" />
                   </tr>
                 </thead>
-                <tbody>
-                  {loading ? (
+                {/* While a new search loads, the current rows stay on screen,
+                    dimmed; the spinner is only for a list with nothing to show. */}
+                <tbody
+                  aria-busy={loading}
+                  className={`transition-opacity ${loading && customers.length > 0 ? "opacity-50" : ""}`}
+                >
+                  {loading && customers.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="text-center py-20">
                         <Loader2 className="animate-spin mx-auto text-[#565C3F]" size={24} />

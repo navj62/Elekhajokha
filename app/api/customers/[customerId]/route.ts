@@ -8,7 +8,7 @@ type RouteContext = {
   params: Promise<{ customerId: string }>;
 };
 
-export async function GET(_req: Request, context: RouteContext) {
+export async function GET(req: Request, context: RouteContext) {
   try {
     /* ---- Auth ---------------------------------------------------- */
     const { userId: clerkUserId } = await auth();
@@ -27,6 +27,26 @@ export async function GET(_req: Request, context: RouteContext) {
     const { customerId } = await context.params;
     if (!customerId) {
       return NextResponse.json({ error: "Customer ID required" }, { status: 400 });
+    }
+
+    /* ---- Header only (?view=header) ------------------------------ */
+    // The add-pledge form shows name, photo and a pledge count — not the
+    // history. Same ownership scoping; the count is a separate scoped query
+    // (Prisma's relation _count groups the whole pledges table).
+    if (new URL(req.url).searchParams.get("view") === "header") {
+      const [header, pledgeCount] = await Promise.all([
+        prisma.customer.findFirst({
+          where:  { id: customerId, userId: user.id, deletedAt: null },
+          select: { id: true, name: true, customerImg: true, createdAt: true },
+        }),
+        prisma.pledge.count({
+          where: { customerId, customer: { userId: user.id, deletedAt: null } },
+        }),
+      ]);
+      if (!header) {
+        return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+      }
+      return NextResponse.json({ customer: { ...header, pledgeCount } });
     }
 
     /* ---- Query --------------------------------------------------- */

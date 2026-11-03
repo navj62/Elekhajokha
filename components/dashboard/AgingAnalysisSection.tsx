@@ -1,16 +1,13 @@
 "use client";
 
-// Mirrors MonthlyPerformanceSection: a Client Component that fetches its route in
-// an effect (the dashboard page is a Client Component, so an async Server Component
-// cannot be mounted as its child). The Suspense boundary + skeleton on the page are
-// preserved; loading is also handled here.
+// The aging table below the spine. The dashboard page fetches
+// /api/dashboard/aging-analysis once and hands the same result to this section
+// and to the spine (AgingSpineSection), so the route is called once per load.
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { type CSSProperties } from "react";
 import { AlertCircle } from "lucide-react";
-import {
-  AgingAnalysisCard,
-  type AgingAnalysisData,
-} from "./AgingAnalysisCard";
+import { AgingAnalysisCard } from "./AgingAnalysisCard";
+import type { AgingFetch } from "./spine/types";
 
 const cardStyle: CSSProperties = {
   backgroundColor: "var(--card)",
@@ -74,35 +71,10 @@ function ErrorState() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Section — fetches the analysis, renders card / skeleton / error    */
+/*  Section — renders card / skeleton / error from the page's fetch    */
 /* ------------------------------------------------------------------ */
-export function AgingAnalysisSection() {
-  const [data, setData] = useState<AgingAnalysisData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/dashboard/aging-analysis", {
-          cache: "no-store",
-        });
-        if (!res.ok) throw new Error("request failed");
-        const json: AgingAnalysisData = await res.json();
-        if (!cancelled) setData(json);
-      } catch {
-        if (!cancelled) setError(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (loading) return <AgingAnalysisSkeleton />;
-  if (error || !data) return <ErrorState />;
-  return <AgingAnalysisCard data={data} />;
+export function AgingAnalysisSection({ aging }: { aging: AgingFetch }) {
+  if (aging.status === "loading") return <AgingAnalysisSkeleton />;
+  if (aging.status === "error") return <ErrorState />;
+  return <AgingAnalysisCard data={aging.data} />;
 }

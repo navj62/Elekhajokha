@@ -316,7 +316,7 @@ export default function AddPledgePage() {
     if (!customerId) return;
     const load = async () => {
       try {
-        const res = await fetch(`/api/customers/${customerId}`);
+        const res = await fetch(`/api/customers/${customerId}?view=header`);
         if (res.ok) {
           const data = await res.json();
           if (data.customer) {
@@ -325,7 +325,7 @@ export default function AddPledgePage() {
               name: data.customer.name,
               customerImg: data.customer.customerImg,
               createdAt: data.customer.createdAt,
-              totalPledges: data.customer.pledges?.length || 0,
+              totalPledges: data.customer.pledgeCount ?? 0,
             });
           }
         }

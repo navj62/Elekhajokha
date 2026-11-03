@@ -2,20 +2,19 @@
 
 // Container for the dashboard's lead section: exposure, spine, drill-down.
 //
-// Fetches /api/dashboard/aging-analysis in an effect (the dashboard page is a
-// Client Component, so an async Server Component cannot mount as its child —
-// same pattern as AgingAnalysisSection). Snapshot figures arrive as props
-// because the page already fetches them.
+// The dashboard page fetches /api/dashboard/aging-analysis once, in parallel
+// with the snapshot, and passes the result here and to the aging table below
+// (AgingAnalysisSection). Snapshot figures arrive as props for the same reason.
 //
 // Uses useSearchParams, so the page must mount this inside <Suspense>.
 
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, type CSSProperties } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { AlertCircle } from "lucide-react";
 import { ExposureHeader } from "./ExposureHeader";
 import { AgingSpine } from "./AgingSpine";
 import { SpineDrilldown } from "./SpineDrilldown";
-import type { SpineData } from "./types";
+import type { AgingFetch } from "./types";
 
 const BUCKET_PARAM = "bucket";
 
@@ -33,6 +32,7 @@ export interface SnapshotFigures {
 interface Props {
   snapshot: SnapshotFigures | null;
   ltvChange: number | null;
+  aging: AgingFetch;
 }
 
 const pulseBlock: CSSProperties = { backgroundColor: "var(--border)" };
@@ -47,34 +47,11 @@ export function AgingSpineSkeleton() {
   );
 }
 
-export function AgingSpineSection({ snapshot, ltvChange }: Props) {
-  const [data, setData] = useState<SpineData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-
+export function AgingSpineSection({ snapshot, ltvChange, aging }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const selected = searchParams.get(BUCKET_PARAM);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch("/api/dashboard/aging-analysis");
-        if (!res.ok) throw new Error("request failed");
-        const json = (await res.json()) as SpineData;
-        if (!cancelled) setData(json);
-      } catch {
-        if (!cancelled) setFailed(true);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   // Selection lives in the URL so a filtered view survives refresh and can be
   // handed to someone else.
@@ -89,9 +66,9 @@ export function AgingSpineSection({ snapshot, ltvChange }: Props) {
     [router, pathname, searchParams],
   );
 
-  if (loading) return <AgingSpineSkeleton />;
+  if (aging.status === "loading") return <AgingSpineSkeleton />;
 
-  if (failed || !data) {
+  if (aging.status === "error") {
     return (
       <div
         className="flex items-center gap-2 text-[13px]"
@@ -102,6 +79,8 @@ export function AgingSpineSection({ snapshot, ltvChange }: Props) {
       </div>
     );
   }
+
+  const { data } = aging;
 
   // A selected range that no longer exists (stale link) simply shows nothing
   // expanded, rather than an error.

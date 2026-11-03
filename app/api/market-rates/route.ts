@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 
-// ✅ Cache for 60 seconds (safe for your use case)
+// Has no effect: auth() reads request headers, which makes this route dynamic,
+// so Next never caches it. Nothing here is cached on the server.
 export const revalidate = 60;
 
 export async function GET() {
@@ -33,7 +34,9 @@ export async function GET() {
       { gold, silver },
       {
         headers: {
-          // ✅ CDN caching (VERY IMPORTANT)
+          // NOT CDN caching: `private` forbids shared caches, so s-maxage
+          // and stale-while-revalidate (shared-cache directives) are ignored,
+          // and with no max-age the browser does not reuse it either.
           "Cache-Control": "private, s-maxage=60, stale-while-revalidate=120",
         },
       }

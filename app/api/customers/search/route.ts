@@ -150,11 +150,14 @@ export async function GET(req: NextRequest) {
         // ONE pledge per customer — the newest one matching the active status
         // filter — solely to build the `latestItem` display label below.
         //
-        // `take: 1` is load-bearing for performance, not cosmetic: without it
-        // this relation loads EVERY pledge of EVERY matched customer (9,632
-        // rows for the largest tenant), which measured as ~89% of this route's
-        // total time. The only thing those extra rows ever fed was a
-        // `totalLoanAmount` sum that no caller read.
+        // `take: 1` does NOT limit the database read. Without relation joins
+        // (a Prisma preview feature, not enabled here) Prisma runs a separate
+        // query that fetches every matching pledge of every matched customer
+        // — measured on dev as all 2,780 of a tenant's pledges, id+customerId
+        // only — and keeps one per customer in memory. What it does limit is
+        // what comes back to the route: the full pledge rows (and their
+        // `totalLoanAmount` sum, which no caller read) are no longer loaded,
+        // and the items query that follows runs for ≤1 pledge per customer.
         //
         // The `where` MUST mirror the `_count` filter above: `latestItem` means
         // "newest pledge among those matching filterBy", so dropping it would
@@ -255,7 +258,10 @@ export async function GET(req: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control": "private, max-age=10, must-revalidate",
+          // no-store, not private max-age: a browser cache is keyed by URL,
+          // not by signed-in user, so on a shared shop device the next
+          // account could be shown this one's customer list.
+          "Cache-Control": "no-store",
         },
       }
     );

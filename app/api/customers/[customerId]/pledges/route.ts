@@ -39,12 +39,6 @@ export async function POST(req: NextRequest, context: RouteContext) {
     // ✅ customerId from route params, not form body
     const { customerId } = await context.params;
 
-    const customer = await prisma.customer.findFirst({
-      where: { id: customerId, userId: user.id },
-    });
-    if (!customer)
-      return NextResponse.json({ error: "Customer not found" }, { status: 404 });
-
     const formData = await req.formData();
 
     const loanAmount          = formData.get("loanAmount")?.toString();
@@ -122,13 +116,23 @@ export async function POST(req: NextRequest, context: RouteContext) {
     if (uniqueLabels.some((l) => !l)) {
       return NextResponse.json({ error: "Invalid item data", details: ["itemType is required"] }, { status: 400 });
     }
-    const validLabelRows = await prisma.pledgeItemType.findMany({
-      where: {
-        label: { in: uniqueLabels },
-        OR: [{ isDefault: true }, { userId: user.id }],
-      },
-      select: { label: true },
-    });
+    // Ownership check and item-type check in one round trip. Both are
+    // scoped to user.id, and both are settled before the photo upload and
+    // before anything is written.
+    const [customer, validLabelRows] = await Promise.all([
+      prisma.customer.findFirst({
+        where: { id: customerId, userId: user.id },
+      }),
+      prisma.pledgeItemType.findMany({
+        where: {
+          label: { in: uniqueLabels },
+          OR: [{ isDefault: true }, { userId: user.id }],
+        },
+        select: { label: true },
+      }),
+    ]);
+    if (!customer)
+      return NextResponse.json({ error: "Customer not found" }, { status: 404 });
     const validLabels = new Set(validLabelRows.map((r) => r.label));
     const badLabels = uniqueLabels.filter((l) => !validLabels.has(l));
     if (badLabels.length) {

@@ -9,11 +9,16 @@
 // requested in Part C are preserved on the page; loading is also handled here.
 
 import { useEffect, useState, type CSSProperties } from "react";
+import dynamic from "next/dynamic";
 import { BarChart3 } from "lucide-react";
-import {
-  MonthlyPerformanceCharts,
-  type MonthlyPerformanceData,
-} from "./MonthlyPerformanceCharts";
+import type { MonthlyPerformanceData } from "./MonthlyPerformanceCharts";
+
+// recharts lives in the charts module; loading it lazily keeps it out of the
+// dashboard's initial bundle. The section's own skeleton covers the gap.
+const MonthlyPerformanceCharts = dynamic(
+  () => import("./MonthlyPerformanceCharts").then((m) => m.MonthlyPerformanceCharts),
+  { ssr: false, loading: () => <MonthlyPerformanceSkeleton /> },
+);
 
 const cardStyle: CSSProperties = {
   backgroundColor: "var(--card)",

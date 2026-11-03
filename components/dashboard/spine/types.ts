@@ -41,3 +41,10 @@ export interface SpineData {
     capitalStuckShare: number;
   };
 }
+
+/** One fetch of /api/dashboard/aging-analysis, made by the dashboard page and
+ *  shared by the spine and the aging table below it. */
+export type AgingFetch =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "ready"; data: SpineData };

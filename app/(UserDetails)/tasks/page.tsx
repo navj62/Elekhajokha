@@ -11,6 +11,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import Link from "next/link";
+import { dmSans } from "@/lib/fonts";
 
 type Task = {
   id: string;
@@ -140,7 +141,7 @@ export default function TasksPage() {
   return (
     <div
       className="min-h-screen"
-      style={{ backgroundColor: "var(--background)", fontFamily: "'DM Sans', sans-serif" }}
+      style={{ backgroundColor: "var(--background)", fontFamily: `${dmSans.style.fontFamily}, sans-serif` }}
     >
       {/* Header */}
       <div className="mb-8">
@@ -391,10 +392,6 @@ export default function TasksPage() {
           </div>
         )}
       </div>
-
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
-      `}</style>
     </div>
   );
 }
