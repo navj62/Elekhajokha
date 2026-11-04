@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft, Archive, Unlock, ReceiptText, Phone, MapPin, Download,
@@ -331,6 +331,13 @@ function LtvBar({ ltv }: { ltv: number }) {
 export default function PledgeDetailPage() {
   const params = useParams<{ customerId: string; pledgeId: string }>();
   const { customerId, pledgeId } = params;
+
+  // Opened from the All Pledges list → Back returns there with its filters.
+  // Only a same-app /pledgeList path is honoured, never an arbitrary URL.
+  const backParam = useSearchParams().get("back");
+  const fromPledgeList = !!backParam && (backParam === "/pledgeList" || backParam.startsWith("/pledgeList?"));
+  const backHref  = fromPledgeList ? backParam : `/customers/${customerId}`;
+  const backLabel = fromPledgeList ? "Back to all pledges" : "Back to customer";
 
   const [data, setData] = useState<LoadedData | null>(null);
   const [market, setMarket] = useState<MarketRates | null>(null);
@@ -690,8 +697,8 @@ export default function PledgeDetailPage() {
         <section className="rounded-[24px] bg-card-alt p-4 lg:p-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="flex items-start gap-3 lg:gap-4 min-w-0 md:flex-1">
             <Link
-              href={`/customers/${customerId}`}
-              aria-label="Back to customer"
+              href={backHref}
+              aria-label={backLabel}
               className="size-11 shrink-0 inline-flex items-center justify-center rounded-full border border-border bg-card text-foreground hover:bg-accent transition-colors"
             >
               <ArrowLeft size={18} />

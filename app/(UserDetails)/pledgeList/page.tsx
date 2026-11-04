@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useCallback, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useCallback, useState, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Loader2, Search, ChevronDown, ChevronDown as ChevronDownSmall,
   Calendar, X,
@@ -57,6 +57,21 @@ const EMPTY_FILTERS: Filters = {
   minLoan:   "",
   maxLoan:   "",
 };
+
+// Filters live in the page URL so a refresh, or Back from a pledge, restores
+// them. Values outside the allowlists are dropped rather than sent on.
+function filtersFromParams(p: URLSearchParams): Filters {
+  const metal  = p.get("metalType") ?? "";
+  const status = p.get("status")    ?? "";
+  return {
+    search:    p.get("search")   ?? "",
+    metalType: (METAL_TYPES as readonly string[]).includes(metal)   ? metal  as MetalTypeValue : "",
+    itemType:  p.get("itemType") ?? "",
+    status:    (STATUS_TYPES as readonly string[]).includes(status) ? status as StatusValue    : "",
+    minLoan:   p.get("minLoan")  ?? "",
+    maxLoan:   p.get("maxLoan")  ?? "",
+  };
+}
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -195,7 +210,17 @@ function ThemedSelect({
 /*  Page                                                                */
 /* ================================================================== */
 export default function PledgesPage() {
-  const router = useRouter();
+  // useSearchParams needs a Suspense boundary on a statically rendered route.
+  return (
+    <Suspense fallback={null}>
+      <PledgesPageInner />
+    </Suspense>
+  );
+}
+
+function PledgesPageInner() {
+  const router       = useRouter();
+  const searchParams = useSearchParams();
 
   const [pledges,     setPledges]     = useState<PledgeRow[]>([]);
   const [loading,     setLoading]     = useState(true);
@@ -209,10 +234,10 @@ export default function PledgesPage() {
   // across every page — not the number of rows currently loaded.
   const [total, setTotal] = useState(0);
 
-  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<Filters>(() => filtersFromParams(new URLSearchParams(searchParams.toString())));
 
   // Staged filters — applied only on "Apply Filters"
-  const [staged, setStaged] = useState<Filters>(EMPTY_FILTERS);
+  const [staged, setStaged] = useState<Filters>(filters);
 
   // Inline validation message for the loan-range inputs
   const [loanRangeError, setLoanRangeError] = useState<string | null>(null);
@@ -292,6 +317,13 @@ export default function PledgesPage() {
     abortRef.current = controller;
 
     debounceRef.current = setTimeout(() => {
+      // Mirror the applied filters into the URL (replace, not push, so each
+      // keystroke doesn't add a history entry).
+      const qs   = buildParams(filters).toString();
+      const next = qs ? `/pledgeList?${qs}` : "/pledgeList";
+      if (window.location.pathname + window.location.search !== next) {
+        window.history.replaceState(null, "", next);
+      }
       fetchPledges(filters, controller.signal);
     }, DEBOUNCE_MS);
 
@@ -494,7 +526,11 @@ export default function PledgesPage() {
                 <PledgeCard
                   key={p.id}
                   pledge={p}
-                  onClick={() => router.push(`/customers/${p.customerId}/pledges/${p.id}`)}
+                  onClick={() => {
+                    const qs   = buildParams(filters).toString();
+                    const back = qs ? `/pledgeList?${qs}` : "/pledgeList";
+                    router.push(`/customers/${p.customerId}/pledges/${p.id}?back=${encodeURIComponent(back)}`);
+                  }}
                 />
               ))}
             </div>
