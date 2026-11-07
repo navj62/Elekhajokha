@@ -19,6 +19,7 @@ import {
 } from "@/lib/reports/riskTierFilter";
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 export const PLEDGE_ROW_CAP = 5000; // Vercel Hobby 10s safety margin — on-screen tabs only
 
@@ -105,6 +106,10 @@ export interface PledgeReportRow {
   netWeight: number;         // combined (released only)
   netWeightOfGold: number;   // separate (active only)
   netWeightOfSilver: number; // separate (active only)
+  /** Sum of the pledge's PledgeItem.grossWeight, 3 dp (active only; 0 for released). */
+  grossWeight: number;
+  /** The pledge's own stored annual rate, % (as written at create). */
+  interestRate: number;
   loanAmount: number;
   interestAccrued: number;
   receivableAmount: number | null;
@@ -117,6 +122,7 @@ export interface PledgeReportRow {
 
 export interface PledgeReportTotals {
   count: number;
+  grossWeight: number;
   goldWeight: number;
   silverWeight: number;
   netWeight: number;
@@ -202,6 +208,8 @@ export async function getPledgeReportRows(
         netWeight: round2(netWeight),
         netWeightOfGold: 0, // combined in released; not split
         netWeightOfSilver: 0,
+        grossWeight: 0, // not shown on the released tab
+        interestRate: Number(p.interestRate),
         loanAmount: Number(p.loanAmount),
         interestAccrued: round2(interestAccrued),
         receivableAmount: p.receivableAmount ? Number(p.receivableAmount) : null,
@@ -222,12 +230,28 @@ export async function getPledgeReportRows(
   const silverPpg = silverPrice ? parseFloat(silverPrice.inrPerGram.toString()) : null;
   const now = new Date();
 
-  const pledges = await prisma.pledge.findMany({ where, orderBy, include: commonInclude });
+  // Gross weight lives only on PledgeItem, so the active rows load every item
+  // (not just the label item) and sum it here.
+  const pledges = await prisma.pledge.findMany({
+    where,
+    orderBy,
+    include: {
+      ...commonInclude,
+      items: { select: { itemName: true, itemType: true, metalType: true, grossWeight: true } },
+    },
+  });
 
   return pledges.map((p) => {
-    const { itemName, itemType } = labelOf(p.items, p._count.items);
+    const { itemName } = labelOf(p.items, p._count.items);
+    // Every item is loaded here, so list each distinct type, not just the first.
+    const itemType = [...new Set(p.items.map((it) => it.itemType))].join(", ") || "—";
     const goldWeight = Number(p.netWeightOfGold);
     const silverWeight = Number(p.netWeightOfSilver);
+    // Summed as Decimal: each item is already stored at 3 dp, so the sum is exact.
+    const grossWeight = p.items
+      .reduce((s, it) => s.plus(it.grossWeight), new Prisma.Decimal(0))
+      .toDecimalPlaces(3)
+      .toNumber();
 
     const ltvResult = calculateLTV({
       principal: Number(p.loanAmount),
@@ -253,6 +277,8 @@ export async function getPledgeReportRows(
       netWeight: 0, // not used for active; split into gold/silver
       netWeightOfGold: round2(goldWeight),
       netWeightOfSilver: round2(silverWeight),
+      grossWeight,
+      interestRate: Number(p.interestRate),
       loanAmount: Number(p.loanAmount),
       interestAccrued: round2(interestAccrued),
       receivableAmount: round2(ltvResult.amountOwed),
@@ -267,6 +293,7 @@ export async function getPledgeReportRows(
 export function pledgeReportTotals(rows: PledgeReportRow[]): PledgeReportTotals {
   return {
     count: rows.length,
+    grossWeight: round3(rows.reduce((s, r) => s + r.grossWeight, 0)),
     goldWeight: round2(rows.reduce((s, r) => s + r.netWeightOfGold, 0)),
     silverWeight: round2(rows.reduce((s, r) => s + r.netWeightOfSilver, 0)),
     netWeight: round2(rows.reduce((s, r) => s + r.netWeight, 0)),
