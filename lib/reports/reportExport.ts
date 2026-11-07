@@ -22,14 +22,22 @@ import {
   riskTiersLabel,
   type ReportRiskTier,
 } from "@/lib/reports/riskTierFilter";
+import {
+  ACTIVE_COLUMN_KEYS,
+  activeColumnHeader,
+  hiddenActiveColumns,
+  type ActiveColumnKey,
+} from "@/lib/reports/activeColumns";
 
 export type ReportTab = "active" | "released" | "customers";
 
 export const PDF_ROW_LIMIT = 1000;
 
-type ColumnKind = "text" | "date" | "money" | "weight" | "pct" | "int";
+type ColumnKind = "text" | "date" | "money" | "weight" | "pct" | "rate" | "int";
 
 type ExportColumn = {
+  /** Active Pledges only — the column picker's key (lib/reports/activeColumns.ts). */
+  key?: ActiveColumnKey;
   header: string;
   kind: ColumnKind;
   pdfWidth: number;
@@ -60,7 +68,10 @@ export type ExportTable = {
   columns: ExportColumn[];
   rows: ExportCell[][];
   totals: ExportCell[];
-  summary: { label: string; value: string }[];
+  /** A summary box tied to `key` is dropped when that column is hidden. */
+  summary: { label: string; value: string; key?: ActiveColumnKey }[];
+  /** Headers of hidden columns, in column order — printed as "Hidden columns: …". */
+  hiddenColumns: string[];
 };
 
 // ── Display helpers — identical output to app/reports/page.tsx ──────────────
@@ -96,6 +107,7 @@ const ltvCell = (ltv: number | null): ExportCell =>
 // Weight and interest render "—" at zero on screen; Excel keeps the number.
 const weight = (n: number): ExportCell => ({ value: n, display: n > 0 ? grams(n) : "—" });
 const money = (n: number): ExportCell => ({ value: n, display: formatINR(n) });
+const rate = (n: number): ExportCell => ({ value: n, display: `${n.toFixed(2)}%` });
 const tierCell = (t: ReportRiskTier): ExportCell => ({
   value: REPORT_RISK_TIER_LABEL[t],
   display: REPORT_RISK_TIER_LABEL[t],
@@ -152,26 +164,36 @@ export function activePledgesTable(
     title: "Active Pledges Report",
     fileStem: "active-pledges",
     filters: `Status: Active · Date range applies to pledge date · ${riskTiersLabel(tiers)}`,
-    columns: [
-      { header: "Customer", kind: "text", pdfWidth: 125 },
-      { header: "Date", kind: "date", pdfWidth: 70 },
-      { header: "Pledge", kind: "text", pdfWidth: 100 },
-      { header: "Gold Wt", kind: "weight", pdfWidth: 60 },
-      { header: "Silver Wt", kind: "weight", pdfWidth: 60 },
-      { header: "Loan", kind: "money", pdfWidth: 80 },
-      { header: "Interest", kind: "money", pdfWidth: 72 },
-      { header: "Receivable", kind: "money", pdfWidth: 80 },
-      { header: "LTV", kind: "pct", pdfWidth: 40 },
-      { header: "Risk Tier", kind: "text", pdfWidth: 62 },
-      { header: "Status", kind: "text", pdfWidth: 40 },
-    ],
+    // Headers come from the picker's definition, so the screen, the picker
+    // and the file can't name a column differently.
+    columns: (
+      [
+        ["customer", "text", 105],
+        ["pledgeDate", "date", 62],
+        ["pledge", "text", 82],
+        ["itemType", "text", 70],
+        ["grossWeight", "weight", 58],
+        ["goldWeight", "weight", 56],
+        ["silverWeight", "weight", 56],
+        ["loanAmount", "money", 78],
+        ["interestRate", "rate", 44],
+        ["interestAccrued", "money", 72],
+        ["receivable", "money", 80],
+        ["ltv", "pct", 40],
+        ["riskTier", "text", 62],
+        ["status", "text", 40],
+      ] as const
+    ).map(([key, kind, pdfWidth]) => ({ key, header: activeColumnHeader(key), kind, pdfWidth })),
     rows: rows.map((p) => [
       text(p.customerName),
       date(p.pledgeDate),
       text(p.itemName),
+      text(p.itemType),
+      weight(p.grossWeight),
       weight(p.netWeightOfGold),
       weight(p.netWeightOfSilver),
       money(p.loanAmount),
+      rate(p.interestRate),
       { value: p.interestAccrued, display: p.interestAccrued > 0 ? formatINR(p.interestAccrued) : "—" },
       money(p.receivableAmount ?? p.loanAmount),
       ltvCell(p.ltv),
@@ -182,9 +204,12 @@ export function activePledgesTable(
       text(`Total (${totals.count} pledge${totals.count !== 1 ? "s" : ""})`),
       text(""),
       text(""),
+      text(""),
+      { value: totals.grossWeight, display: grams(totals.grossWeight) },
       { value: totals.goldWeight, display: grams(totals.goldWeight) },
       { value: totals.silverWeight, display: grams(totals.silverWeight) },
       money(totals.loanAmount),
+      text(""),
       money(totals.interestAccrued),
       money(totals.receivableAmount),
       text(""),
@@ -193,14 +218,41 @@ export function activePledgesTable(
     ],
     summary: [
       { label: "Pledges", value: String(totals.count) },
-      { label: "Gold Wt", value: grams(totals.goldWeight) },
-      { label: "Silver Wt", value: grams(totals.silverWeight) },
-      { label: "Loan Amount", value: formatINR(totals.loanAmount) },
-      { label: "Interest", value: formatINR(totals.interestAccrued) },
-      { label: "Receivable", value: formatINR(totals.receivableAmount) },
+      { label: "Gross Wt", value: grams(totals.grossWeight), key: "grossWeight" },
+      { label: "Gold Wt", value: grams(totals.goldWeight), key: "goldWeight" },
+      { label: "Silver Wt", value: grams(totals.silverWeight), key: "silverWeight" },
+      { label: "Loan Amount", value: formatINR(totals.loanAmount), key: "loanAmount" },
+      { label: "Interest", value: formatINR(totals.interestAccrued), key: "interestAccrued" },
+      { label: "Receivable", value: formatINR(totals.receivableAmount), key: "receivable" },
     ],
+    hiddenColumns: [],
   };
 }
+
+/**
+ * Narrows an Active Pledges table to `visible` keys — the one path both the
+ * .xlsx and the PDF go through. Columns, every row's cells, the totals row
+ * and the summary boxes are filtered by the same keys, and `hiddenColumns`
+ * is built from the same hidden list. Totals of the columns that remain are
+ * untouched (still computed over every row).
+ */
+export function pickColumns(table: ExportTable, visible: readonly ActiveColumnKey[]): ExportTable {
+  const show = new Set(visible);
+  const keep = table.columns.map((c) => !c.key || show.has(c.key));
+  const pick = <T,>(xs: T[]) => xs.filter((_, i) => keep[i]);
+  const hidden = hiddenActiveColumns(ACTIVE_COLUMN_KEYS.filter((k) => show.has(k)));
+  return {
+    ...table,
+    columns: pick(table.columns),
+    rows: table.rows.map(pick),
+    totals: pick(table.totals),
+    summary: table.summary.filter((s) => !s.key || show.has(s.key)),
+    hiddenColumns: hidden.map(activeColumnHeader),
+  };
+}
+
+const hiddenColumnsLine = (table: ExportTable) =>
+  table.hiddenColumns.length ? table.hiddenColumns.join(", ") : null;
 
 export function releasedPledgesTable(rows: PledgeReportRow[], totals: PledgeReportTotals): ExportTable {
   return {
@@ -249,6 +301,7 @@ export function releasedPledgesTable(rows: PledgeReportRow[], totals: PledgeRepo
       { label: "Interest", value: formatINR(totals.interestAccrued) },
       { label: "Receivable", value: formatINR(totals.receivableAmount) },
     ],
+    hiddenColumns: [],
   };
 }
 
@@ -300,6 +353,7 @@ export function customersTable(
       { label: "Pledges", value: String(totals.pledgeCount) },
       { label: "Total Loan", value: formatINR(totals.totalLoan) },
     ],
+    hiddenColumns: [],
   };
 }
 
@@ -327,6 +381,7 @@ const NUM_FMT: Record<ColumnKind, string | undefined> = {
   money: MONEY_FMT_INDIAN, // per cell — see moneyNumFmt
   weight: '0.00"g"',
   pct: '0.0"%"',
+  rate: '0.00"%"',
   int: "0",
 };
 
@@ -336,6 +391,7 @@ const ALIGN: Record<ColumnKind, ReportPdfAlign> = {
   money: "right",
   weight: "right",
   pct: "right",
+  rate: "right",
   int: "right",
 };
 
@@ -352,6 +408,8 @@ export async function buildReportXlsx(table: ExportTable, ctx: ExportContext): P
     ["Filters", table.filters],
     ["Generated", generatedLabel(ctx.generatedAt)],
   ];
+  const hiddenLine = hiddenColumnsLine(table);
+  if (hiddenLine) info.push(["Hidden columns", hiddenLine]);
   const shopRow = ws.addRow([ctx.shop.shopName?.trim() || "—"]);
   shopRow.font = { bold: true, size: 14 };
   for (const [k, v] of info) {
@@ -415,6 +473,7 @@ export function buildReportPdf(table: ExportTable, ctx: ExportContext): Promise<
       `Date range: ${dateRangeLabel(ctx)}`,
       `Filters: ${table.filters}`,
       `Generated: ${generatedLabel(ctx.generatedAt)}`,
+      ...(hiddenColumnsLine(table) ? [`Hidden columns: ${hiddenColumnsLine(table)}`] : []),
     ],
     summary: table.summary,
     columns: pick(table.columns).map((c) => ({ header: c.header, width: c.pdfWidth, align: ALIGN[c.kind] })),
