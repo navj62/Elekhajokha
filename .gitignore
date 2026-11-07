@@ -49,5 +49,4 @@ src/generated/
 *_migration.xlsx
 prisma/seed-*-migration.ts
 /seed-*-migration.ts
-seed-migration-log.json
-seed-active-migration-log.json
+seed-*-log.json
