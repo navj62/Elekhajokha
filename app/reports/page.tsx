@@ -2,8 +2,19 @@
 
 import React, { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, FileSpreadsheet, FileText, Loader2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Columns3, FileSpreadsheet, FileText, Loader2, Lock, X } from "lucide-react";
 import { StatusBadge, type BadgeTone } from "@/components/ui/DataTable";
+import { Sheet } from "@/components/ui/Sheet";
+import { btnPrimary, btnSecondary } from "@/components/ui/DetailParts";
+import { cn } from "@/lib/utils";
+import { useActiveReportColumns } from "@/hooks/useActiveReportColumns";
+import {
+  ACTIVE_COLUMNS,
+  activeColumnHeader,
+  activeColumnsParam,
+  visibleActiveColumns,
+  type ActiveColumnKey,
+} from "@/lib/reports/activeColumns";
 import {
   REPORT_RISK_TIERS,
   REPORT_RISK_TIER_LABEL,
@@ -72,6 +83,8 @@ interface PledgeRow {
   netWeight: number;
   netWeightOfGold: number;
   netWeightOfSilver: number;
+  grossWeight: number;
+  interestRate: number;
   loanAmount: number;
   interestAccrued: number;
   receivableAmount: number | null;
@@ -83,6 +96,7 @@ interface PledgeRow {
 
 interface TableTotals {
   count: number;
+  grossWeight: number;
   goldWeight: number;
   silverWeight: number;
   netWeight: number;
@@ -90,6 +104,66 @@ interface TableTotals {
   receivableAmount: number;
   loanAmount: number;
 }
+
+const dash = <span className="text-[#9E9E9E]">—</span>;
+const grams = (n: number) => (n > 0 ? `${n.toFixed(2)}g` : dash);
+
+function StatusPill({ status }: { status: string }) {
+  return (
+    <div className="text-right">
+      <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+        status === "ACTIVE"
+          ? "bg-[#F0EFDF] text-[#555B3F]"
+          : "bg-[#F4F3EE] text-[#6F6F6F]"
+      }`}>
+        {status === "ACTIVE" ? "Active" : "Released"}
+      </span>
+    </div>
+  );
+}
+
+// Active Pledges table — one entry per picker column (lib/reports/activeColumns.ts).
+const ACTIVE_SCREEN_COLUMNS: Record<
+  ActiveColumnKey,
+  { fr: string; right?: boolean; cell: (p: PledgeRow) => React.ReactNode }
+> = {
+  customer:        { fr: "1.2fr", cell: (p) => <div className="font-semibold text-[#2C2C2C] truncate">{p.customerName}</div> },
+  pledgeDate:      { fr: "0.9fr", cell: (p) => <div className="text-[#6F6F6F]">{p.pledgeDate}</div> },
+  pledge:          { fr: "1fr",   cell: (p) => <div className="text-[#6F6F6F] truncate">{p.itemName}</div> },
+  itemType:        { fr: "0.9fr", cell: (p) => <div className="text-[#6F6F6F] truncate" title={p.itemType}>{p.itemType}</div> },
+  grossWeight:     { fr: "0.7fr", right: true, cell: (p) => <div className="text-right text-[#6F6F6F]">{grams(p.grossWeight)}</div> },
+  goldWeight:      { fr: "0.7fr", right: true, cell: (p) => <div className="text-right text-[#6F6F6F]">{grams(p.netWeightOfGold)}</div> },
+  silverWeight:    { fr: "0.7fr", right: true, cell: (p) => <div className="text-right text-[#6F6F6F]">{grams(p.netWeightOfSilver)}</div> },
+  loanAmount:      { fr: "1fr",   right: true, cell: (p) => <div className="text-right font-semibold text-[#2C2C2C]">{formatINR(p.loanAmount)}</div> },
+  interestRate:    { fr: "0.6fr", right: true, cell: (p) => <div className="text-right text-[#6F6F6F]">{p.interestRate.toFixed(2)}%</div> },
+  interestAccrued: {
+    fr: "1fr", right: true,
+    cell: (p) => <div className="text-right font-semibold text-[#2C2C2C]">{p.interestAccrued > 0 ? formatINR(p.interestAccrued) : dash}</div>,
+  },
+  receivable: {
+    fr: "1fr", right: true,
+    cell: (p) => <div className="text-right font-semibold text-[#2C2C2C]">{formatINR(p.receivableAmount ?? p.loanAmount)}</div>,
+  },
+  ltv: {
+    fr: "0.6fr", right: true,
+    cell: (p) => (
+      <div className="text-right font-semibold" style={{ color: ltvTierColor(p.ltv) }}>
+        {p.ltv != null ? `${p.ltv.toFixed(1)}%` : "—"}
+      </div>
+    ),
+  },
+  riskTier: {
+    fr: "0.9fr", right: true,
+    cell: (p) => (
+      <div className="text-right">
+        <StatusBadge tone={TIER_TONE[p.riskTier ?? "UNKNOWN"]}>
+          {REPORT_RISK_TIER_LABEL[p.riskTier ?? "UNKNOWN"]}
+        </StatusBadge>
+      </div>
+    ),
+  },
+  status: { fr: "0.7fr", right: true, cell: (p) => <StatusPill status={p.status} /> },
+};
 
 function formatRiskTier(tier: string): string {
   switch (tier) {
@@ -165,6 +239,7 @@ function ReportsPageContent() {
   // stay disabled while the inputs have moved on and the table hasn't caught up.
   const [appliedQuery, setAppliedQuery] = useState<string | null>(null);
   const [exporting, setExporting] = useState<ExportFormat | null>(null);
+  const [columnsOpen, setColumnsOpen] = useState(false);
   const [exportError, setExportError] = useState<{ query: string; message: string } | null>(null);
 
   const isPledge = selectedReport !== "customers";
@@ -363,6 +438,12 @@ function ReportsPageContent() {
 
   // ── Export (Excel / PDF) ─────────────────────────────────────────────────
   const currentQuery = exportQueryFor(selectedReport, startDate, endDate, activeOnly, tiers);
+  // Active Pledges column picker — remembered on this device (localStorage).
+  const { hidden: hiddenColumns, setHidden: setHiddenColumns, ready: columnsReady } = useActiveReportColumns();
+  const visibleColumns = visibleActiveColumns(hiddenColumns);
+  const shownColumns = new Set<ActiveColumnKey>(visibleColumns);
+  const toggleColumn = (key: ActiveColumnKey, show: boolean) =>
+    setHiddenColumns(show ? hiddenColumns.filter((k) => k !== key) : [...hiddenColumns, key]);
   const tabLoading = isPledge ? loadingTable : loadingCustomers;
   const exportDisabled = exporting !== null || tabLoading || appliedQuery !== currentQuery;
   const visibleExportError = exportError?.query === currentQuery ? exportError.message : null;
@@ -373,7 +454,9 @@ function ReportsPageContent() {
     setExporting(format);
     setExportError(null);
     try {
-      const res = await fetch(`/api/reports/export?${query}&format=${format}`);
+      // Active Pledges: the file gets exactly the columns on screen (absent = all).
+      const cols = new URLSearchParams(query).get("tab") === "active" ? activeColumnsParam(hiddenColumns) : null;
+      const res = await fetch(`/api/reports/export?${query}&format=${format}${cols ? `&columns=${cols}` : ""}`);
       if (!res.ok) {
         const data = await res.json().catch(() => null);
         setExportError({
@@ -576,12 +659,13 @@ function ReportsPageContent() {
             {(selectedReport === "active"
               ? [
                   { label: "Pledges",      value: String(tableTotals.count) },
-                  { label: "Gold Wt",      value: `${tableTotals.goldWeight.toFixed(2)}g` },
-                  { label: "Silver Wt",    value: `${tableTotals.silverWeight.toFixed(2)}g` },
-                  { label: "Loan Amount",  value: formatINR(tableTotals.loanAmount) },
-                  { label: "Interest",     value: formatINR(tableTotals.interestAccrued) },
-                  { label: "Receivable",   value: formatINR(tableTotals.receivableAmount) },
-                ]
+                  { label: "Gross Wt",     value: `${tableTotals.grossWeight.toFixed(2)}g`, key: "grossWeight" },
+                  { label: "Gold Wt",      value: `${tableTotals.goldWeight.toFixed(2)}g`, key: "goldWeight" },
+                  { label: "Silver Wt",    value: `${tableTotals.silverWeight.toFixed(2)}g`, key: "silverWeight" },
+                  { label: "Loan Amount",  value: formatINR(tableTotals.loanAmount), key: "loanAmount" },
+                  { label: "Interest",     value: formatINR(tableTotals.interestAccrued), key: "interestAccrued" },
+                  { label: "Receivable",   value: formatINR(tableTotals.receivableAmount), key: "receivable" },
+                ].filter((s) => !s.key || shownColumns.has(s.key as ActiveColumnKey)) // a hidden column hides its total
               : [
                   { label: "Pledges",      value: String(tableTotals.count) },
                   { label: "Loan Amount",  value: formatINR(tableTotals.loanAmount) },
@@ -629,7 +713,23 @@ function ReportsPageContent() {
             </span>
           </div>
 
-          <div className="flex w-full sm:w-auto gap-2">
+          <div className="flex w-full sm:w-auto flex-col sm:flex-row gap-2">
+            {selectedReport === "active" && (
+              <button
+                type="button"
+                onClick={() => setColumnsOpen(true)}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 min-h-[44px] px-4 rounded-[10px] border border-border bg-card text-foreground text-[13px] font-semibold transition-colors hover:bg-secondary"
+              >
+                <Columns3 size={16} aria-hidden="true" />
+                Columns
+                {hiddenColumns.length > 0 && (
+                  <span className="text-muted-foreground font-medium">
+                    · {visibleColumns.length}/{ACTIVE_COLUMNS.length}
+                  </span>
+                )}
+              </button>
+            )}
+            <div className="flex w-full sm:w-auto gap-2">
             {([
               { format: "xlsx", label: "Export to Excel", Icon: FileSpreadsheet },
               { format: "pdf",  label: "Export to PDF",   Icon: FileText },
@@ -650,6 +750,7 @@ function ReportsPageContent() {
                 {label}
               </button>
             ))}
+            </div>
           </div>
         </div>
 
@@ -662,6 +763,63 @@ function ReportsPageContent() {
             {visibleExportError}
           </p>
         )}
+
+        {/* Column picker — Active Pledges only. Applies live; Done just closes. */}
+        <Sheet
+          open={columnsOpen && selectedReport === "active"}
+          onOpenChange={setColumnsOpen}
+          title="Columns"
+          description="Shown on screen and in Excel and PDF exports."
+          size="md"
+          footer={
+            <div className="flex w-full gap-2 lg:justify-end">
+              <button
+                type="button"
+                onClick={() => setHiddenColumns([])}
+                disabled={!columnsReady || hiddenColumns.length === 0}
+                className={cn(btnSecondary, "flex-1 lg:flex-none disabled:opacity-50")}
+              >
+                Reset to all columns
+              </button>
+              <button type="button" onClick={() => setColumnsOpen(false)} className={cn(btnPrimary, "flex-1 lg:flex-none")}>
+                Done
+              </button>
+            </div>
+          }
+        >
+          {!columnsReady && (
+            <div role="status" className="flex items-center gap-2 px-3 pb-2 text-[13px] text-[#6F6F6F]">
+              <Loader2 size={16} className="animate-spin text-[#555B3F]" aria-hidden="true" />
+              Loading…
+            </div>
+          )}
+          <ul className="flex flex-col gap-1" aria-busy={!columnsReady}>
+            {ACTIVE_COLUMNS.map((c) => (
+              <li key={c.key}>
+                <label
+                  className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-[14px] text-foreground ${
+                    c.locked || !columnsReady ? "cursor-not-allowed" : "cursor-pointer hover:bg-accent"
+                  } ${!columnsReady ? "opacity-60" : ""}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={c.locked || shownColumns.has(c.key)}
+                    disabled={c.locked || !columnsReady}
+                    onChange={(e) => toggleColumn(c.key, e.target.checked)}
+                    className="size-5 shrink-0 accent-[var(--primary)] disabled:opacity-60"
+                  />
+                  <span className="flex-1">{c.header}</span>
+                  {c.locked && (
+                    <span className="inline-flex items-center gap-1 text-[12px] text-muted-foreground">
+                      <Lock size={12} aria-hidden="true" />
+                      Always shown
+                    </span>
+                  )}
+                </label>
+              </li>
+            ))}
+          </ul>
+        </Sheet>
 
         {selectedReport === "customers" ? (
           loadingCustomers ? (
@@ -727,13 +885,42 @@ function ReportsPageContent() {
           </div>
         ) : (
           /* ── PLEDGE TABLE ── */
-          (() => {
-            const isReleasedVariant = selectedReport === "released";
-            // Active:   Customer | Date | Pledge | Gold Wt | Silver Wt | Loan | Interest | Receivable | LTV | Risk Tier | Status
+          selectedReport === "active" ? (
+            (() => {
+              // Column-picker driven: only the visible columns, in fixed order.
+              const gridCols = visibleColumns.map((k) => ACTIVE_SCREEN_COLUMNS[k].fr).join(" ");
+              return (
+              <div className="w-full">
+                <div
+                  className="grid gap-3 py-3 px-3 bg-[#3D4230] rounded-t-[8px] text-[11px] font-semibold text-white tracking-wider uppercase"
+                  style={{ gridTemplateColumns: gridCols }}
+                >
+                  {visibleColumns.map((k) => (
+                    <div key={k} className={ACTIVE_SCREEN_COLUMNS[k].right ? "text-right" : undefined}>
+                      {activeColumnHeader(k)}
+                    </div>
+                  ))}
+                </div>
+                {tableRows.length === 0 ? (
+                  <div className="py-12 text-center text-[14px] text-[#9E9E9E]">No pledges found.</div>
+                ) : tableRows.map((p, i) => (
+                  <div
+                    key={i}
+                    className="grid gap-3 px-3 py-4 border-b border-[#F4F3EE] text-[13px] items-center"
+                    style={{ gridTemplateColumns: gridCols }}
+                  >
+                    {visibleColumns.map((k) => (
+                      <React.Fragment key={k}>{ACTIVE_SCREEN_COLUMNS[k].cell(p)}</React.Fragment>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              );
+            })()
+          ) : (
             // Released: Customer | Date | Released | Pledge | Net Wt | Loan | Interest | Receivable | LTV | Status
-            const gridCols = isReleasedVariant
-              ? "1.2fr 0.9fr 0.9fr 1fr 0.7fr 1fr 1fr 1fr 0.6fr 0.7fr"
-              : "1.2fr 0.9fr 1fr 0.7fr 0.7fr 1fr 1fr 1fr 0.6fr 0.9fr 0.7fr";
+            (() => {
+            const gridCols = "1.2fr 0.9fr 0.9fr 1fr 0.7fr 1fr 1fr 1fr 0.6fr 0.7fr";
             return (
             <div className="w-full">
               <div
@@ -742,16 +929,13 @@ function ReportsPageContent() {
               >
                 <div>Customer</div>
                 <div>Date</div>
-                {isReleasedVariant && <div>Released</div>}
+                <div>Released</div>
                 <div>Pledge</div>
-                {isReleasedVariant
-                  ? <div className="text-right">Net Wt</div>
-                  : <><div className="text-right">Gold Wt</div><div className="text-right">Silver Wt</div></>}
+                <div className="text-right">Net Wt</div>
                 <div className="text-right">Loan</div>
                 <div className="text-right">Interest</div>
                 <div className="text-right">Receivable</div>
                 <div className="text-right">LTV</div>
-                {!isReleasedVariant && <div className="text-right">Risk Tier</div>}
                 <div className="text-right">Status</div>
               </div>
               {tableRows.length === 0 ? (
@@ -764,24 +948,11 @@ function ReportsPageContent() {
                 >
                   <div className="font-semibold text-[#2C2C2C] truncate">{p.customerName}</div>
                   <div className="text-[#6F6F6F]">{p.pledgeDate}</div>
-                  {isReleasedVariant && (
-                    <div className="text-[#6F6F6F]">{p.releaseDate ?? "—"}</div>
-                  )}
+                  <div className="text-[#6F6F6F]">{p.releaseDate ?? "—"}</div>
                   <div className="text-[#6F6F6F] truncate">{p.itemName}</div>
-                  {isReleasedVariant ? (
-                    <div className="text-right text-[#6F6F6F]">
-                      {p.netWeight > 0 ? `${p.netWeight.toFixed(2)}g` : <span className="text-[#9E9E9E]">—</span>}
-                    </div>
-                  ) : (
-                    <>
-                      <div className="text-right text-[#6F6F6F]">
-                        {p.netWeightOfGold > 0 ? `${p.netWeightOfGold.toFixed(2)}g` : <span className="text-[#9E9E9E]">—</span>}
-                      </div>
-                      <div className="text-right text-[#6F6F6F]">
-                        {p.netWeightOfSilver > 0 ? `${p.netWeightOfSilver.toFixed(2)}g` : <span className="text-[#9E9E9E]">—</span>}
-                      </div>
-                    </>
-                  )}
+                  <div className="text-right text-[#6F6F6F]">
+                    {p.netWeight > 0 ? `${p.netWeight.toFixed(2)}g` : <span className="text-[#9E9E9E]">—</span>}
+                  </div>
                   <div className="text-right font-semibold text-[#2C2C2C]">{formatINR(p.loanAmount)}</div>
                   <div className="text-right font-semibold text-[#2C2C2C]">
                     {p.interestAccrued > 0 ? formatINR(p.interestAccrued) : <span className="text-[#9E9E9E]">—</span>}
@@ -792,27 +963,13 @@ function ReportsPageContent() {
                   <div className="text-right font-semibold" style={{ color: ltvTierColor(p.ltv) }}>
                     {p.ltv != null ? `${p.ltv.toFixed(1)}%` : "—"}
                   </div>
-                  {!isReleasedVariant && (
-                    <div className="text-right">
-                      <StatusBadge tone={TIER_TONE[p.riskTier ?? "UNKNOWN"]}>
-                        {REPORT_RISK_TIER_LABEL[p.riskTier ?? "UNKNOWN"]}
-                      </StatusBadge>
-                    </div>
-                  )}
-                  <div className="text-right">
-                    <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                      p.status === "ACTIVE"
-                        ? "bg-[#F0EFDF] text-[#555B3F]"
-                        : "bg-[#F4F3EE] text-[#6F6F6F]"
-                    }`}>
-                      {p.status === "ACTIVE" ? "Active" : "Released"}
-                    </span>
-                  </div>
+                  <StatusPill status={p.status} />
                 </div>
               ))}
             </div>
             );
-          })()
+            })()
+          )
         )}
       </div>
 

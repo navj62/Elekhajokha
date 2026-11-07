@@ -2,6 +2,7 @@
 //
 // GET /api/reports/export?tab=active|released|customers&format=xlsx|pdf
 //     &startDate=YYYY-MM-DD&endDate=YYYY-MM-DD[&activeOnly=true]
+//     [&tiers=…][&columns=…]   (both Active Pledges only)
 //
 // The one export path for the Reports page. Reuses the tabs' own query
 // functions (lib/reports/reportQueries.ts) with the tabs' own filters, so a
@@ -13,6 +14,10 @@
 //     tier filter that's decided by a count, before any rows are loaded; with
 //     one (Active tab, `tiers=`) it's the FILTERED count, which needs each
 //     row's LTV first — so a tier filter can bring an export under the limit.
+//   • `columns` (Active Pledges only — the column picker) narrows the file to
+//     the columns shown on screen: absent = all, "" = locked columns only,
+//     an unknown key → 400 INVALID_COLUMNS, on any other tab → 400
+//     COLUMNS_NOT_SUPPORTED. Locked columns are always added.
 import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
@@ -33,12 +38,14 @@ import {
   buildReportXlsx,
   customersTable,
   exportFileName,
+  pickColumns,
   releasedPledgesTable,
   type ExportContext,
   type ExportTable,
   type ReportTab,
 } from "@/lib/reports/reportExport";
 import { parseRiskTiers } from "@/lib/reports/riskTierFilter";
+import { parseActiveColumnsParam } from "@/lib/reports/activeColumns";
 
 const TABS: readonly ReportTab[] = ["active", "released", "customers"];
 const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -73,6 +80,19 @@ export async function GET(req: NextRequest) {
     const endDate = sp.get("endDate");
     const activeOnly = tab === "customers" && sp.get("activeOnly") === "true";
     const tiers = tab === "active" ? parseRiskTiers(sp.get("tiers")) : [];
+
+    // Column picker — Active Pledges only. Validated before any DB work.
+    if (tab !== "active" && sp.has("columns"))
+      return NextResponse.json(
+        { error: "COLUMNS_NOT_SUPPORTED", message: "columns is only supported for the Active Pledges report." },
+        { status: 400 }
+      );
+    const columns = parseActiveColumnsParam(tab === "active" ? sp.get("columns") : null);
+    if (!columns.ok)
+      return NextResponse.json(
+        { error: "INVALID_COLUMNS", message: "columns contains an unknown column." },
+        { status: 400 }
+      );
 
     // Same validation as each tab's route.
     const parsed = parseDateRange(startDate, endDate);
@@ -114,7 +134,7 @@ export async function GET(req: NextRequest) {
     } else if (tab === "active") {
       const report = await getActivePledgeReport(user.id, range, tiers);
       if (format === "pdf" && report.rows.length > PDF_ROW_LIMIT) return pdfLimitResponse(report.rows.length);
-      table = activePledgesTable(report.rows, report.totals, tiers);
+      table = pickColumns(activePledgesTable(report.rows, report.totals, tiers), columns.visible);
     } else {
       const rows = await getPledgeReportRows(user.id, tab, range);
       table = releasedPledgesTable(rows, pledgeReportTotals(rows));

@@ -33,7 +33,7 @@ type PledgeFx = {
   receivableAmount: Prisma.Decimal | null;
   lastMarketValue: Prisma.Decimal | null;
   customer: { userId: string; deletedAt: Date | null; name: string; mobile: string | null };
-  items: { itemName: string | null; itemType: string; metalType: string }[];
+  items: { itemName: string | null; itemType: string; metalType: string; grossWeight: Prisma.Decimal }[];
   _count: { items: number };
   pledgeAudits: {
     totalInterest: Prisma.Decimal;
@@ -69,6 +69,13 @@ const inRange = (d: Date | null, f?: DateFilter) =>
   !f || (d !== null && (!f.gte || d >= f.gte) && (!f.lte || d <= f.lte));
 
 vi.mock("@clerk/nextjs/server", () => ({ auth: async () => ({ userId: "clerk_owner" }) }));
+
+// The real PDF renderer, wrapped so a test can read the input it was given
+// (the rendered text is compressed and font-subset, so it isn't greppable).
+vi.mock("@/lib/generatePDF", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/generatePDF")>();
+  return { ...real, generateReportPDF: vi.fn(real.generateReportPDF) };
+});
 
 vi.mock("@/lib/prisma", () => {
   type PledgeWhere = {
@@ -168,6 +175,13 @@ import {
   type ReportRiskTier,
 } from "@/lib/reports/riskTierFilter";
 import { getRiskTier } from "@/lib/calculateLTV";
+import { generateReportPDF } from "@/lib/generatePDF";
+import {
+  ACTIVE_COLUMNS,
+  activeColumnHeader,
+  visibleActiveColumns,
+  type ActiveColumnKey,
+} from "@/lib/reports/activeColumns";
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -191,7 +205,14 @@ function makePledge(i: number, over: Partial<PledgeFx> = {}): PledgeFx {
     receivableAmount: i % 4 === 0 ? null : D(21000 + i),
     lastMarketValue: null,
     customer: { userId: "owner", deletedAt: null, name: NAMES[i % NAMES.length], mobile: null },
-    items: [{ itemName: i % 2 ? "सोने की चेन" : null, itemType: "Chain", metalType: "GOLD" }],
+    // Item count matches _count; gross weights are 3-dp values whose float sum
+    // is inexact (0.1 + 0.2), so a Number-summed total would show the drift.
+    items: Array.from({ length: 1 + (i % 3) }, (_, k) => ({
+      itemName: k === 0 && i % 2 ? "सोने की चेन" : null,
+      itemType: "Chain",
+      metalType: "GOLD",
+      grossWeight: D(["13.1", "0.2", "0.001"][k]),
+    })),
     _count: { items: 1 + (i % 3) },
     // Every 5th released pledge is legacy (no audit) → Pledge-row fallback.
     pledgeAudits:
@@ -278,11 +299,12 @@ const num = (v: unknown) => (v === undefined || v === null ? null : (v as number
 type TabPledgeRow = {
   customerName: string; pledgeDate: string; releaseDate: string | null; itemName: string;
   netWeight: number; netWeightOfGold: number; netWeightOfSilver: number; loanAmount: number;
+  grossWeight: number; interestRate: number; itemType: string;
   interestAccrued: number; receivableAmount: number | null; ltv: number | null; status: string;
   riskTier?: ReportRiskTier;
 };
 type TabTotals = {
-  count: number; goldWeight: number; silverWeight: number; netWeight: number;
+  count: number; grossWeight: number; goldWeight: number; silverWeight: number; netWeight: number;
   interestAccrued: number; receivableAmount: number; loanAmount: number;
 };
 
@@ -301,7 +323,7 @@ describe("Active Pledges export", () => {
     expect(res.headers.get("Content-Disposition")).toBe('attachment; filename="active-pledges_2026-09-10_to_2026-10-20.xlsx"');
 
     const { header, body, totals, info, ws, headerRow, stylesXml } = await readSheet(res);
-    expect(header).toEqual(["Customer", "Date", "Pledge", "Gold Wt", "Silver Wt", "Loan", "Interest", "Receivable", "LTV", "Risk Tier", "Status"]);
+    expect(header).toEqual(["Customer", "Date", "Pledge", "Type", "Gross Wt", "Gold Wt", "Silver Wt", "Loan", "Rate", "Interest", "Receivable", "LTV", "Risk Tier", "Status"]);
     expect(ws.views[0]).toMatchObject({ state: "frozen", ySplit: headerRow });
     expect(info[0][0]).toBe("श्री गणेश ज्वैलर्स");
 
@@ -315,30 +337,63 @@ describe("Active Pledges export", () => {
       expect(c[1]).toBeInstanceOf(Date);
       expect(cellDay(c[1])).toBe(r.pledgeDate);
       expect(c[2]).toBe(r.itemName);
-      expect(c[3]).toBe(r.netWeightOfGold);
-      expect(c[4]).toBe(r.netWeightOfSilver);
-      expect(c[5]).toBe(r.loanAmount);
-      expect(c[6]).toBe(r.interestAccrued);
-      expect(c[7]).toBe(r.receivableAmount ?? r.loanAmount);
-      expect(num(c[8])).toBe(r.ltv);
-      expect(c[9]).toBe(REPORT_RISK_TIER_LABEL[r.riskTier!]);
-      expect(c[10]).toBe("Active");
+      expect(c[3]).toBe(r.itemType);
+      expect(c[4]).toBe(r.grossWeight);
+      expect(c[5]).toBe(r.netWeightOfGold);
+      expect(c[6]).toBe(r.netWeightOfSilver);
+      expect(c[7]).toBe(r.loanAmount);
+      expect(c[8]).toBe(r.interestRate);
+      expect(c[9]).toBe(r.interestAccrued);
+      expect(c[10]).toBe(r.receivableAmount ?? r.loanAmount);
+      expect(num(c[11])).toBe(r.ltv);
+      expect(c[12]).toBe(REPORT_RISK_TIER_LABEL[r.riskTier!]);
+      expect(c[13]).toBe("Active");
     });
 
     const t = tab.totals as TabTotals;
     expect(totals[0]).toBe(`Total (${t.count} pledges)`);
-    expect(totals.slice(3, 8)).toEqual([t.goldWeight, t.silverWeight, t.loanAmount, t.interestAccrued, t.receivableAmount]);
+    expect(totals.slice(4, 8)).toEqual([t.grossWeight, t.goldWeight, t.silverWeight, t.loanAmount]);
+    expect(totals[8] ?? "").toBe(""); // no total for a rate
+    expect(totals.slice(9, 11)).toEqual([t.interestAccrued, t.receivableAmount]);
 
     // The file holds the Indian format with its commas escaped as literals —
     // unescaped, Excel would read them as thousands separators (₹1,234,567).
     const xmlAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/>/g, "&gt;");
     expect(stylesXml).toContain(`formatCode="${xmlAttr(MONEY_FMT_INDIAN)}"`);
-    // Money columns (Loan, Interest, Receivable = 6–8) use it on every row and the totals row.
+    // Money columns (Loan, Interest, Receivable = 8, 10, 11) use it on every row and the totals row.
     // (exceljs's reader drops the backslashes, hence the comparison without them.)
     const indianAsRead = MONEY_FMT_INDIAN.replace(/\\/g, "");
     for (let r = headerRow + 1; r <= ws.rowCount; r++) {
-      for (const col of [6, 7, 8]) expect(ws.getCell(r, col).numFmt).toBe(indianAsRead);
+      for (const col of [8, 10, 11]) expect(ws.getCell(r, col).numFmt).toBe(indianAsRead);
     }
+  });
+
+  it("item type lists every distinct type on the pledge, once each", async () => {
+    const p = makePledge(1);
+    p.items = [
+      { itemName: "A", itemType: "Ring", metalType: "GOLD", grossWeight: D("5") },
+      { itemName: null, itemType: "Chain", metalType: "GOLD", grossWeight: D("5") },
+      { itemName: null, itemType: "Ring", metalType: "GOLD", grossWeight: D("5") },
+    ];
+    p._count = { items: 3 };
+    db.pledges = [p];
+    const tab = await (await pledgesTab(req("/api/reports/pledges", { status: "active" }))).json();
+    expect(tab.rows[0].itemType).toBe("Ring, Chain");
+  });
+
+  it("gross weight is the exact Decimal sum of every item; rate is the pledge's own", async () => {
+    seedPledges(6, 0);
+    const tab = await (await pledgesTab(req("/api/reports/pledges", { status: "active" }))).json();
+    const byItems: Record<number, number> = { 1: 13.1, 2: 13.3, 3: 13.301 };
+    for (const r of tab.rows as TabPledgeRow[]) {
+      expect(Object.values(byItems)).toContain(r.grossWeight);
+      expect(r.interestRate).toBe(18);
+    }
+    // 0.1 + 0.2 style drift would show up here if the sum went through floats.
+    expect((tab.rows as TabPledgeRow[]).some((r) => r.grossWeight === 13.3)).toBe(true);
+    expect(tab.totals.grossWeight).toBe(
+      Math.round((tab.rows as TabPledgeRow[]).reduce((s, r) => s + r.grossWeight, 0) * 1000) / 1000
+    );
   });
 
   it("never includes another tenant's, a deleted customer's, or a SOLD pledge", async () => {
@@ -495,6 +550,7 @@ const activeTab = async (params: Record<string, string> = {}) => {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const sumTotals = (rows: TabPledgeRow[]): TabTotals => ({
   count: rows.length,
+  grossWeight: Math.round(rows.reduce((s, r) => s + r.grossWeight, 0) * 1000) / 1000,
   goldWeight: round2(rows.reduce((s, r) => s + r.netWeightOfGold, 0)),
   silverWeight: round2(rows.reduce((s, r) => s + r.netWeightOfSilver, 0)),
   netWeight: round2(rows.reduce((s, r) => s + r.netWeight, 0)),
@@ -589,15 +645,17 @@ describe("Active Pledges risk-tier filter", () => {
       const c = body[i];
       expect(c[0]).toBe(r.customerName);
       expect(cellDay(c[1])).toBe(r.pledgeDate);
-      expect([c[3], c[4], c[5], c[6], c[7]]).toEqual([
-        r.netWeightOfGold, r.netWeightOfSilver, r.loanAmount, r.interestAccrued, r.receivableAmount ?? r.loanAmount,
+      expect(c.slice(3, 11)).toEqual([
+        r.itemType, r.grossWeight, r.netWeightOfGold, r.netWeightOfSilver, r.loanAmount, r.interestRate,
+        r.interestAccrued, r.receivableAmount ?? r.loanAmount,
       ]);
-      expect(num(c[8])).toBe(r.ltv);
-      expect(c[9]).toBe(REPORT_RISK_TIER_LABEL[r.riskTier!]);
+      expect(num(c[11])).toBe(r.ltv);
+      expect(c[12]).toBe(REPORT_RISK_TIER_LABEL[r.riskTier!]);
     });
     const t = tab.totals;
     expect(totals[0]).toBe(`Total (${t.count} pledge${t.count !== 1 ? "s" : ""})`);
-    expect(totals.slice(3, 8)).toEqual([t.goldWeight, t.silverWeight, t.loanAmount, t.interestAccrued, t.receivableAmount]);
+    expect(totals.slice(4, 8)).toEqual([t.grossWeight, t.goldWeight, t.silverWeight, t.loanAmount]);
+    expect(totals.slice(9, 11)).toEqual([t.interestAccrued, t.receivableAmount]);
   });
 
   it("without a tier filter the info block says 'Risk tiers: All'", async () => {
@@ -729,10 +787,10 @@ describe("LTV exactly 65%", () => {
   it("is Safe in the export (LTV cell colour and tier cell)", () => {
     const row: PledgeReportRow = {
       customerName: "A", pledgeDate: new Date(Date.UTC(2026, 9, 1)), releaseDate: null, itemType: "Ring",
-      itemName: "Ring", netWeight: 0, netWeightOfGold: 10, netWeightOfSilver: 0, loanAmount: 1000,
+      itemName: "Ring", netWeight: 0, netWeightOfGold: 10, netWeightOfSilver: 0, grossWeight: 11, interestRate: 18, loanAmount: 1000,
       interestAccrued: 0, receivableAmount: 1000, marketValue: 1538.46, ltv: 65, riskTier: "SAFE", status: "ACTIVE",
     };
-    const table = activePledgesTable([row], { count: 1, goldWeight: 10, silverWeight: 0, netWeight: 0, interestAccrued: 0, receivableAmount: 1000, loanAmount: 1000 }, []);
+    const table = activePledgesTable([row], { count: 1, grossWeight: 11, goldWeight: 10, silverWeight: 0, netWeight: 0, interestAccrued: 0, receivableAmount: 1000, loanAmount: 1000 }, []);
     const ltvCol = table.columns.findIndex((c) => c.header === "LTV");
     const tierCol = table.columns.findIndex((c) => c.header === "Risk Tier");
     expect(table.rows[0][ltvCol].color).toBe(REPORT_RISK_TIER_HEX.SAFE);
@@ -810,5 +868,153 @@ describe("GET /api/reports/summary (top strip)", () => {
     const res = await pledgesTab(req("/api/reports/pledges", {}));
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("INVALID_STATUS");
+  });
+});
+
+// ── Active Pledges column picker ────────────────────────────────────────────
+
+describe("Active Pledges column picker (columns=)", () => {
+  // What the screen prints per key, from the tab's own JSON row — the same
+  // fields ACTIVE_SCREEN_COLUMNS in app/reports/page.tsx renders.
+  const screenValue = (r: TabPledgeRow, k: ActiveColumnKey): unknown => ({
+    customer: r.customerName,
+    pledgeDate: r.pledgeDate,
+    pledge: r.itemName,
+    itemType: r.itemType,
+    grossWeight: r.grossWeight,
+    goldWeight: r.netWeightOfGold,
+    silverWeight: r.netWeightOfSilver,
+    loanAmount: r.loanAmount,
+    interestRate: r.interestRate,
+    interestAccrued: r.interestAccrued,
+    receivable: r.receivableAmount ?? r.loanAmount,
+    ltv: r.ltv,
+    riskTier: REPORT_RISK_TIER_LABEL[r.riskTier!],
+    status: "Active",
+  })[k];
+  const fileValue = (v: unknown, k: ActiveColumnKey) =>
+    k === "pledgeDate" ? cellDay(v) : k === "ltv" ? num(v) : v;
+
+  const exportXlsx = (params: Record<string, string>) =>
+    exportRoute(req("/api/reports/export", { tab: "active", format: "xlsx", ...params }));
+  const hiddenLine = (ws: ExcelJS.Worksheet) => {
+    for (let r = 1; r <= ws.rowCount; r++)
+      if (ws.getRow(r).getCell(1).value === "Hidden columns") return ws.getRow(r).getCell(2).value;
+    return undefined;
+  };
+  const lastPdfInput = () => vi.mocked(generateReportPDF).mock.calls.at(-1)![0];
+
+  it("the export table's headers are the picker's headers, in the picker's order", () => {
+    const table = activePledgesTable([], { count: 0, grossWeight: 0, goldWeight: 0, silverWeight: 0, netWeight: 0, interestAccrued: 0, receivableAmount: 0, loanAmount: 0 }, []);
+    expect(table.columns.map((c) => c.key)).toEqual(ACTIVE_COLUMNS.map((c) => c.key));
+    expect(table.columns.map((c) => c.header)).toEqual(ACTIVE_COLUMNS.map((c) => c.header));
+  });
+
+  it("an xlsx with a subset holds exactly the screen's visible columns and values", async () => {
+    seedPledges(20, 0);
+    const hidden: ActiveColumnKey[] = ["grossWeight", "interestRate", "status"];
+    const visible = visibleActiveColumns(hidden);
+    const tab = await activeTab();
+
+    const res = await exportXlsx({ columns: visible.join(",") });
+    expect(res.status).toBe(200);
+    const { header, body } = await readSheet(res);
+    expect(header).toEqual(visible.map(activeColumnHeader));
+    expect(body).toHaveLength(tab.rows.length);
+    tab.rows.forEach((r, i) =>
+      visible.forEach((k, j) => expect(fileValue(body[i][j], k)).toEqual(screenValue(r, k)))
+    );
+  });
+
+  it("locked columns can't be dropped through the API", async () => {
+    seedPledges(3, 0);
+    const { header } = await readSheet(await exportXlsx({ columns: "loanAmount" }));
+    expect(header).toEqual(["Customer", "Date", "Pledge", "Loan"]);
+  });
+
+  it("absent = every column; empty = locked only; order and duplicates are ignored", async () => {
+    seedPledges(3, 0);
+    expect((await readSheet(await exportXlsx({}))).header).toEqual(ACTIVE_COLUMNS.map((c) => c.header));
+    expect((await readSheet(await exportXlsx({ columns: "" }))).header).toEqual(["Customer", "Date", "Pledge"]);
+    expect((await readSheet(await exportXlsx({ columns: "ltv,loanAmount,ltv, customer" }))).header)
+      .toEqual(["Customer", "Date", "Pledge", "Loan", "LTV"]);
+  });
+
+  it("an unknown key is a 400, before any rows are loaded", async () => {
+    seedPledges(3, 0);
+    for (const format of ["xlsx", "pdf"]) {
+      const res = await exportRoute(req("/api/reports/export", { tab: "active", format, columns: "loanAmount,bogus" }));
+      expect(res.status).toBe(400);
+      expect((await res.json()).error).toBe("INVALID_COLUMNS");
+    }
+    expect(db.findManyCalls).toBe(0);
+  });
+
+  it("columns on any other report is a 400 — even an empty value", async () => {
+    seedPledges(3, 3);
+    for (const tab of ["released", "customers"]) {
+      for (const columns of ["customer", ""]) {
+        const res = await exportRoute(req("/api/reports/export", { tab, format: "xlsx", columns }));
+        expect(res.status).toBe(400);
+        expect((await res.json()).error).toBe("COLUMNS_NOT_SUPPORTED");
+      }
+    }
+    expect(db.findManyCalls).toBe(0);
+  });
+
+  it("totals follow the visible columns; the remaining totals are unchanged", async () => {
+    seedPledges(20, 0);
+    const t = (await activeTab()).totals;
+    const visible = visibleActiveColumns(["grossWeight", "loanAmount", "interestRate"]);
+    const { header, totals } = await readSheet(await exportXlsx({ columns: visible.join(",") }));
+    const at = (h: string) => totals[header.indexOf(h)];
+    expect(header).not.toContain("Gross Wt");
+    expect(header).not.toContain("Loan");
+    expect(totals.length).toBeLessThanOrEqual(header.length); // exceljs trims trailing empty cells
+    expect(totals[0]).toBe(`Total (${t.count} pledges)`);
+    expect([at("Gold Wt"), at("Silver Wt"), at("Interest"), at("Receivable")])
+      .toEqual([t.goldWeight, t.silverWeight, t.interestAccrued, t.receivableAmount]);
+
+    // PDF: summary boxes and totals row drop the same columns.
+    await exportRoute(req("/api/reports/export", { tab: "active", format: "pdf", columns: visible.join(",") }));
+    const pdf = lastPdfInput();
+    expect(pdf.columns.map((c) => c.header)).toEqual(visible.map(activeColumnHeader));
+    expect(pdf.totals).toHaveLength(visible.length);
+    expect(pdf.summary.map((s) => s.label)).toEqual(["Pledges", "Gold Wt", "Silver Wt", "Interest", "Receivable"]);
+  });
+
+  it("combines with a risk-tier filter", async () => {
+    seedTieredActive(25);
+    const filters = { tiers: "AT_RISK,UNDERWATER" };
+    const tab = await activeTab(filters);
+    const visible = visibleActiveColumns(["itemType", "goldWeight", "silverWeight", "status"]);
+    const { header, body, totals, info } = await readSheet(await exportXlsx({ ...filters, columns: visible.join(",") }));
+    expect(info[3][1]).toContain("Risk tiers: At Risk, Underwater");
+    expect(header).toEqual(visible.map(activeColumnHeader));
+    expect(body).toHaveLength(tab.rows.length);
+    tab.rows.forEach((r, i) =>
+      visible.forEach((k, j) => expect(fileValue(body[i][j], k)).toEqual(screenValue(r, k)))
+    );
+    expect(totals[header.indexOf("Receivable")]).toBe(tab.totals.receivableAmount);
+  });
+
+  it("'Hidden columns' line: in both Excel and PDF when columns are hidden, absent when all are shown", async () => {
+    seedPledges(5, 0);
+    // Sent out of order — the line lists headers in column order.
+    const visible = visibleActiveColumns(["status", "grossWeight", "interestRate"]);
+
+    const hiddenRes = await exportXlsx({ columns: visible.join(",") });
+    expect(hiddenLine((await readSheet(hiddenRes)).ws)).toBe("Gross Wt, Rate, Status");
+    const pdfRes = await exportRoute(req("/api/reports/export", { tab: "active", format: "pdf", columns: visible.join(",") }));
+    expect(pdfRes.status).toBe(200);
+    expect(lastPdfInput().metaLines).toContain("Hidden columns: Gross Wt, Rate, Status");
+
+    // All shown — explicitly, and by omitting the param.
+    const allShown: Record<string, string>[] = [{ columns: ACTIVE_COLUMNS.map((c) => c.key).join(",") }, {}];
+    for (const params of allShown) {
+      expect(hiddenLine((await readSheet(await exportXlsx(params))).ws)).toBeUndefined();
+      await exportRoute(req("/api/reports/export", { tab: "active", format: "pdf", ...params }));
+      expect(lastPdfInput().metaLines.some((l) => l.startsWith("Hidden columns"))).toBe(false);
+    }
   });
 });
