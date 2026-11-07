@@ -18,10 +18,32 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
     const { id } = await context.params;
 
-    const item = await prisma.inventoryItem.findFirst({
+    const found = await prisma.inventoryItem.findFirst({
       where: { id, ownerId: user.id },
+      include: {
+        // The SOLD audit row carries both metals' prices at the sale — the
+        // rates a mixed gold + silver item was acquired at.
+        sourcePledge: {
+          select: {
+            pledgeAudits: {
+              where:   { action: "SOLD" },
+              orderBy: { createdAt: "desc" },
+              take:    1,
+              select:  { goldPricePerGram: true, silverPricePerGram: true },
+            },
+          },
+        },
+      },
     });
-    if (!item) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!found) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const { sourcePledge, ...item } = found;
+    const audit = sourcePledge?.pledgeAudits[0];
+    const saleRates = audit
+      ? {
+          gold:   audit.goldPricePerGram   != null ? String(audit.goldPricePerGram)   : null,
+          silver: audit.silverPricePerGram != null ? String(audit.silverPricePerGram) : null,
+        }
+      : null;
 
     const format = new URL(req.url).searchParams.get("format");
 
@@ -43,6 +65,8 @@ export async function GET(req: NextRequest, context: RouteContext) {
         acquiredCost:      String(item.acquiredCost),
         acquiredAt:        item.acquiredAt.toISOString(),
         acquiredMetalRate: item.acquiredMetalRate  != null ? String(item.acquiredMetalRate) : null,
+        sourceType:        item.sourceType,
+        saleRates,
         sellerName:        item.sellerName,
         sellerIdNum:       item.sellerIdNum,
         notes:             item.notes,
@@ -72,6 +96,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
         amountOwedAt:      item.amountOwedAt      != null ? String(item.amountOwedAt)      : null,
         acquiredMetalRate: item.acquiredMetalRate  != null ? String(item.acquiredMetalRate) : null,
         soldPrice:         item.soldPrice          != null ? String(item.soldPrice)         : null,
+        saleRates,
       },
       shop: {
         shopName: user.shopName,

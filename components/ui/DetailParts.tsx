@@ -4,6 +4,10 @@
  * set of formatters, so the two pages cannot drift apart.
  */
 import { cn } from "@/lib/utils";
+import { metalKind, fmtGrams, METAL_LABEL, type MetalDisplay } from "@/lib/inventoryDisplay";
+
+export { metalKind, fmtGrams };
+export type { MetalKind } from "@/lib/inventoryDisplay";
 
 /* -------------------------------------------------------------------------- */
 /* Formatting                                                                  */
@@ -20,9 +24,6 @@ export function fmtDate(iso: string | null | undefined) {
   return new Date(iso).toLocaleDateString("en-IN", {
     day: "2-digit", month: "short", year: "numeric",
   });
-}
-export function fmtGrams(g: number) {
-  return `${g.toLocaleString("en-IN", { maximumFractionDigits: 3 })} g`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -55,30 +56,25 @@ export function Eyebrow({ children, className }: { children: React.ReactNode; cl
   );
 }
 
-export type MetalKind = "GOLD" | "SILVER" | "OTHER";
 
-/** Display-only case normalisation: "GOLD", "Gold" and "gold" are all GOLD.
- *  Stored values are never rewritten (pledge items store the enum in caps,
- *  direct purchases store title case). */
-export function metalKind(metal: string): MetalKind {
-  const m = metal.trim().toUpperCase();
-  return m === "GOLD" || m === "SILVER" ? m : "OTHER";
-}
-
-const METAL_BADGE: Record<MetalKind, { label: string; className: string }> = {
-  GOLD:   { label: "Gold",   className: "bg-gold-surface text-gold-foreground" },
-  SILVER: { label: "Silver", className: "bg-silver-surface text-silver-foreground" },
-  OTHER:  { label: "Other",  className: "bg-muted text-muted-foreground" },
+const METAL_BADGE: Record<MetalDisplay, string> = {
+  GOLD:   "bg-gold-surface text-gold-foreground",
+  SILVER: "bg-silver-surface text-silver-foreground",
+  // Half gold, half silver surface — both tokens exist in both themes.
+  MIXED:  "bg-[linear-gradient(90deg,var(--gold-surface)_50%,var(--silver-surface)_50%)] text-foreground",
+  OTHER:  "bg-muted text-muted-foreground",
 };
 
-export function MetalBadge({ metal }: { metal: string }) {
-  const badge = METAL_BADGE[metalKind(metal)];
+/** Pass `kind` (e.g. from inventoryMetal) to show MIXED; `metal` is a raw
+ *  stored metalType, normalised by metalKind. */
+export function MetalBadge({ metal, kind }: { metal?: string; kind?: MetalDisplay }) {
+  const k = kind ?? metalKind(metal ?? "");
   return (
     <span className={cn(
       "inline-flex text-[11px] font-bold tracking-wide px-2 py-0.5 rounded-full",
-      badge.className,
+      METAL_BADGE[k],
     )}>
-      {badge.label}
+      {METAL_LABEL[k]}
     </span>
   );
 }
