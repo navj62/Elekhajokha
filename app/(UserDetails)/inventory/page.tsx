@@ -24,6 +24,26 @@ import {
 } from "lucide-react";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
 import MetalRateStrip from "@/components/inventory/MetalRateStrip";
+import { inventoryMetal, formatPurity, weightText, METAL_LABEL, type MetalDisplay } from "@/components/inventory/inventoryItem";
+
+/** List metal dot; a mixed gold + silver item is split half and half. */
+const METAL_DOT: Record<MetalDisplay, string> = {
+  GOLD:   "bg-[#D97706]",
+  SILVER: "bg-[#64748B]",
+  MIXED:  "bg-[linear-gradient(90deg,#D97706_50%,#64748B_50%)]",
+  OTHER:  "bg-[#A2AB89]",
+};
+
+/** "Gold + Silver" / "22K (91.6%)" / "1,112 g" — the shared display rules. */
+function itemDisplay(item: InventoryItem) {
+  const metal = inventoryMetal(item);
+  return {
+    metal,
+    metalLabel: METAL_LABEL[metal],
+    purity: formatPurity({ metal, purity: item.purity, sourceType: item.sourceType }),
+    weight: weightText(item),
+  };
+}
 
 /* ================================================================== */
 /*  Types                                                               */
@@ -43,7 +63,9 @@ interface InventoryItem {
   itemType: string;
   metalType: string;
   purity: string | null;
-  weightGrams: string;
+  grossWeight: string;
+  netWeightOfGold: string;
+  netWeightOfSilver: string;
   photoUrl: string | null;
   acquiredAt: string;
   acquiredCost: string;
@@ -97,7 +119,7 @@ function ItemDetailsModal({
   const acquiredCost = Number(item.acquiredCost);
   const amountOwedAt = item.amountOwedAt !== null ? Number(item.amountOwedAt) : null;
   const net = amountOwedAt !== null ? amountOwedAt - acquiredCost : null;
-  const metalLabel = item.purity ? `${item.metalType} ${Number(item.purity).toFixed(0)}K` : item.metalType;
+  const { metalLabel, purity, weight } = itemDisplay(item);
   const displayId = item.id.startsWith("INV-") ? item.id : `INV-${item.id.slice(-4).toUpperCase()}`;
 
   return (
@@ -125,7 +147,7 @@ function ItemDetailsModal({
                 </span>
               </div>
               <p className="text-[13px] text-[var(--muted-foreground)] mt-0.5 font-medium">
-                {item.itemType} · {metalLabel} · {Number(item.weightGrams).toFixed(2)}g
+                {item.itemType} · {metalLabel}{purity !== "—" && ` · ${purity}`} · {weight.gross}
               </p>
             </div>
           </div>
@@ -310,11 +332,9 @@ function InventoryRow({
   const acquiredCost = Number(item.acquiredCost);
   const amountOwedAt = item.amountOwedAt !== null ? Number(item.amountOwedAt) : null;
   const net = amountOwedAt !== null ? amountOwedAt - acquiredCost : null;
-  const metalLabel = item.purity ? `${item.metalType} ${Number(item.purity).toFixed(0)}K` : item.metalType;
+  const { metal, metalLabel, purity, weight } = itemDisplay(item);
   const displayId = item.id.startsWith("INV-") ? item.id : `INV-${item.id.slice(-4).toUpperCase()}`;
 
-  const isGold = item.metalType.toLowerCase().includes("gold");
-  const isSilver = item.metalType.toLowerCase().includes("silver");
 
   return (
     <tr
@@ -360,14 +380,20 @@ function InventoryRow({
       {/* 3. Metal */}
       <td className="py-2.5 px-3 align-middle text-[13.5px] font-normal text-[var(--foreground)] whitespace-nowrap">
         <div className="flex items-center gap-1.5">
-          <span className={`w-2 h-2 rounded-full shrink-0 ${isGold ? "bg-[#D97706]" : isSilver ? "bg-[#64748B]" : "bg-[#A2AB89]"}`} />
+          <span className={`w-2 h-2 rounded-full shrink-0 ${METAL_DOT[metal]}`} />
           <span>{metalLabel}</span>
         </div>
+        {purity !== "—" && (
+          <p className="text-[12px] text-[var(--muted-foreground-subtle)] mt-0.5 pl-[14px]">{purity}</p>
+        )}
       </td>
 
       {/* 4. Weight */}
       <td className="py-2.5 px-3 align-middle text-[13.5px] font-normal text-[var(--foreground)] whitespace-nowrap">
-        {Number(item.weightGrams).toFixed(2)}g
+        <p className="tabular-nums">{weight.gross}</p>
+        {weight.net && (
+          <p className="text-[12px] text-[var(--muted-foreground-subtle)] mt-0.5 tabular-nums">{weight.net}</p>
+        )}
       </td>
 
       {/* 5. Acquired */}
@@ -561,6 +587,7 @@ export default function InventoryPage() {
       item.description.toLowerCase().includes(q) ||
       item.itemType.toLowerCase().includes(q) ||
       item.metalType.toLowerCase().includes(q) ||
+      itemDisplay(item).metalLabel.toLowerCase().includes(q) ||
       item.id.toLowerCase().includes(q) ||
       displayId.includes(q) ||
       (item.buyerName && item.buyerName.toLowerCase().includes(q)) ||

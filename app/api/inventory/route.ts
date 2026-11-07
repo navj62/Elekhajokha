@@ -5,6 +5,19 @@ import { Prisma } from "@prisma/client";
 import { uploadImage } from "@/lib/upload";
 import { recordCashEntries, errorTag } from "@/lib/cashBook";
 
+// Metal filter by what the item actually holds — its net weights — not by
+// metalType, which names only one metal: a mixed gold + silver item from a
+// pledge sale is listed under both Gold and Silver. "other" = holds neither.
+function metalFilter(metal: string): Prisma.InventoryItemWhereInput {
+  switch (metal.toLowerCase()) {
+    case "all":    return {};
+    case "gold":   return { netWeightOfGold:   { gt: 0 } };
+    case "silver": return { netWeightOfSilver: { gt: 0 } };
+    case "other":  return { netWeightOfGold: 0, netWeightOfSilver: 0 };
+    default:       return { metalType: { equals: metal, mode: "insensitive" } };
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { userId: clerkUserId } = await auth();
@@ -30,9 +43,7 @@ export async function GET(req: NextRequest) {
       ...(sourceType !== "all"
         ? { sourceType: sourceType === "pledge" ? "PLEDGE_SALE" : "DIRECT_PURCHASE" }
         : {}),
-      ...(metalType !== "all"
-        ? { metalType: { equals: metalType, mode: "insensitive" } }
-        : {}),
+      ...metalFilter(metalType),
     };
 
     const orderBy: Prisma.InventoryItemOrderByWithRelationInput =

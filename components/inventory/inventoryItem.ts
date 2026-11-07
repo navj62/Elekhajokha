@@ -6,6 +6,14 @@
 import { marketValue } from "@/lib/calculateLTV";
 import { fmtINR } from "@/components/ui/DetailParts";
 
+// Metal, purity and weight display rules live in lib/inventoryDisplay.ts
+// (React-free, so the server PDF uses the same code); re-exported here for
+// the inventory pages.
+export {
+  inventoryMetal, formatPurity, weightText, METAL_LABEL,
+  type MetalDisplay,
+} from "@/lib/inventoryDisplay";
+
 /* -------------------------------------------------------------------------- */
 /* Types                                                                       */
 /* -------------------------------------------------------------------------- */

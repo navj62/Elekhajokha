@@ -4,6 +4,7 @@ import { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { CheckCircle, Download, ArrowLeft, Package } from "lucide-react";
 import SubscriptionGuard from "@/components/SubscriptionGuard";
+import { inventoryMetal, formatPurity, purchaseRateRows, METAL_LABEL } from "@/lib/inventoryDisplay";
 
 interface ReceiptItem {
   id: string;
@@ -22,6 +23,7 @@ interface ReceiptItem {
   notes: string | null;
   photoUrl: string | null;
   sourceType: string;
+  saleRates: { gold: string | null; silver: string | null } | null;
 }
 
 interface Shop {
@@ -112,12 +114,14 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
   }
 
   const acquiredCost = Number(item.acquiredCost);
-  const metalLabel   = item.purity
-    ? `${item.metalType} (${Number(item.purity).toFixed(2)}%)`
-    : item.metalType;
+  const metal        = inventoryMetal(item);
+  const purityText   = formatPurity({ metal, purity: item.purity, sourceType: item.sourceType });
+  const metalLabel   = purityText !== "—" ? `${METAL_LABEL[metal]} · ${purityText}` : METAL_LABEL[metal];
+  const rates        = purchaseRateRows({
+    metal, metalType: item.metalType, acquiredMetalRate: item.acquiredMetalRate, saleRates: item.saleRates,
+  });
   const netGold   = Number(item.netWeightOfGold);
   const netSilver = Number(item.netWeightOfSilver);
-  const netWeight = netGold > 0 ? netGold : netSilver > 0 ? netSilver : null;
 
   return (
     <SubscriptionGuard>
@@ -210,18 +214,12 @@ export default function ReceiptPage({ params }: { params: Promise<{ id: string }
               <LabelValue label="Item Type"    value={item.itemType} />
               <LabelValue label="Metal"        value={metalLabel} />
               <LabelValue label="Gross Weight" value={`${Number(item.grossWeight).toFixed(3)} g`} />
-              {netWeight !== null && (
-                <LabelValue
-                  label={`Net ${item.metalType} Weight`}
-                  value={`${netWeight.toFixed(3)} g`}
-                />
-              )}
-              {item.acquiredMetalRate != null && (
-                <LabelValue
-                  label={`${item.metalType.charAt(0).toUpperCase() + item.metalType.slice(1).toLowerCase()} rate at purchase`}
-                  value={`₹${Number(item.acquiredMetalRate).toLocaleString("en-IN")}/g`}
-                />
-              )}
+              {/* One row per metal held — a mixed pledge item holds both. */}
+              {netGold > 0 && <LabelValue label="Net Gold Weight" value={`${netGold.toFixed(3)} g`} />}
+              {netSilver > 0 && <LabelValue label="Net Silver Weight" value={`${netSilver.toFixed(3)} g`} />}
+              {rates.map((r) => (
+                <LabelValue key={r.label} label={r.label} value={`₹${r.ratePerGram.toLocaleString("en-IN")}/g`} />
+              ))}
               <LabelValue label="Date Acquired" value={fmtDate(item.acquiredAt)} />
             </div>
 

@@ -1,4 +1,5 @@
 // lib/generatePDF.ts
+import { inventoryMetal, formatPurity, purchaseRateRows, METAL_LABEL } from "@/lib/inventoryDisplay";
 import path from "path";
 import PDFDocument from "pdfkit";
 
@@ -243,6 +244,9 @@ type PurchaseReceiptItem = {
   acquiredCost: string;
   acquiredAt: string;
   acquiredMetalRate: string | null;
+  sourceType: string;
+  /** Both metals' prices from the pledge's SOLD audit row, when pledge-sourced. */
+  saleRates: { gold: string | null; silver: string | null } | null;
   sellerName: string | null;
   sellerIdNum: string | null;
   notes: string | null;
@@ -345,23 +349,24 @@ export function generateInventoryPurchasePDF(
     sectionHeader("Item Details");
     fieldRow("Description",  item.description);
     fieldRow("Item Type",    item.itemType);
-    fieldRow("Metal Type",   item.metalType);
-    fieldRow("Purity",       item.purity != null ? `${Number(item.purity).toFixed(2)}%` : "—");
+    const metal = inventoryMetal(item);
+    fieldRow("Metal Type",   METAL_LABEL[metal]);
+    fieldRow("Purity",       formatPurity({ metal, purity: item.purity, sourceType: item.sourceType }));
     fieldRow("Gross Weight", `${Number(item.grossWeight).toFixed(3)} g`);
     const netGold   = Number(item.netWeightOfGold);
     const netSilver = Number(item.netWeightOfSilver);
-    const netWeight = netGold > 0 ? netGold : netSilver > 0 ? netSilver : null;
-    if (netWeight !== null) {
-      const metalName = item.metalType.charAt(0).toUpperCase() + item.metalType.slice(1).toLowerCase();
-      fieldRow(`Net ${metalName} Weight`, `${netWeight.toFixed(3)} g`);
-    }
-    if (item.acquiredMetalRate != null) {
-      const metal = item.metalType.charAt(0).toUpperCase() +
-        item.metalType.slice(1).toLowerCase();
-      fieldRow(
-        `${metal} rate at purchase`,
-        `Rs.${Number(item.acquiredMetalRate).toLocaleString("en-IN")}/g`,
-        true,
+    // One row per metal held — a mixed pledge item holds both.
+    if (netGold > 0)   fieldRow("Net Gold Weight",   `${netGold.toFixed(3)} g`);
+    if (netSilver > 0) fieldRow("Net Silver Weight", `${netSilver.toFixed(3)} g`);
+    const rates = purchaseRateRows({
+      metal,
+      metalType:         item.metalType,
+      acquiredMetalRate: item.acquiredMetalRate,
+      saleRates:         item.saleRates,
+    });
+    if (rates.length > 0) {
+      rates.forEach((r, i) =>
+        fieldRow(r.label, `Rs.${r.ratePerGram.toLocaleString("en-IN")}/g`, i === rates.length - 1),
       );
     } else {
       doc.moveTo(40, y).lineTo(40 + pageW, y).strokeColor("#e5e7eb").lineWidth(0.5).stroke();

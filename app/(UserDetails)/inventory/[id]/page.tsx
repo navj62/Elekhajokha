@@ -18,7 +18,7 @@ import {
   fmtINR, fmtDate, fmtGrams, metalKind,
 } from "@/components/ui/DetailParts";
 import {
-  fetchItem, valueToday, fmtChange, fmtSignedINR,
+  fetchItem, valueToday, inventoryMetal, formatPurity, fmtChange, fmtSignedINR,
   type Item, type MarketRates, type FetchResult,
 } from "@/components/inventory/inventoryItem";
 
@@ -225,7 +225,7 @@ export default function InventoryItemPage() {
               <h1 className="text-[20px] lg:text-[26px] leading-tight font-bold text-foreground break-words">{item.description}</h1>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 <StatusBadge tone={isInStock ? "active" : "sold"}>{isInStock ? "In stock" : "Sold"}</StatusBadge>
-                <MetalBadge metal={item.metalType} />
+                <MetalBadge kind={inventoryMetal(item)} />
                 <span className="inline-flex text-[11px] font-bold tracking-wide px-2 py-0.5 rounded-full border border-border text-muted-foreground">
                   {fromPledge ? "From pledge" : "Direct purchase"}
                 </span>
@@ -272,7 +272,7 @@ export default function InventoryItemPage() {
               </div>
               <div className="min-w-0">
                 <dt className="text-[12px] opacity-80">Purity</dt>
-                <dd className="text-[16px] font-bold tabular-nums">{item.purity !== null ? `${item.purity}%` : "—"}</dd>
+                <dd className="text-[16px] font-bold tabular-nums">{formatPurity({ metal: inventoryMetal(item), purity: item.purity, sourceType: item.sourceType })}</dd>
               </div>
             </dl>
           </section>

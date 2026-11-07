@@ -14,7 +14,7 @@ import {
   fmtINR, fmtDate, fmtGrams,
 } from "@/components/ui/DetailParts";
 import {
-  fetchItem, valueToday, fmtChange, localISO,
+  fetchItem, valueToday, inventoryMetal, formatPurity, fmtChange, localISO,
   type Item, type MarketRates, type FetchResult,
 } from "@/components/inventory/inventoryItem";
 
@@ -316,12 +316,12 @@ export default function SellInventoryItemPage() {
               <div className="min-w-0">
                 <p className="text-[16px] font-bold text-foreground break-words">{item.description}</p>
                 <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[13px] text-muted-foreground">
-                  <MetalBadge metal={item.metalType} /> {item.itemType}
+                  <MetalBadge kind={inventoryMetal(item)} /> {item.itemType}
                 </p>
               </div>
             </div>
             <dl className="px-5 lg:px-6 pt-2 pb-4">
-              <Row label="Purity" value={item.purity !== null ? `${item.purity}%` : "—"} />
+              <Row label="Purity" value={formatPurity({ metal: inventoryMetal(item), purity: item.purity, sourceType: item.sourceType })} />
               <Row label="Gross weight" value={item.grossWeight !== null ? fmtGrams(item.grossWeight) : "—"} />
               <Row
                 label="Net weight"
