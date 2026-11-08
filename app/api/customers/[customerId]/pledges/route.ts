@@ -209,6 +209,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
     const loan = toDecimal(loanAmount);
     const pledgeDateObj = new Date(pledgeDate);
     const pledge = await prisma.$transaction(async (tx) => {
+      const itemsCreatedAt = Date.now();
       const created = await tx.pledge.create({
         data: {
          customerId,
@@ -223,7 +224,12 @@ export async function POST(req: NextRequest, context: RouteContext) {
           netWeightOfGold:    new Prisma.Decimal(netWeightOfGold),
           netWeightOfSilver:  new Prisma.Decimal(netWeightOfSilver),
           items: {
-            create: rawItems.map(item => ({
+            // createdAt 1 ms apart in entry order: rows of one nested create
+            // can otherwise share a timestamp, and "first item" (which
+            // supplies itemType/metalType/rate on sale to inventory) is read
+            // as the earliest createdAt.
+            create: rawItems.map((item, i) => ({
+              createdAt:        new Date(itemsCreatedAt + i),
               itemType:         String(item.itemType).trim(),
               metalType:        item.metalType as MetalType,
               itemName:         item.itemName  || null,

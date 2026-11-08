@@ -63,15 +63,15 @@ const as = (u: { clerkUserId: string }) => { session.clerkUserId = u.clerkUserId
 const entriesOf = (userId: string) =>
   prisma.cashEntry.findMany({ where: { userId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
 
-async function createPledge(t: { customerId: string }, loanAmount: string, pledgeDate: string) {
+const ONE_RING = [{ itemType: "Ring", metalType: "GOLD", grossWeight: "10", netWeight: "9", purity: "91.6" }];
+
+async function createPledge(t: { customerId: string }, loanAmount: string, pledgeDate: string, items: object[] = ONE_RING) {
   const fd = new FormData();
   fd.set("loanAmount", loanAmount);
   fd.set("interestRate", "24");
   fd.set("compoundingDuration", "YEARLY");
   fd.set("pledgeDate", pledgeDate);
-  fd.set("items", JSON.stringify([
-    { itemType: "Ring", metalType: "GOLD", grossWeight: "10", netWeight: "9", purity: "91.6" },
-  ]));
+  fd.set("items", JSON.stringify(items));
   const res = await pledges.POST(
     new NextRequest(`http://test/api/customers/${t.customerId}/pledges`, { method: "POST", body: fd }),
     ctx({ customerId: t.customerId }),
@@ -249,6 +249,35 @@ describe.skipIf(!RUN)("cash book (dev DB)", { timeout: 120_000 }, () => {
     const toZero = await cbEntry.PATCH(json("/x", "PATCH", { date: today, amount: "0" }), ctx({ id: ePaid.id }));
     expect(toZero.status).toBe(200);
     expect((await prisma.cashEntry.findUniqueOrThrow({ where: { id: ePaid.id } })).amount.toFixed(2)).toBe("0.00");
+  });
+
+  it("multi-item pledge sold to shop → one inventory item naming every item; mixed purity → null", async () => {
+    const t = await tenant("soldmulti");
+    as(t);
+    const id = await createPledge(t, "10000", addDays(today, -30), [
+      { itemType: "Ring",   itemName: "Gold ring",  metalType: "GOLD",   grossWeight: "10", netWeight: "9",  purity: "91.6" },
+      { itemType: "Anklet", metalType: "SILVER", grossWeight: "50", netWeight: "48", purity: "80" },
+    ]);
+    const res = await sell.POST(json(`/x`, "POST", { buyPrice: 0, saleDate: new Date().toISOString() }), ctx({ customerId: t.customerId, pledgeId: id }));
+    expect(res.status).toBe(200);
+
+    const p = await prisma.pledge.findUniqueOrThrow({ where: { id }, include: { inventoryItem: true } });
+    const inv = p.inventoryItem!;
+    expect(inv.description).toBe("Gold ring + Anklet (2 items)");
+    expect(inv.itemType).toBe("Ring");
+    expect(inv.metalType).toBe("GOLD");
+    expect(inv.purity).toBeNull();
+    expect(inv.grossWeight.toFixed(3)).toBe("60.000");
+    expect(inv.netWeightOfGold.toFixed(3)).toBe(p.netWeightOfGold.toFixed(3));
+    expect(inv.netWeightOfSilver.toFixed(3)).toBe(p.netWeightOfSilver.toFixed(3));
+    expect(Number(inv.netWeightOfSilver)).toBeGreaterThan(0);
+    expect(inv.amountOwedAt!.toFixed(2)).toBe(p.receivableAmount!.toFixed(2));
+    expect(inv.acquiredCost.toFixed(2)).toBe("0.00");
+    expect(await prisma.pledgeAudit.count({ where: { pledgeId: id, action: "SOLD" } })).toBe(1);
+    const sold = (await entriesOf(t.id)).filter((e) => e.kind === "PLEDGE_SOLD");
+    expect(sold).toHaveLength(1);
+    expect(sold[0].amount.toFixed(2)).toBe("0.00");
+    expect(sold[0].inventoryItemId).toBe(inv.id);
   });
 
   it("direct purchase → INVENTORY_BOUGHT OUT; sale → INVENTORY_SOLD IN once; failed sale rolls back", async () => {

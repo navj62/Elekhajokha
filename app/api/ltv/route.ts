@@ -4,6 +4,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 import { calculateLTV } from "@/lib/calculateLTV";
+import { OPEN_PLEDGE_STATUSES } from "@/lib/pledgeConstants";
+import { errorTag } from "@/lib/cashBook";
+import { describeItems } from "@/lib/pledgeSale";
 
 export const dynamic = "force-dynamic";
 
@@ -45,15 +48,27 @@ export async function GET(req: NextRequest) {
     /* ---- Fetch ALL pledges + filtered pledges in parallel -------- */
     // Two queries: allPledges for summary, filteredPledges for the table
     // This ensures summary always reflects the full portfolio
+    // Every open pledge — ACTIVE and OVERDUE — so the summary, tier counts
+    // and the table (and bulk forfeit from it) cover the whole open book.
     const baseWhere = {
-      status:   "ACTIVE",
+      status:   { in: [...OPEN_PLEDGE_STATUSES] },
       customer: { userId: user.id },
-    } as const;
+    };
+
+    // Items only for the row's description ("Ring + Chain (2 items)"), in the
+    // same order the sale core uses, so the list names what a forfeit moves.
+    const rowInclude = {
+      customer: { select: { id: true, name: true } },
+      items: {
+        select:  { itemName: true, itemType: true },
+        orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }],
+      },
+    };
 
     const [allPledges, filteredPledges] = await Promise.all([
       prisma.pledge.findMany({
         where:   baseWhere,
-        include: { customer: { select: { id: true, name: true } } },
+        include: rowInclude,
         orderBy: { pledgeDate: "desc" },
       }),
       search
@@ -65,7 +80,7 @@ export async function GET(req: NextRequest) {
                 name:   { contains: search, mode: "insensitive" },
               },
             },
-            include: { customer: { select: { id: true, name: true } } },
+            include: rowInclude,
             orderBy: { pledgeDate: "desc" },
           })
         : null, // null means no search — reuse allPledges
@@ -105,6 +120,7 @@ export async function GET(req: NextRequest) {
           customerId:       pledge.customer.id,
           customerName:     pledge.customer.name,
           pledgeDate:       pledge.pledgeDate,
+          itemSummary:      describeItems(pledge.items),
           netWeightOfGold,
           netWeightOfSilver,
           principal,
@@ -192,7 +208,7 @@ export async function GET(req: NextRequest) {
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (err) {
-    console.error("GET /api/ltv failed:", err);
+    console.error("GET /api/ltv failed:", errorTag(err));
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

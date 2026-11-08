@@ -42,10 +42,16 @@ export interface StickyActionsProps {
    * "Unsaved changes". Layout only; the caller styles the text.
    */
   leading?: React.ReactNode;
+  /**
+   * Keep the bar pinned at lg:+ too — sticky to the bottom of the scrolling
+   * <main> (so it never covers the sidebar) instead of sitting at the end of
+   * the content. For long lists where the action belongs to a selection.
+   */
+  stickyOnDesktop?: boolean;
   className?: string;
 }
 
-export function StickyActions({ children, leading, className }: StickyActionsProps) {
+export function StickyActions({ children, leading, stickyOnDesktop = false, className }: StickyActionsProps) {
   const barRef = React.useRef<HTMLDivElement>(null);
   const [barHeight, setBarHeight] = React.useState(0);
 
@@ -73,8 +79,11 @@ export function StickyActions({ children, leading, className }: StickyActionsPro
           "flex items-center justify-end gap-3",
           "border-t border-border bg-card px-5 py-3",
           "shadow-[0_-4px_24px_rgb(0_0_0/0.05)]",
-          /* Back into normal flow on desktop. */
-          "lg:static lg:z-auto lg:inset-x-auto lg:mt-2 lg:bg-transparent lg:px-0 lg:py-5 lg:shadow-none",
+          stickyOnDesktop
+            ? /* Pinned to the bottom of <main>'s scrollport on desktop. */
+              "lg:sticky lg:bottom-0 lg:inset-x-auto lg:mt-4 lg:rounded-t-[16px] lg:border-x lg:px-6"
+            : /* Back into normal flow on desktop. */
+              "lg:static lg:z-auto lg:inset-x-auto lg:mt-2 lg:bg-transparent lg:px-0 lg:py-5 lg:shadow-none",
           className,
         )}
       >
