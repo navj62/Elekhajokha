@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:db": "CASHBOOK_DB_TESTS=1 vitest run tests/cashBook.db.test.ts"
+    "test:db": "CASHBOOK_DB_TESTS=1 vitest run tests/cashBook.db.test.ts tests/pledgeForfeit.db.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed-defaults.ts"

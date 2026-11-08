@@ -1,24 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2, RefreshCw, AlertTriangle,
   ShieldCheck, Eye, Flame, Waves,
-  ArrowUpDown, Search, X, Filter,
+  ArrowUpDown, Search, X, Check,
 } from "lucide-react";
+import StickyActions from "@/components/ui/StickyActions";
+import Toast, { showToast } from "@/components/ui/Toast";
+import { btnPrimary, btnSecondary } from "@/components/ui/DetailParts";
+import ForfeitReviewSheet from "@/components/ltv/ForfeitReviewSheet";
+import {
+  MAX_FORFEIT_BATCH, TIER_KEYS, selectAllShown, tierKey, type RiskTierKey,
+} from "@/lib/forfeitReview";
+import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
 type RiskTier = "SAFE" | "WATCH" | "AT_RISK" | "UNDERWATER" | null;
-type FilterTab = "ALL" | RiskTier;
 
 interface PledgeRow {
   pledgeId: string;
   customerId: string;
   customerName: string;
   pledgeDate: string;
+  itemSummary: string;
   netWeightOfGold: number;
   netWeightOfSilver: number;
   principal: number;
@@ -68,6 +76,38 @@ const TIER_CFG = {
 } as const;
 
 const TIERS = ["SAFE", "WATCH", "AT_RISK", "UNDERWATER"] as const;
+
+/* Filter chips — risk tokens, so they follow the theme. UNKNOWN = no LTV. */
+const CHIP_CFG: Record<RiskTierKey, { label: string; dot: string; on: string }> = {
+  SAFE:       { label: "Safe",       dot: "bg-risk-low",      on: "border-risk-low bg-risk-low-surface text-risk-low-foreground" },
+  WATCH:      { label: "Watch",      dot: "bg-risk-medium",   on: "border-risk-medium bg-risk-medium-surface text-risk-medium-foreground" },
+  AT_RISK:    { label: "At Risk",    dot: "bg-risk-high",     on: "border-risk-high bg-risk-high-surface text-risk-high-foreground" },
+  UNDERWATER: { label: "Underwater", dot: "bg-risk-critical", on: "border-risk-critical bg-risk-critical-surface text-risk-critical-foreground" },
+  UNKNOWN:    { label: "Unknown",    dot: "bg-muted-foreground-subtle", on: "border-muted-foreground bg-muted text-foreground" },
+};
+
+/** Native checkbox with a 44px hit area that never triggers the row's click. */
+function RowCheckbox({ checked, indeterminate = false, onChange, label }: {
+  checked: boolean; indeterminate?: boolean; onChange: () => void; label: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (ref.current) ref.current.indeterminate = indeterminate; }, [indeterminate]);
+  return (
+    <label
+      className="-m-2.5 inline-flex size-11 shrink-0 cursor-pointer items-center justify-center"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <input
+        ref={ref}
+        type="checkbox"
+        checked={checked}
+        onChange={onChange}
+        aria-label={label}
+        className="size-[18px] cursor-pointer accent-primary"
+      />
+    </label>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                             */
@@ -152,8 +192,12 @@ export default function LtvPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [sortDesc, setSortDesc] = useState(true);
-  const [filterTier, setFilterTier] = useState<FilterTab>("ALL");
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+  // Multi-select tier chips; none selected = every tier. Opens on Underwater.
+  const [tiers, setTiers] = useState<Set<RiskTierKey>>(() => new Set<RiskTierKey>(["UNDERWATER"]));
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [selectNote, setSelectNote] = useState<string | null>(null);
+  const [review, setReview] = useState<{ key: number; ids: string[] } | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -183,8 +227,8 @@ export default function LtvPage() {
     let rows = data.pledges.filter(p =>
       p.customerName.toLowerCase().includes(search.toLowerCase())
     );
-    if (filterTier !== "ALL") {
-      rows = rows.filter(p => p.riskTier === filterTier);
+    if (tiers.size > 0) {
+      rows = rows.filter(p => tiers.has(tierKey(p.riskTier)));
     }
     rows.sort((a, b) => {
       if (a.ltv === null && b.ltv === null) return 0;
@@ -193,7 +237,72 @@ export default function LtvPage() {
       return sortDesc ? b.ltv - a.ltv : a.ltv - b.ltv;
     });
     return rows;
-  }, [data, search, sortDesc, filterTier]);
+  }, [data, search, sortDesc, tiers]);
+
+  // ── Selection (only ids still on the list count) ──
+  const rowById = useMemo(() => new Map((data?.pledges ?? []).map(p => [p.pledgeId, p])), [data]);
+  const selectedRows = useMemo(
+    () => [...selected].map(id => rowById.get(id)).filter((r): r is PledgeRow => !!r),
+    [selected, rowById],
+  );
+  const selectedOwed = selectedRows.reduce((sum, r) => sum + Math.round(r.amountOwed * 100), 0) / 100;
+  const shownSelected = filtered.filter(r => selected.has(r.pledgeId)).length;
+  const allShownSelected = filtered.length > 0 && shownSelected === Math.min(filtered.length, MAX_FORFEIT_BATCH);
+
+  const toggleTier = (t: RiskTierKey) => setTiers(prev => {
+    const next = new Set(prev);
+    if (next.has(t)) next.delete(t); else next.add(t);
+    return next;
+  });
+
+  const toggleRow = (id: string) => {
+    setSelectNote(null);
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else if (next.size >= MAX_FORFEIT_BATCH) {
+        setSelectNote(`At most ${MAX_FORFEIT_BATCH} pledges per forfeit.`);
+        return prev;
+      } else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllShown = () => {
+    if (shownSelected > 0) {
+      setSelectNote(null);
+      setSelected(new Set());
+      return;
+    }
+    const { ids, capped } = selectAllShown(filtered);
+    setSelected(new Set(ids));
+    setSelectNote(capped ? `First ${MAX_FORFEIT_BATCH} of ${filtered.length} selected — the most a forfeit can take.` : null);
+  };
+
+  const clearSelection = () => { setSelected(new Set()); setSelectNote(null); };
+
+  const openReview = () => {
+    setReview({ key: Date.now(), ids: selectedRows.map(r => r.pledgeId) });
+    setReviewOpen(true);
+  };
+
+  const onForfeited = (count: number) => {
+    setReviewOpen(false);
+    clearSelection();
+    showToast(`${count} ${count === 1 ? "pledge" : "pledges"} moved to inventory`, {
+      href: "/inventory?sourceType=PLEDGE_SALE", label: "View in inventory →",
+    });
+    load(true);
+  };
+
+  const listInfo = useMemo(
+    () => new Map((data?.pledges ?? []).map(p => [p.pledgeId, { customerName: p.customerName, pledgeDate: p.pledgeDate }])),
+    [data],
+  );
+  const tierCount = (t: RiskTierKey) => {
+    const c = data?.summary.tierCounts;
+    return (t === "UNKNOWN" ? c?.NO_PRICE : c?.[t]) ?? 0;
+  };
 
   // ── Derived ──
   const s = data?.summary;
@@ -422,66 +531,131 @@ export default function LtvPage() {
       {/* ══════════════════════════════════════════════════════════════ */}
       <div className="bg-white border border-[#ECEAE4] rounded-[16px] overflow-hidden mb-6">
 
-        {/* Table Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[#F4F3EE]">
-          <h3 className="text-[15px] font-semibold text-[#2C2C2C]">Portfolio Details</h3>
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9E9E] pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search by name"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="pl-9 pr-8 py-2 text-[12px] bg-[#F5F4EF] border border-[#ECEAE4] rounded-[10px] w-[200px] focus:outline-none focus:ring-2 focus:ring-[#C5C7B8] text-[#2C2C2C] placeholder-[#9E9E9E]"
-              />
-              {search && (
-                <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#9E9E9E] hover:text-[#2C2C2C]">
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-            <div className="relative">
-              <button 
-                onClick={() => setDropdownOpen(v => !v)}
-                className={`flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold transition-colors rounded-[8px] ${filterTier !== "ALL" || dropdownOpen ? "bg-[#F0EFDF] text-[#555B3F]" : "text-[#6F6F6F] hover:text-[#2C2C2C]"}`}
-              >
-                <Filter size={13} /> {filterTier === "ALL" ? "Filter" : filterTier === null ? "No Price" : TIER_CFG[filterTier]?.label}
-              </button>
-              
-              {dropdownOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setDropdownOpen(false)} />
-                  <div className="absolute right-0 top-full mt-2 w-44 bg-white border border-[#ECEAE4] rounded-[12px] shadow-lg z-50 p-1.5">
-                    <button 
-                      onClick={() => { setFilterTier("ALL"); setDropdownOpen(false); }}
-                      className={`w-full text-left px-3 py-2 rounded-[8px] text-[12px] font-medium transition-colors ${filterTier === "ALL" ? "bg-[#F0EFDF] text-[#555B3F]" : "text-[#6F6F6F] hover:bg-[#F5F4EF]"}`}
-                    >
-                      All Records
-                    </button>
-                    <div className="h-px bg-[#F4F3EE] my-1 mx-2" />
-                    {TIERS.map(t => (
-                      <button 
-                        key={t}
-                        onClick={() => { setFilterTier(t); setDropdownOpen(false); }}
-                        className={`w-full flex items-center gap-2 px-3 py-2 rounded-[8px] text-[12px] font-medium transition-colors ${filterTier === t ? "bg-[#F0EFDF] text-[#555B3F]" : "text-[#6F6F6F] hover:bg-[#F5F4EF]"}`}
-                      >
-                        <div className={`w-2 h-2 rounded-full ${TIER_CFG[t].dot}`} />
-                        {TIER_CFG[t].label}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+        {/* Table Header — search, count, tier chips */}
+        <div className="flex flex-col gap-3 px-4 py-4 border-b border-[#F4F3EE] lg:px-6 lg:py-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-[15px] font-semibold text-[#2C2C2C]">Portfolio Details</h3>
+            <span className="text-[12px] text-muted-foreground-subtle">
+              Showing <b className="tabular-nums text-foreground">{filtered.length}</b> of{" "}
+              <span className="tabular-nums">{(data?.summary.totalPledges ?? 0).toLocaleString("en-IN")}</span> open pledges
+            </span>
           </div>
+          <div className="relative w-full lg:w-[300px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#9E9E9E] pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search by name"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="h-11 lg:h-9 pl-9 pr-8 text-[13px] lg:text-[12px] bg-[#F5F4EF] border border-[#ECEAE4] rounded-[10px] w-full focus:outline-none focus:ring-2 focus:ring-[#C5C7B8] text-[#2C2C2C] placeholder-[#9E9E9E]"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} aria-label="Clear search" className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex size-9 items-center justify-center text-[#9E9E9E] hover:text-[#2C2C2C]">
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          {/* Chips scroll sideways on mobile, wrap on desktop. */}
+          <div role="group" aria-label="Filter by risk" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0">
+            {TIER_KEYS.map(t => {
+              const on = tiers.has(t);
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleTier(t)}
+                  className={cn(
+                    "inline-flex h-11 lg:h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 text-[13px] font-semibold transition-colors",
+                    on ? cn("border-[1.5px]", CHIP_CFG[t].on) : "border-border bg-card text-muted-foreground hover:bg-accent",
+                  )}
+                >
+                  {on ? <Check size={13} aria-hidden /> : <span className={cn("size-2 rounded-full", CHIP_CFG[t].dot)} aria-hidden />}
+                  {CHIP_CFG[t].label}
+                  <span className={cn("tabular-nums font-bold", on ? "text-inherit" : "text-foreground")}>{tierCount(t)}</span>
+                </button>
+              );
+            })}
+          </div>
+          {selectNote && (
+            <p role="status" className="text-[12px] font-semibold text-risk-high-foreground">{selectNote}</p>
+          )}
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
+        {/* Mobile — cards */}
+        <div className="lg:hidden">
+          {filtered.length > 0 && (
+            <div className="flex items-center justify-between px-4 pt-3 pb-1">
+              <span className="flex items-center gap-2.5 pl-2.5">
+                <RowCheckbox
+                  checked={allShownSelected}
+                  indeterminate={shownSelected > 0 && !allShownSelected}
+                  onChange={toggleAllShown}
+                  label="Select all shown"
+                />
+                <span className="text-[13px] font-semibold text-foreground">Select all shown</span>
+              </span>
+              <span className="text-[11.5px] text-muted-foreground-subtle tabular-nums">{filtered.length} shown</span>
+            </div>
+          )}
+          {filtered.length === 0 ? (
+            <p className="text-center py-16 text-[13px] text-[#9E9E9E]">
+              {data && data.pledges.length === 0 ? "No active pledges yet." : "No pledges match your search."}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2 px-3 pb-3 pt-1">
+              {filtered.map(row => {
+                const on = selected.has(row.pledgeId);
+                return (
+                  <li
+                    key={row.pledgeId}
+                    onClick={() => router.push(`/customers/${row.customerId}/pledges/${row.pledgeId}`)}
+                    className={cn(
+                      "flex cursor-pointer items-start gap-3 rounded-[14px] border p-3 pl-5 transition-colors",
+                      on ? "border-primary/40 bg-accent" : "border-border bg-card",
+                    )}
+                  >
+                    <RowCheckbox checked={on} onChange={() => toggleRow(row.pledgeId)} label={`Select ${row.customerName}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0 truncate text-[14px] font-semibold text-foreground">{row.customerName}</span>
+                        {row.riskTier ? (
+                          <span className={`inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold ${TIER_CFG[row.riskTier].badge}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${TIER_CFG[row.riskTier].dot}`} />
+                            {TIER_CFG[row.riskTier].label}
+                          </span>
+                        ) : <span className="shrink-0 text-[11px] text-muted-foreground-subtle">No price</span>}
+                      </div>
+                      <p className="mt-0.5 text-[11.5px] text-muted-foreground-subtle">
+                        {new Date(row.pledgeDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+                      </p>
+                      <p className="mt-0.5 truncate text-[12.5px] text-muted-foreground">{row.itemSummary}</p>
+                      <p className="mt-1.5 text-[12.5px] text-muted-foreground tabular-nums">
+                        Owed <b className="text-foreground">{fmt(row.amountOwed)}</b>
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        {/* Desktop — table */}
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-[13px]">
             <thead>
               <tr className="bg-[#3D4230] text-white text-[11px] font-semibold tracking-wider uppercase">
+                <th className="w-12 pl-5 pr-1 py-3">
+                  {filtered.length > 0 && (
+                    <RowCheckbox
+                      checked={allShownSelected}
+                      indeterminate={shownSelected > 0 && !allShownSelected}
+                      onChange={toggleAllShown}
+                      label="Select all shown"
+                    />
+                  )}
+                </th>
                 <th className="text-left px-5 py-3">Customer</th>
                 <th className="text-right px-5 py-3">Gold wt.</th>
                 <th className="text-right px-5 py-3">Silver wt.</th>
@@ -502,7 +676,7 @@ export default function LtvPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-16 text-[13px] text-[#9E9E9E]">
+                  <td colSpan={9} className="text-center py-16 text-[13px] text-[#9E9E9E]">
                     {data && data.pledges.length === 0 ? "No active pledges yet." : "No pledges match your search."}
                   </td>
                 </tr>
@@ -511,8 +685,20 @@ export default function LtvPage() {
                   <tr
                     key={row.pledgeId}
                     onClick={() => router.push(`/customers/${row.customerId}/pledges/${row.pledgeId}`)}
-                    className="border-b border-[#F4F3EE] hover:bg-[#FAFAF8] cursor-pointer transition-colors"
+                    className={cn(
+                      "border-b border-[#F4F3EE] cursor-pointer transition-colors",
+                      selected.has(row.pledgeId) ? "bg-accent" : "hover:bg-[#FAFAF8]",
+                    )}
                   >
+                    {/* Select */}
+                    <td className="w-12 pl-5 pr-1 py-4">
+                      <RowCheckbox
+                        checked={selected.has(row.pledgeId)}
+                        onChange={() => toggleRow(row.pledgeId)}
+                        label={`Select ${row.customerName}`}
+                      />
+                    </td>
+
                     {/* Customer */}
                     <td className="px-5 py-4">
                       <p className="font-semibold text-[#2C2C2C]">{row.customerName}</p>
@@ -602,6 +788,40 @@ export default function LtvPage() {
         </div>
       </div>
 
+      {/* ── BULK FORFEIT ── */}
+      {selectedRows.length > 0 && (
+        <StickyActions
+          stickyOnDesktop
+          leading={
+            <div className="min-w-0 tabular-nums lg:flex lg:items-baseline lg:gap-2">
+              <p className="text-[14px] font-bold text-foreground lg:text-[15px]">{selectedRows.length} selected</p>
+              <p className="text-[12px] text-muted-foreground lg:text-[13px]">
+                <span className="hidden lg:inline">· </span>{fmt(selectedOwed)} owed
+              </p>
+            </div>
+          }
+        >
+          <button type="button" onClick={clearSelection} className={cn(btnSecondary, "hidden lg:inline-flex")}>
+            Clear
+          </button>
+          <button type="button" onClick={openReview} className={btnPrimary}>
+            Review
+          </button>
+        </StickyActions>
+      )}
+
+      {review && (
+        <ForfeitReviewSheet
+          key={review.key}
+          open={reviewOpen}
+          onOpenChange={setReviewOpen}
+          pledgeIds={review.ids}
+          listInfo={listInfo}
+          onDone={onForfeited}
+        />
+      )}
+
+      <Toast />
     </div>
   );
 }

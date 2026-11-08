@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Archive,
   Inbox,
@@ -25,6 +25,7 @@ import {
 import SubscriptionGuard from "@/components/SubscriptionGuard";
 import MetalRateStrip from "@/components/inventory/MetalRateStrip";
 import { inventoryMetal, formatPurity, weightText, METAL_LABEL, type MetalDisplay } from "@/components/inventory/inventoryItem";
+import { sourceFilterFromParam, withSourceParam, type SourceFilter } from "@/lib/inventorySourceParam";
 
 /** List metal dot; a mixed gold + silver item is split half and half. */
 const METAL_DOT: Record<MetalDisplay, string> = {
@@ -493,6 +494,16 @@ function InventoryRow({
 /* ================================================================== */
 
 export default function InventoryPage() {
+  // useSearchParams needs a Suspense boundary on a statically rendered route.
+  return (
+    <Suspense fallback={null}>
+      <InventoryPageInner />
+    </Suspense>
+  );
+}
+
+function InventoryPageInner() {
+  const searchParams = useSearchParams();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [summary, setSummary] = useState<Summary>({
     totalInStock: 0,
@@ -502,7 +513,14 @@ export default function InventoryPage() {
   });
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<"in_stock" | "sold" | "all">("in_stock");
-  const [filterSource, setFilterSource] = useState<"all" | "pledge" | "direct">("all");
+  // The source filter lives in the URL (?sourceType=PLEDGE_SALE|DIRECT_PURCHASE)
+  // so a link can open the list filtered and a refresh keeps it.
+  const [filterSource, setFilterSource] = useState<SourceFilter>(() => sourceFilterFromParam(searchParams.get("sourceType")));
+  const changeSource = (next: SourceFilter) => {
+    setFilterSource(next);
+    // replace, not push: changing a filter shouldn't add a history entry.
+    window.history.replaceState(null, "", window.location.pathname + withSourceParam(window.location.search, next));
+  };
   const [filterMetal, setFilterMetal] = useState<"all" | "gold" | "silver" | "other">("all");
   const [filterType, setFilterType] = useState<string>("all");
   // The item-type catalogue, from GET /api/item-types — the same source the
@@ -751,7 +769,7 @@ export default function InventoryPage() {
             <div className="relative shrink-0">
               <select
                 value={filterSource}
-                onChange={(e) => setFilterSource(e.target.value as typeof filterSource)}
+                onChange={(e) => changeSource(e.target.value as SourceFilter)}
                 className="pl-3.5 pr-8 h-[36px] rounded-full text-[13px] font-medium appearance-none outline-none focus:ring-2 focus:ring-[#565C3F] bg-[#FAFAF7] border border-[#EAE9DF] text-[var(--foreground)] cursor-pointer transition-all hover:bg-[#EAE9DF]/50"
               >
                 <option value="all">All Sources</option>
