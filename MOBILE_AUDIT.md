@@ -1,15 +1,28 @@
 # MOBILE_AUDIT.md
 
-## STATUS (as of 2026-10-30)
+## STATUS (as of 2026-11-10)
 
-- **Last updated:** 2026-10-30
+- **Last updated:** 2026-11-10
+- **Current priority: the core daily flow, fully mobile-ready, before anything else.** The flow is: find customer → add customer → view customer → add pledge → view pledge → release pledge (single and bulk). Every page outside it waits, including `/dashboard` and `/view/[token]`, which were next in the old queue.
 - **Phase 1 (foundation): COMPLETE** — token consolidation, nav shell, Sheet primitive. Commits `8218e29` (refactor(tokens): consolidate two design-token systems into one) + `5296fb0` (feat(nav): mobile bottom nav + FAB, one shell for both breakpoints).
-- **Phase 2 screen redesigns: IN PROGRESS — page 2 of 6 done.**
-  - Page 1 `/customers/[id]/pledges/add` is complete: `c2d99a2` (remove fabricated header values), `2d444f4` (touch-reachable item actions, native date input, 44px targets), `0c3db42` (StickyActions, inline validation, no `alert()`), `046cb73` (tokenised surfaces for dark mode).
-  - Page 2 `/customers/[id]` is complete: `968e581` (remove Active badge, unconditional Aadhaar check, Export Data, View All Transactions; hide Registered on the import day), `2cca40e` (pledges as DataTable cards, delete behind a ⋯ sheet), `6aa216c` (mobile layout, one bottom bar), `8cba24d` (tokenised surfaces, skeleton fits 380px), `f93f6c8` (header wrap fix at md+). Supporting: `cb88526` (`Sheet.Item tone="destructive"`), `2551f5c` + `6ad807f` (Button `destructive` variant meets AA; dark uses the saturated risk-critical red).
-- **Shared primitives now exist in `components/ui/`**, built during page 1 work: `StickyActions.tsx` (bottom action bar — owns z-30, the bottom-nav offset and its own spacer; suppresses the FAB while mounted) and `DataTable.tsx` (real `<table>` at `lg:`, card-per-row below; also exports `StatusBadge`). Build on these rather than hand-rolling.
-- **"Mobile view way off" blocker: RESOLVED.** Phase 2 page work has proceeded on top of the Phase 1 shell.
-- **Up next, in order:** `/customers/[id]/pledges/[pid]/release` → `/dashboard` → `/customers` → `/view/[token]`.
+- **Phase 2 — verified pages (380px, both themes, `/impeccable` review):**
+  - `/customers/[id]/pledges/add`: `c2d99a2` (remove fabricated header values), `2d444f4` (touch-reachable item actions, native date input, 44px targets), `0c3db42` (StickyActions, inline validation, no `alert()`), `046cb73` (tokenised surfaces for dark mode).
+  - `/customers/[id]`: `968e581` (remove Active badge, unconditional Aadhaar check, Export Data, View All Transactions; hide Registered on the import day), `2cca40e` (pledges as DataTable cards, delete behind a ⋯ sheet), `6aa216c` (mobile layout, one bottom bar), `8cba24d` (tokenised surfaces, skeleton fits 380px), `f93f6c8` (header wrap fix at md+). Supporting: `cb88526` (`Sheet.Item tone="destructive"`), `2551f5c` + `6ad807f` (Button `destructive` variant meets AA; dark uses the saturated risk-critical red).
+- **Built mobile-first after 2026-10-30 — built, not formally verified.** These use the shared primitives and have no hard-coded hex, but none has had the 380px both-themes check or an `/impeccable` review:
+  - `/customers/[id]/pledges/[pid]` pledge detail redesign — `5491069` (hero, LTV bar, valuation, activity); primitives moved to `components/ui/DetailParts` in `a30d4f4`. **In the core flow — verified next.**
+  - `/inventory/[id]` item detail + `/inventory/[id]/sell` — `67c1a18`.
+  - `/cash-book` — `57ba086`.
+  - Quick actions customer picker sheet + mobile "+" — `33bb208`.
+  - Also since then: the `/ltv` bulk-forfeit selection, `StickyActions` bar and review Sheet (`4bcdd2c`) — the rest of `/ltv` (table, hand-built modal) is not adapted.
+- **Shared primitives in `components/ui/`:** `StickyActions.tsx` (bottom action bar — owns z-30, the bottom-nav offset and its own spacer; suppresses the FAB while mounted), `DataTable.tsx` (real `<table>` at `lg:`, card-per-row below; also exports `StatusBadge`), `DetailParts` (pledge-detail building blocks, `a30d4f4`). Build on these rather than hand-rolling.
+- **Core-flow queue, in order** (one page at a time: audit → proposal with options → approval → build → 380px light + dark + edge cases → `/impeccable` audit + critique → report):
+  1. Verify `/customers/[id]/pledges/[pid]` (built, unverified — fix only what is broken).
+  2. `/add-customer` — `inputMode` on phone/Aadhaar, sticky submit via StickyActions, hand-built modal → Sheet.
+  3. `/customers` (list) — raw table → DataTable; search easy to reach on mobile.
+  4. `/customers/[id]/pledges/[pid]/release` — **risk-flagged, layout only**; reuse DetailParts.
+  5. `/customers/[id]/release-bulk` — **risk-flagged, layout only**; check the "Release (N)" handoff from `/customers/[id]` at 380px.
+  6. A manual test script for the whole flow on a real phone.
+- **After the core flow (waiting):** `/dashboard`, `/view/[token]`, `/pledges/[pid]/sell`, `/inventory` list + `/inventory/buy`, `/ltv` (rest), `/financial-summary`, `/reports`, `/pledgeList`, `/notifications`, `/tasks`, `/profile`, auth/onboarding/subscription.
 
 ## DEFERRED / KNOWN ISSUES
 
@@ -317,11 +330,11 @@ These screens are tightly coupled to money/interest/LTV correctness (see CLAUDE.
    - Delivered in commits `8218e29` + `5296fb0`: token consolidation (single design system, Olive values under shadcn names), one `navConfig.ts` with `surfaces` tagging, bottom nav + FAB + More sheet, Sheet primitive. See CORRECTIONS above for where the delivered shape diverged from this original framing (nav resolution, Dialog→Sheet narrowing).
    - **Not** delivered as part of Phase 1, still open: the shared table→card primitive.
 
-**Then, by traffic × low-risk — all ⏳ NOT STARTED (Phase 2), blocked pending mobile-view diagnosis (see STATUS above):**
+**Then, by traffic × low-risk (Phase 2).** Superseded on 2026-11-10 by the core-flow queue in STATUS above — the marks below are kept current, the order is not:
 1. ⏳ **`/dashboard`** — first thing every owner sees; mostly read-only (safe), just needs responsive grids + `ResponsiveContainer` charts.
 2. ⏳ **`/customers` (list)** — high traffic, pure presentation, no financial logic — fastest safe win.
-3. ⏳ **`/customers/:id/pledges/add`** — core daily action (create pledge); shell-only restyle, keep weight derivation untouched.
-4. ⏳ **`/customers/:id` (detail)** — hub for per-customer work; already uses shared ui, so it also validates the shared-component approach.
+3. ✅ **`/customers/:id/pledges/add`** — core daily action (create pledge); shell-only restyle, keep weight derivation untouched.
+4. ✅ **`/customers/:id` (detail)** — hub for per-customer work; already uses shared ui, so it also validates the shared-component approach.
 5. ⏳ **`/inventory`** (list) then **`/inventory/buy`** — second module, wide table + big form.
 6. ⏳ **`/pledges/:pid` detail → release → sell → bulk-release** — do as a cluster (shared table/card patterns), **shell-only, logic frozen** (critical writes).
 7. ⏳ **`/ltv`, `/financial-summary`, `/reports`** — analytics/read tables; medium traffic.
