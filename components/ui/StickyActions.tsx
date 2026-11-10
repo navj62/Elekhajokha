@@ -48,10 +48,16 @@ export interface StickyActionsProps {
    * the content. For long lists where the action belongs to a selection.
    */
   stickyOnDesktop?: boolean;
+  /**
+   * Below lg:, cap the actions to this width (px) and centre them, for a page
+   * whose own column is capped (e.g. 640). The bar's background stays
+   * full-bleed. Omitted = actions span the bar, as before. No effect at lg:+.
+   */
+  contentMaxWidth?: number;
   className?: string;
 }
 
-export function StickyActions({ children, leading, stickyOnDesktop = false, className }: StickyActionsProps) {
+export function StickyActions({ children, leading, stickyOnDesktop = false, contentMaxWidth, className }: StickyActionsProps) {
   const barRef = React.useRef<HTMLDivElement>(null);
   const [barHeight, setBarHeight] = React.useState(0);
 
@@ -87,8 +93,20 @@ export function StickyActions({ children, leading, stickyOnDesktop = false, clas
           className,
         )}
       >
-        {leading ? <div className="mr-auto min-w-0">{leading}</div> : null}
-        {children}
+        {contentMaxWidth ? (
+          <div
+            className="mx-auto flex w-full max-w-[var(--sticky-actions-max)] items-center justify-end gap-3 lg:max-w-none"
+            style={{ "--sticky-actions-max": `${contentMaxWidth}px` } as React.CSSProperties}
+          >
+            {leading ? <div className="mr-auto min-w-0">{leading}</div> : null}
+            {children}
+          </div>
+        ) : (
+          <>
+            {leading ? <div className="mr-auto min-w-0">{leading}</div> : null}
+            {children}
+          </>
+        )}
       </div>
     </>
   );

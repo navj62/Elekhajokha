@@ -498,7 +498,7 @@ export default function PledgeDetailMobile(p: PledgeDetailMobileProps) {
 
       {/* ── Release — open pledges only; closed pledges have no bar, as before ── */}
       {p.isOpen && (
-        <StickyActions className="lg:hidden">
+        <StickyActions className="lg:hidden" contentMaxWidth={640}>
           <Link href={p.releaseHref} className={cn(btnPrimary, "flex-1 px-4 tabular-nums")}>
             <Lock size={15} aria-hidden /> Release · {fmtINR(p.hero.amount)}
           </Link>
