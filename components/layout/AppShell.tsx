@@ -133,7 +133,11 @@ function AppShellFrame({ children }: { children: React.ReactNode }) {
           className="flex h-[58px] shrink-0 items-center justify-between px-5 lg:px-8"
           style={{ borderBottom: "1px solid var(--border)" }}
         >
-          <Breadcrumb />
+          {/* Desktop only: on phones each page's own back arrow and title
+              say where you are, and the trail overflowed at 380px. */}
+          <div className="hidden lg:flex">
+            <Breadcrumb />
+          </div>
           <div className="flex-1 flex justify-center text-center" />
           <div className="flex flex-1 items-center justify-end gap-4">
             <Link
