@@ -17,12 +17,12 @@ import { isOpenPledgeStatus, LTV_MAX_5_2 } from "@/lib/pledgeConstants";
 import { cn } from "@/lib/utils";
 import Sheet from "@/components/ui/Sheet";
 import { Input } from "@/components/ui/input";
-import StickyActions from "@/components/ui/StickyActions";
 import DataTable, { StatusBadge, type BadgeTone, type DataTableColumn } from "@/components/ui/DataTable";
 import {
   Card, Eyebrow, MetalBadge, Row, StatTile, btnPrimary, btnSecondary,
   fmtINR, fmtDate, fmtGrams,
 } from "@/components/ui/DetailParts";
+import PledgeDetailMobile, { type MobileEventKind } from "@/components/pledge/PledgeDetailMobile";
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                       */
@@ -43,6 +43,8 @@ interface PledgeItem {
   itemName: string | null;
   quantity: number;
   grossWeight: number;
+  /** Weighed net weight; shown on the mobile item cards only. */
+  netWeight: number | null;
   purity: number;
   netWeightOfMetal: number;
 }
@@ -145,6 +147,7 @@ function normalize(raw: any): LoadedData {
         itemName: i.itemName,
         quantity: i.quantity,
         grossWeight: num(i.grossWeight) ?? 0,
+        netWeight: num(i.netWeight),
         purity: num(i.purity) ?? 0,
         netWeightOfMetal: num(i.netWeightOfMetal) ?? 0,
       })),
@@ -575,7 +578,7 @@ export default function PledgeDetailPage() {
     const staleSince =
       isOpen && pricedAt && now.getTime() - new Date(pricedAt).getTime() > STALE_PRICE_MS ? pricedAt : null;
 
-    return { isOpen, live, closed, atPledge, valueNow, ltvNow, change, monthlyInterest, staleSince, now };
+    return { isOpen, live, closed, atPledge, valueNow, ltvNow, change, monthlyInterest, pricedAt, staleSince, now };
   }, [data, market]);
 
   /* ── Loading ── */
@@ -610,7 +613,7 @@ export default function PledgeDetailPage() {
   }
 
   const { pledge, transactions, pricesAtPledge, customerStats } = data;
-  const { isOpen, live, closed, atPledge, valueNow, ltvNow, change, monthlyInterest, staleSince, now } = view;
+  const { isOpen, live, closed, atPledge, valueNow, ltvNow, change, monthlyInterest, pricedAt, staleSince, now } = view;
   const staleNote = staleSince
     ? `Metal prices last updated ${fmtDate(staleSince)} · values may be out of date`
     : null;
@@ -636,16 +639,19 @@ export default function PledgeDetailPage() {
         : `${live.days.toLocaleString("en-IN")} days`;
 
   /* ── Activity: disbursement, ledger rows, closing event ── */
-  type Event = { key: string; at: string; title: string; amount: number | null; note?: string | null };
+  // `kind` picks the mobile row icon only: money out, money in, or the closing.
+  type Event = { key: string; kind: MobileEventKind; at: string; title: string; amount: number | null; note?: string | null };
   const events: Event[] = [
-    { key: "disbursed", at: pledge.pledgeDate, title: "Loan disbursed", amount: pledge.loanAmount },
+    { key: "disbursed", kind: "out", at: pledge.pledgeDate, title: "Loan disbursed", amount: pledge.loanAmount },
     ...transactions.map((t) => ({
-      key: t.id, at: t.createdAt, title: TXN_LABEL[t.type], amount: t.amount, note: t.note,
+      key: t.id, kind: (t.type === "TOPUP" ? "out" : "in") as MobileEventKind,
+      at: t.createdAt, title: TXN_LABEL[t.type], amount: t.amount, note: t.note,
     })),
   ];
   if (!isOpen && closed?.at) {
     events.push({
       key: "closed",
+      kind: pledge.status === "SOLD" ? "sold" : "released",
       at: closed.at,
       title: closingWord,
       amount: closed.settled,
@@ -684,6 +690,46 @@ export default function PledgeDetailPage() {
   const sellHref = `/customers/${customerId}/pledges/${pledge.id}/sell`;
   const releaseHref = `/customers/${customerId}/pledges/${pledge.id}/release`;
 
+  /* ── Mobile layout inputs — the same figures as desktop, arranged for it ── */
+  const rateRow = (label: string, v: number | null) => ({ label, value: v !== null ? `${fmtINR(v)}/g` : "—" });
+  const safetyRows: { label: string; value: React.ReactNode }[] = [
+    { label: isOpen ? "Market value" : "Market value at closing", value: fmtINR(valueNow) },
+    ...(pledge.netWeightOfGold > 0
+      ? [rateRow("Gold rate", isOpen ? market?.gold?.inrPerGram ?? null : closed?.gold ?? null)] : []),
+    ...(pledge.netWeightOfSilver > 0
+      ? [rateRow("Silver rate", isOpen ? market?.silver?.inrPerGram ?? null : closed?.silver ?? null)] : []),
+    ...(isOpen ? [{ label: "Goes underwater in", value: underwaterLabel }] : []),
+    ...(atPledge
+      ? [
+          { label: "Value at pledge", value: fmtINR(atPledge.marketValue) },
+          {
+            label: "LTV at pledge",
+            value: (
+              <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                {fmtLtv(atPledge.ltv)}
+                {atPledge.riskTier && (
+                  <StatusBadge tone={TIER_TONE[atPledge.riskTier]}>{TIER_LABEL[atPledge.riskTier]}</StatusBadge>
+                )}
+              </span>
+            ),
+          },
+          ...(change
+            ? [{
+                label: "Change since pledge",
+                value: `${fmtSignedINR(change.amount)} (${change.pct >= 0 ? "+" : "−"}${Math.abs(change.pct).toFixed(1)}%)`,
+              }]
+            : []),
+        ]
+      : []),
+  ];
+  const ratesNote = isOpen
+    ? pricedAt
+      ? { text: `Rates from ${fmtDateTime(pricedAt)}${staleSince ? " · may be out of date" : ""}`, warn: !!staleSince }
+      : { text: "No current metal price", warn: false }
+    : closed?.gold != null || closed?.silver != null
+      ? { text: `Rates at closing · ${fmtDate(closed?.at)}`, warn: false }
+      : { text: "Rates not recorded at closing", warn: false };
+
   /* ====================================================================== */
   /* UI                                                                      */
   /* ====================================================================== */
@@ -691,7 +737,60 @@ export default function PledgeDetailPage() {
     <>
       {/* No side padding below lg: the shell's <main> supplies the mobile
           gutter. StickyActions reserves its own space at the bottom. */}
-      <div className="max-w-[1100px] mx-auto lg:px-8 pt-4 lg:pt-8 pb-6 lg:pb-16 text-foreground flex flex-col gap-4 lg:gap-6">
+      <PledgeDetailMobile
+        backHref={backHref}
+        backLabel={backLabel}
+        title={title}
+        pledgedOn={`Pledged ${fmtDate(pledge.pledgeDate)}`}
+        weightParts={weightParts}
+        isOpen={isOpen}
+        sellHref={sellHref}
+        releaseHref={releaseHref}
+        onReceipt={openReceipt}
+        hero={{
+          statusLabel: STATUS_LABEL[pledge.status],
+          ageLabel: isOpen
+            ? `Day ${(daysHeld + 1).toLocaleString("en-IN")} of loan`
+            : `Held ${daysHeld.toLocaleString("en-IN")} day${daysHeld === 1 ? "" : "s"}`,
+          amountLabel: isOpen ? "Total due today" : "Total settled",
+          amount: isOpen ? live?.interest.receivableAmount ?? null : closed?.settled ?? null,
+          principal: pledge.loanAmount,
+          interestLabel: isOpen ? "Interest so far" : "Interest",
+          interest: isOpen ? live?.interest.totalInterest ?? null : closed?.interest ?? null,
+          rateLine: `${pledge.interestRate}% per year · ${fmtINR(monthlyInterest)} interest per month`,
+          compoundingLine: pledge.allowCompounding
+            ? `Compounds ${COMPOUNDING_LABEL[pledge.compoundingDuration]}`
+            : "Simple interest",
+        }}
+        items={pledge.items}
+        itemPhoto={pledge.itemPhoto}
+        photoAlt={`Photo of ${title}`}
+        onPhoto={() => setPhotoOpen(true)}
+        remark={pledge.remark?.trim() || null}
+        events={events.map((e) => ({
+          key: e.key, kind: e.kind, title: e.title, amount: e.amount,
+          sub: `${fmtDate(e.at)}${e.note ? ` · ${e.note}` : ""}`,
+        }))}
+        onAddTransaction={openTxnForm}
+        safety={{
+          ltvLabel: isOpen ? "Loan-to-value" : "Loan-to-value at closing",
+          ltvText: fmtLtv(ltvNow),
+          ltv: ltvNow,
+          tier: tier ? { label: TIER_LABEL[tier], tone: TIER_TONE[tier] } : null,
+          rows: safetyRows,
+          note: ratesNote,
+        }}
+        customer={{
+          href: `/customers/${customerId}`,
+          name: pledge.customer.name,
+          region: pledge.customer.region,
+          openPledgeCount: customerStats.openPledgeCount,
+          mobile: pledge.customer.mobile,
+        }}
+      />
+
+      {/* Desktop layout (lg: and up). Below lg the mobile layout above is shown. */}
+      <div className="max-w-[1100px] mx-auto lg:px-8 pt-4 lg:pt-8 pb-6 lg:pb-16 text-foreground hidden lg:flex flex-col gap-4 lg:gap-6">
 
         {/* ── 1. Header ── */}
         <section className="rounded-[24px] bg-card-alt p-4 lg:p-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -730,7 +829,7 @@ export default function PledgeDetailPage() {
             <button type="button" onClick={openReceipt} className={cn(btnSecondary, "flex-1 md:flex-none")}>
               <ReceiptText size={15} /> Receipt
             </button>
-            {/* Mobile gets these from the sticky bar instead. */}
+            {/* Mobile has its own header and sticky bar (PledgeDetailMobile). */}
             {isOpen && (
               <>
                 <Link href={sellHref} className={cn(btnSecondary, "hidden lg:inline-flex")}>
@@ -995,18 +1094,6 @@ export default function PledgeDetailPage() {
         </Card>
 
       </div>
-
-      {/* Mobile actions — desktop has them in the header. */}
-      {isOpen && (
-        <StickyActions className="lg:hidden">
-          <Link href={sellHref} className={cn(btnSecondary, "flex-1 px-3")}>
-            <Archive size={15} /> Move to Inventory
-          </Link>
-          <Link href={releaseHref} className={cn(btnPrimary, "flex-1 px-3")}>
-            <Unlock size={15} /> Release
-          </Link>
-        </StickyActions>
-      )}
 
       {/* Add transaction */}
       {isOpen && (
