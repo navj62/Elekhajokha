@@ -50,3 +50,6 @@ src/generated/
 prisma/seed-*-migration.ts
 /seed-*-migration.ts
 seed-*-log.json
+
+# Impeccable review snapshots (local critique history)
+/.impeccable/
