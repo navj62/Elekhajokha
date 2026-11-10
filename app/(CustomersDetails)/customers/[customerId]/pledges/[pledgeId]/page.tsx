@@ -847,13 +847,34 @@ export default function PledgeDetailPage() {
           )}
         </Card>
 
-        {/* ── 4. Customer | Activity + photo ──
-            Same 5fr / 7fr template as the hero row so column edges line up.
-            Columns stretch to equal height and the last card in each takes
-            the remainder, so neither column leaves an empty gap whatever the
-            activity length. Two columns from md; one below. */}
+        {/* ── 4. Photo | Customer ──
+            Photo straight after Items, so on a phone it is the next thing
+            below the list it shows. Same 5fr / 7fr template as the hero row
+            so column edges line up; grid cells stretch to equal height.
+            Two columns from md; one below. */}
         <div className="grid gap-4 lg:gap-6 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
-          <div className="flex flex-col gap-4 lg:gap-6 min-w-0">
+          {/* Photo */}
+          <Card title="Photo" className="min-w-0">
+            {pledge.itemPhoto ? (
+              <div className="px-5 lg:px-6 pb-5">
+                <button
+                  type="button"
+                  onClick={() => setPhotoOpen(true)}
+                  aria-label="View full-size photo"
+                  className="block w-full max-w-[360px] overflow-hidden rounded-[16px] bg-muted focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={pledge.itemPhoto} alt={`Photo of ${title}`} className="w-full aspect-[4/3] object-cover" />
+                </button>
+              </div>
+            ) : (
+              <p className="px-5 lg:px-6 pb-5 flex items-center gap-2 text-[13px] text-muted-foreground-subtle">
+                <ImageOff size={15} aria-hidden /> No photo was added.
+              </p>
+            )}
+          </Card>
+
+          <div className="flex flex-col min-w-0">
             {/* Customer */}
             <Card
               className="flex-1"
@@ -886,55 +907,33 @@ export default function PledgeDetailPage() {
               </div>
             </Card>
           </div>
-
-          <div className="flex flex-col gap-4 lg:gap-6 min-w-0">
-            <Card
-              title="Activity"
-              aside={isOpen && (
-                <button type="button" onClick={openTxnForm} className={cn(btnSecondary, "px-4")}>
-                  <Plus size={15} /> Add transaction
-                </button>
-              )}
-            >
-              <ol className="px-5 lg:px-6 pb-5">
-                {events.map((e) => (
-                  <li key={e.key} className="flex items-start justify-between gap-4 py-3 border-t border-border first:border-t-0">
-                    <div className="min-w-0">
-                      <p className="text-[14px] font-semibold text-foreground">{e.title}</p>
-                      <p className="text-[12px] text-muted-foreground-subtle break-words">
-                        {fmtDate(e.at)}{e.note ? ` · ${e.note}` : ""}
-                      </p>
-                    </div>
-                    <span className="text-[14px] font-bold text-foreground tabular-nums shrink-0">{fmtINR(e.amount)}</span>
-                  </li>
-                ))}
-              </ol>
-            </Card>
-
-            {/* Photo */}
-            <Card title="Photo" className="flex-1">
-              {pledge.itemPhoto ? (
-                <div className="px-5 lg:px-6 pb-5">
-                  <button
-                    type="button"
-                    onClick={() => setPhotoOpen(true)}
-                    aria-label="View full-size photo"
-                    className="block w-full max-w-[360px] overflow-hidden rounded-[16px] bg-muted focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={pledge.itemPhoto} alt={`Photo of ${title}`} className="w-full aspect-[4/3] object-cover" />
-                  </button>
-                </div>
-              ) : (
-                <p className="px-5 lg:px-6 pb-5 flex items-center gap-2 text-[13px] text-muted-foreground-subtle">
-                  <ImageOff size={15} aria-hidden /> No photo was added.
-                </p>
-              )}
-            </Card>
-          </div>
         </div>
 
-        {/* ── 5. Valuation — least important, so last ── */}
+        {/* ── 5. Activity — full width ── */}
+        <Card
+          title="Activity"
+          aside={isOpen && (
+            <button type="button" onClick={openTxnForm} className={cn(btnSecondary, "px-4")}>
+              <Plus size={15} /> Add transaction
+            </button>
+          )}
+        >
+          <ol className="px-5 lg:px-6 pb-5">
+            {events.map((e) => (
+              <li key={e.key} className="flex items-start justify-between gap-4 py-3 border-t border-border first:border-t-0">
+                <div className="min-w-0">
+                  <p className="text-[14px] font-semibold text-foreground">{e.title}</p>
+                  <p className="text-[12px] text-muted-foreground-subtle break-words">
+                    {fmtDate(e.at)}{e.note ? ` · ${e.note}` : ""}
+                  </p>
+                </div>
+                <span className="text-[14px] font-bold text-foreground tabular-nums shrink-0">{fmtINR(e.amount)}</span>
+              </li>
+            ))}
+          </ol>
+        </Card>
+
+        {/* ── 6. Valuation — least important, so last ── */}
         <Card title="Valuation">
           {staleNote && (
             <p role="status" className="mx-5 lg:mx-6 mb-1 px-3 py-2 rounded-[12px] bg-risk-medium-surface text-[12px] font-semibold text-risk-medium-foreground">
