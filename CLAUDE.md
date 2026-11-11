@@ -547,19 +547,21 @@ Full recon and running notes live in [MOBILE_AUDIT.md](MOBILE_AUDIT.md) — chec
 - **Priority (2026-11-10): the core daily flow first, fully mobile-ready** — find customer → add customer → view customer → add pledge → view pledge → release pledge (single and bulk). Pages outside the flow wait.
 - **Phase 1 foundation complete**: token consolidation, nav shell, Sheet primitive (`8218e29`, `5296fb0`).
 - **Phase 2 verified (380px, both themes, `/impeccable` review):** `/customers/[id]/pledges/add`, `/customers/[id]`.
-- **Built mobile-first, not formally verified:** pledge detail `/customers/[id]/pledges/[pid]` (`5491069`), inventory item detail + sell (`67c1a18`), `/cash-book` (`57ba086`), quick-actions picker (`33bb208`).
+- **Pledge detail `/customers/[id]/pledges/[pid]` — done, light mode** (owner's real-data check pending; dark not yet verified). Mobile layout is a separate component, `components/pledge/PledgeDetailMobile.tsx`, shown below `lg:`; the desktop markup in the page is unchanged and `hidden lg:flex`.
+- **Shell top bar:** below `lg:` the breadcrumb is hidden; the bar shows the "Lekha-Jokha" brand (→ `/dashboard`) left, bell + avatar right, 48px tall. `--topbar-h` is 48px, 58px at `lg:`, and the header reads it. Desktop breadcrumb drops record-id segments ("Lekha-Jokha / Customer / Pledges").
+- **Built mobile-first, not formally verified:** inventory item detail + sell (`67c1a18`), `/cash-book` (`57ba086`), quick-actions picker (`33bb208`).
 
 ### Phase 2 handoff (picking this up cold)
 
 **Shared primitives — build on these, don't hand-roll.**
-- `components/ui/StickyActions.tsx` — bottom action bar. Wrap the buttons; it owns z-30, the offset above the bottom nav, and its own in-flow spacer (so the page needs no `pb-*`). Suppresses the FAB while mounted.
+- `components/ui/StickyActions.tsx` — bottom action bar. Wrap the buttons; it owns z-30, the offset above the bottom nav, and its own in-flow spacer (so the page needs no `pb-*`). Suppresses the FAB while mounted. Optional `contentMaxWidth` (px) caps and centres the actions below `lg:` for a page whose column is capped (pledge detail: 640); omit it and the bar is unchanged.
 - `components/ui/DataTable.tsx` — real `<table>` at `lg:`, card-per-row below. Columns declare a card role (`identity` / `primary` / `trailing` / `body` / `hidden`); pass `tableOrder` to keep a page's existing desktop column order. Also exports `StatusBadge` bound to `--status-*` / `--risk-*`.
 - `components/ui/DetailParts` — pledge-detail building blocks (`a30d4f4`); reuse them on the release page.
 
 **`/customers/[id]/pledges/add` — COMPLETE.**
 `c2d99a2` removed three fabricated header values (permanently-on price banner, hardcoded Risk Score 0, "Member since 2022"). `2d444f4` made it reachable on touch: item actions moved from a hover-only menu to a Sheet, `CustomDatePicker` + `getCalendarDays` deleted (158 lines) for a native date input, all targets >= 44px, weights moved to `type="text" inputMode="decimal"`. `0c3db42` added StickyActions, inline validation via a separate `validateForm()`, and killed all three `alert()` calls. `046cb73` tokenised the surfaces (82 hex -> 2).
 
-**Core-flow queue, in order:** verify pledge detail `/customers/[id]/pledges/[pid]` (fix only what is broken) → `/add-customer` → `/customers` (list) → `/customers/[id]/pledges/[pid]/release` (risk-flagged, layout only) → `/customers/[id]/release-bulk` (risk-flagged, layout only) → manual phone test script for the whole flow. Then, waiting: `/dashboard`, `/view/[token]`, and the rest listed in MOBILE_AUDIT.md STATUS.
+**Core-flow queue, in order:** ~~verify pledge detail~~ (done) → `/add-customer` (next) → `/customers` (list) → `/customers/[id]/pledges/[pid]/release` (risk-flagged, layout only) → `/customers/[id]/release-bulk` (risk-flagged, layout only) → manual phone test script for the whole flow. Then, waiting: `/dashboard`, `/view/[token]`, and the rest listed in MOBILE_AUDIT.md STATUS.
 
 **Per-page pattern:** audit current problems → propose the mobile layout with options for every design decision → wait for approval → build → verify at 380px light + dark + edge cases → `/impeccable` audit + critique (reviewer only) → report with "Inspect this". `npm run build` before reporting a page done. For risk-flagged pages, list every handler left untouched.
 

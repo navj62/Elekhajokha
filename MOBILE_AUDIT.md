@@ -1,23 +1,24 @@
 # MOBILE_AUDIT.md
 
-## STATUS (as of 2026-11-10)
+## STATUS (as of 2026-11-11)
 
-- **Last updated:** 2026-11-10
+- **Last updated:** 2026-11-11
 - **Current priority: the core daily flow, fully mobile-ready, before anything else.** The flow is: find customer → add customer → view customer → add pledge → view pledge → release pledge (single and bulk). Every page outside it waits, including `/dashboard` and `/view/[token]`, which were next in the old queue.
 - **Phase 1 (foundation): COMPLETE** — token consolidation, nav shell, Sheet primitive. Commits `8218e29` (refactor(tokens): consolidate two design-token systems into one) + `5296fb0` (feat(nav): mobile bottom nav + FAB, one shell for both breakpoints).
 - **Phase 2 — verified pages (380px, both themes, `/impeccable` review):**
   - `/customers/[id]/pledges/add`: `c2d99a2` (remove fabricated header values), `2d444f4` (touch-reachable item actions, native date input, 44px targets), `0c3db42` (StickyActions, inline validation, no `alert()`), `046cb73` (tokenised surfaces for dark mode).
   - `/customers/[id]`: `968e581` (remove Active badge, unconditional Aadhaar check, Export Data, View All Transactions; hide Registered on the import day), `2cca40e` (pledges as DataTable cards, delete behind a ⋯ sheet), `6aa216c` (mobile layout, one bottom bar), `8cba24d` (tokenised surfaces, skeleton fits 380px), `f93f6c8` (header wrap fix at md+). Supporting: `cb88526` (`Sheet.Item tone="destructive"`), `2551f5c` + `6ad807f` (Button `destructive` variant meets AA; dark uses the saturated risk-critical red).
+  - `/customers/[id]/pledges/[pid]` (pledge detail) — **DONE, light mode** (approved 2026-11-10; owner's real-data check pending; dark mode not yet verified). Separate mobile layout `components/pledge/PledgeDetailMobile.tsx` below `lg:`; desktop markup unchanged and hidden below `lg:` (`11fe9c1`). Photo moved after Items on desktop (`91b0be1`). Verified at 380 / 768 / 1280 against in-tab fixtures (single, multi, no photo, RELEASED, SOLD, no transactions, ₹10-crore total, no price, stale price); 1280 pixel-identical to before. Open: the header subtitle can start a line with "· 8.4 g gold" — options to be proposed.
 - **Built mobile-first after 2026-10-30 — built, not formally verified.** These use the shared primitives and have no hard-coded hex, but none has had the 380px both-themes check or an `/impeccable` review:
-  - `/customers/[id]/pledges/[pid]` pledge detail redesign — `5491069` (hero, LTV bar, valuation, activity); primitives moved to `components/ui/DetailParts` in `a30d4f4`. **In the core flow — verified next.**
   - `/inventory/[id]` item detail + `/inventory/[id]/sell` — `67c1a18`.
   - `/cash-book` — `57ba086`.
   - Quick actions customer picker sheet + mobile "+" — `33bb208`.
   - Also since then: the `/ltv` bulk-forfeit selection, `StickyActions` bar and review Sheet (`4bcdd2c`) — the rest of `/ltv` (table, hand-built modal) is not adapted.
-- **Shared primitives in `components/ui/`:** `StickyActions.tsx` (bottom action bar — owns z-30, the bottom-nav offset and its own spacer; suppresses the FAB while mounted), `DataTable.tsx` (real `<table>` at `lg:`, card-per-row below; also exports `StatusBadge`), `DetailParts` (pledge-detail building blocks, `a30d4f4`). Build on these rather than hand-rolling.
+- **Shell top bar (2026-11-11):** below `lg:` the breadcrumb is hidden and the bar shows the "Lekha-Jokha" brand (→ `/dashboard`) left, bell + avatar right, at **48px**; `lg:+` unchanged at 58px. Height lives in `--topbar-h` (48px, 58px at `lg:`) and the header reads it (`68bcb45`, `8f5c3fa`). Desktop breadcrumb drops record-id segments: "Lekha-Jokha / Customer / Pledges" (`5745ef4`).
+- **Shared primitives in `components/ui/`:** `StickyActions.tsx` (bottom action bar — owns z-30, the bottom-nav offset and its own spacer; suppresses the FAB while mounted; optional `contentMaxWidth` caps the actions below `lg:` for a page with a capped column — pledge detail passes 640, `6d15d73`), `DataTable.tsx` (real `<table>` at `lg:`, card-per-row below; also exports `StatusBadge`), `DetailParts` (pledge-detail building blocks, `a30d4f4`). Build on these rather than hand-rolling.
 - **Core-flow queue, in order** (one page at a time: audit → proposal with options → approval → build → 380px light + dark + edge cases → `/impeccable` audit + critique → report):
-  1. Verify `/customers/[id]/pledges/[pid]` (built, unverified — fix only what is broken).
-  2. `/add-customer` — `inputMode` on phone/Aadhaar, sticky submit via StickyActions, hand-built modal → Sheet.
+  1. ✅ `/customers/[id]/pledges/[pid]` — done (see above).
+  2. **Next:** `/add-customer` — `inputMode` on phone/Aadhaar, sticky submit via StickyActions, hand-built modal → Sheet.
   3. `/customers` (list) — raw table → DataTable; search easy to reach on mobile.
   4. `/customers/[id]/pledges/[pid]/release` — **risk-flagged, layout only**; reuse DetailParts.
   5. `/customers/[id]/release-bulk` — **risk-flagged, layout only**; check the "Release (N)" handoff from `/customers/[id]` at 380px.
