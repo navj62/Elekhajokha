@@ -239,7 +239,7 @@
 
   /* --- Layout dimensions --- */
   --sidebar-w: 260px;   /* matches the shell's w-[260px]; the old 240px was drift */
-  --topbar-h: 58px;     /* matches the shell's h-[58px] */
+  --topbar-h: 48px;     /* the shell's top bar; 58px at lg:, below */
 
   /* Height of the mobile bottom nav, EXCLUDING safe-area inset.
      Anything anchored to the bottom on mobile must offset from this:
@@ -259,6 +259,7 @@
 @media (min-width: 64rem) {
   :root {
     --bottom-anchor: 0px;
+    --topbar-h: 58px;
   }
 }
 

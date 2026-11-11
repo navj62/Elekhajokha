@@ -130,11 +130,17 @@ function AppShellFrame({ children }: { children: React.ReactNode }) {
       {/* Main area */}
       <div className="flex h-[100dvh] flex-1 flex-col overflow-hidden">
         <header
-          className="flex h-[58px] shrink-0 items-center justify-between px-5 lg:px-8"
+          className="flex h-[var(--topbar-h)] shrink-0 items-center justify-between px-5 lg:px-8"
           style={{ borderBottom: "1px solid var(--border)" }}
         >
-          {/* Desktop only: on phones each page's own back arrow and title
-              say where you are, and the trail overflowed at 380px. */}
+          {/* Phones: just the brand; each page's own back arrow and title say
+              where you are, and the full trail overflowed at 380px. */}
+          <Link
+            href="/dashboard"
+            className="lg:hidden text-sm font-medium text-muted-foreground-subtle hover:text-foreground transition-colors"
+          >
+            Lekha-Jokha
+          </Link>
           <div className="hidden lg:flex">
             <Breadcrumb />
           </div>
