@@ -30,20 +30,21 @@ export default function Breadcrumb() {
         // Keep track of the original segment value for the link path
         const originalSegment = segment;
 
-        let label = routeLabels[segment] ?? segment
+        const label = routeLabels[segment] ?? segment
             .replace(/-/g, " ")
             .replace(/\b\w/g, (c) => c.toUpperCase());
 
-        if (isUuid || isPrevCustomers || isPrevPledges) {
-            label = isPrevPledges ? "pledgeid" : "customerid";
-        }
+        // A record id says nothing to the reader, so it gets no crumb:
+        // "/customers/<id>/pledges/<id>" reads "Customer / Pledges".
+        // "add" after "pledges" is a page, not an id.
+        const isId = isUuid || ((isPrevCustomers || isPrevPledges) && segment !== "add");
 
         // Generate the URL path up to the current segment
         const url = "/" + segments.slice(0, index + 1).join("/");
         const clickable = segment !== "pledges";
 
-        return { label, url, clickable };
-    });
+        return { label, url, clickable, isId };
+    }).filter((item) => !item.isId);
 
     // If on the root/dashboard without segments, default to Dashboard
     const displayTrail = trail.length === 0 ? [{ label: "Dashboard", url: "/dashboard", clickable: true }] : trail;
