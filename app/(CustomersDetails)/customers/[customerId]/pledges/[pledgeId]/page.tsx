@@ -741,7 +741,7 @@ export default function PledgeDetailPage() {
         backHref={backHref}
         backLabel={backLabel}
         title={title}
-        pledgedOn={`Pledged ${fmtDate(pledge.pledgeDate)}`}
+        pledgedOn={`Pledged ${new Date(pledge.pledgeDate).toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "2-digit" })}`}
         weightParts={weightParts}
         isOpen={isOpen}
         sellHref={sellHref}

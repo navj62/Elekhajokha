@@ -63,7 +63,8 @@ export interface PledgeDetailMobileProps {
   backHref: string;
   backLabel: string;
   title: string;
-  /** "Pledged 12 Mar 2026", followed by each "10.8 g gold" part. */
+  /** "Pledged 13/05/26" (DD/MM/YY, kept short so it usually shares a line
+   *  with the weight), followed by each "10.8 g gold" part. */
   pledgedOn: string;
   weightParts: string[];
 
@@ -266,13 +267,19 @@ export default function PledgeDetailMobile(p: PledgeDetailMobileProps) {
           </Link>
           <div className="min-w-0 flex-1 pt-0.5">
             <h1 className="text-[20px] leading-tight font-bold text-foreground break-words">{p.title}</h1>
-            {/* Each separator travels with the part after it, so a wrap starts
-                the new line with "·" instead of stranding one. */}
-            <p className="mt-1 text-[13px] text-muted-foreground flex flex-wrap gap-x-1.5">
-              <span className="whitespace-nowrap">{p.pledgedOn}</span>
-              {p.weightParts.map((w) => (
-                <span key={w} className="whitespace-nowrap tabular-nums"><span aria-hidden>· </span>{w}</span>
-              ))}
+            {/* Every part stays whole and carries a leading "·" in a fixed
+                12px slot. The row is pulled 12px left inside a clipped box, so
+                the dot of whichever part starts a line falls outside it: a
+                wrapped line never starts (or ends) with "·". */}
+            <p className="mt-1 overflow-hidden text-[13px] text-muted-foreground">
+              <span className="-ml-3 flex flex-wrap">
+                {[p.pledgedOn, ...p.weightParts].map((part) => (
+                  <span key={part} className="inline-flex whitespace-nowrap tabular-nums">
+                    <span aria-hidden className="w-3 shrink-0 text-center">·</span>
+                    {part}
+                  </span>
+                ))}
+              </span>
             </p>
           </div>
           <div className="flex items-start gap-2 shrink-0">
