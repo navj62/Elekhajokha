@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "defaultMode": "plan",
+    "disableBypassPermissionsMode": "disable",
+    "disableAutoMode": "disable",
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Edit(./.env)",
+      "Edit(./.env.*)",
+      "Read(./*_migration.xlsx)",
+      "Read(./seed-*-log.json)",
+      "Bash(git push *)",
+      "Bash(git merge *)",
+      "Bash(git rebase *)",
+      "Bash(git reset --hard *)",
+      "Bash(git branch -D *)",
+      "Bash(git checkout main *)",
+      "Bash(git switch *)",
+      "Bash(npx prisma migrate reset *)",
+      "Bash(npx prisma migrate deploy *)",
+      "Bash(npx prisma db push *)",
+      "Bash(vercel *)",
+      "Bash(rm -rf *)"
+    ],
+    "ask": [
+      "Bash(npm install *)",
+      "Bash(npm i *)",
+      "Bash(npm uninstall *)",
+      "Bash(npx prisma migrate dev *)",
+      "Edit(./prisma/schema.prisma)",
+      "Edit(./package.json)",
+      "Edit(./proxy.ts)",
+      "Edit(./next.config.ts)",
+      "Edit(./vitest.config.ts)",
+      "Edit(./components/layout/navConfig.ts)"
+    ]
+  }
+}

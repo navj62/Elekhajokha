@@ -621,3 +621,55 @@ Summary of what a security audit verified, so future reviews don't re-litigate s
 
 ### Known accepted risk (not a blocker)
 - **Subscription status is NOT enforced on any data-mutating API route.** `SubscriptionGuard` is a client component; `proxy.ts` enforces sign-in only. A lapsed user holding a valid Clerk session can still call mutating endpoints. Because every route remains correctly tenant-scoped, this is **revenue leakage, not a data-exposure risk**. If enforcement becomes a product requirement, it belongs in a shared server-side guard, not per-route.
+# Import feature: rules for Claude Code
+
+These rules apply to all work on the Excel/CSV import feature.
+Full spec: `docs/import-feature.md`. Read it before every session.
+
+## 1. Branch and isolation
+
+- Work only on branch `feature/excel-import`. At the start of every session run `git branch --show-current`. If it is not that branch, stop and tell me.
+- Never push, merge, rebase, reset or switch branches. I push and open the pull request myself.
+- New code lives only in:
+  - `lib/import/**` (logic, schemas, normalizers, AI mapping, import-only helpers)
+  - `app/api/import/**` (API routes)
+  - the import page under `app/**/import/**`
+  - `components/import/**`
+  - `tests/import/**`
+  - `samples/**` and `docs/import-*.md`
+  - new folders in `prisma/migrations/`
+- Editing **any existing file** outside those paths needs my approval first. That includes `prisma/schema.prisma`, `package.json`, `proxy.ts`, `next.config.ts`, `vitest.config.ts`, layouts, `components/layout/navConfig.ts`, shared `components/ui/*` and existing `lib/*`. Tell me the file, why, and the exact change.
+- Do not fix, refactor or reformat unrelated code, even if it looks wrong. Write it in `docs/import-notes.md` under "Found, not fixed".
+- Migrations are additive only: new tables and the `IMPORTED` value in `AuditAction`. Never drop, rename or change existing columns. Never run `prisma migrate reset`, `prisma db push` or `prisma migrate deploy`. Run `prisma migrate dev` only after confirming with me that the database is the Neon branch `import-dev`.
+- Never read or print `.env*` files or secrets. If you need a config value, ask me.
+- Never open, copy or use the real customer files in the repo root (`*_migration.xlsx`, `seed-*-log.json`). Test data comes only from `samples/`.
+- The feature sits behind the server-side flag `IMPORT_FEATURE_ENABLED` (off by default). With the flag off, the app must behave exactly as it does today.
+
+## 2. Decisions: ask me first
+
+Use the AskUserQuestion tool, with 2–4 options, your recommendation first and the trade-offs of each, **before**:
+
+- any change to `schema.prisma` or any migration
+- adding, removing or upgrading a dependency
+- anything touching auth, tenant scoping, subscription checks or `proxy.ts`
+- anything that deletes data (including undo and retention cleanup)
+- changing `lib/import/targetSchema.ts` or its tests
+- anything that differs from `docs/import-feature.md`, or that the spec leaves open (its section 15 lists known ones)
+- anything shop owners will see: wording of questions, steps of the flow, what a button does
+
+Do not ask about routine implementation details (variable names, helper structure, test layout). Decide those and list them in the phase summary.
+
+## 3. Production bar for every phase
+
+- `npx tsc --noEmit`, `npm test`, `npx eslint . --config eslint.config.ci.mjs` (no new errors), no new strict-lint errors in new files, and `npm run build` all pass.
+- DB tests run only with `IMPORT_DB_TESTS=1`, only against `import-dev`, behind the existing `assertDbTarget` guard.
+- Every import API route:
+  - checks the Clerk session and resolves the internal `User.id`
+  - checks the subscription **on the server**
+  - checks `IMPORT_FEATURE_ENABLED`
+  - scopes every query to that user
+  - validates input with Zod
+  - returns no stack traces and no personal data in errors
+- Tests include a cross-tenant test: shop A cannot read, edit, commit or undo shop B's import.
+- No personal data (names, mobile numbers, Aadhaar, file contents) in logs, and nothing sent to the AI beyond the masked sample defined in the spec.
+- End every phase with: what was built, files changed, how it was tested, decisions you made on your own, and open questions.
