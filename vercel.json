@@ -1,4 +1,8 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["sin1"]
+  "regions": ["sin1"],
+  "git": {
+    "deploymentEnabled": {
+      "feature/excel-import": false
+    }
+  }
 }
