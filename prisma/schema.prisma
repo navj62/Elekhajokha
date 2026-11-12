@@ -47,6 +47,7 @@ model User {
   inventoryItems         InventoryItem[]
   cashDays               CashDay[]
   cashEntries            CashEntry[]
+  imports                Import[]
 
   @@index([razorpaySubscriptionId])
   @@index([subscriptionStatus, isActive])
@@ -336,6 +337,7 @@ enum AuditAction {
   DELETED
   RECALCULATED
   SOLD
+  IMPORTED
 }
 
 enum SubscriptionPlan {
@@ -533,4 +535,99 @@ enum CashKind {
   TOPUP
   REVERSAL
   MANUAL
+}
+
+// ─── Excel/CSV import (docs/import-feature.md) ────────────────────────────
+enum ImportStatus {
+  UPLOADED
+  MAPPED
+  IN_REVIEW
+  COMMITTING
+  COMMITTED
+  FAILED
+  UNDONE
+}
+
+enum ImportRowKind {
+  CUSTOMER
+  PLEDGE
+  ITEM
+}
+
+enum ImportEntityType {
+  CUSTOMER
+  PLEDGE
+  ITEM_TYPE
+}
+
+enum ImportRecordAction {
+  CREATED
+  LINKED
+}
+
+// One uploaded file. userId is the internal User.id, never the Clerk id.
+model Import {
+  id          String       @id @default(uuid())
+  userId      String
+  fileName    String
+  fileSize    Int
+  sheetName   String?
+  status      ImportStatus @default(UPLOADED)
+  mapping     Json?
+  fileAnswers Json?
+  rowCount    Int          @default(0)
+  // Commit summary (customers created/linked, pledges, items, item types, excluded).
+  counts      Json?
+  // Safe, generic message only. Never a stack trace or personal data.
+  error       String?
+  committedAt DateTime?
+  undoneAt    DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rows        ImportRow[]
+  records     ImportedRecord[]
+
+  @@index([userId, status])
+  @@index([userId, createdAt])
+  @@map("imports")
+}
+
+// One staged customer, pledge or item. Holds personal data until retention cleanup.
+model ImportRow {
+  id          String        @id @default(uuid())
+  importId    String
+  rowNumber   Int
+  kind        ImportRowKind
+  customerRef String?
+  pledgeRef   String?
+  data        Json
+  raw         Json
+  issues      Json          @default("[]")
+  excluded    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  import      Import        @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@index([importId, kind])
+  @@map("import_rows")
+}
+
+// What a commit created or linked. The unique key makes commit idempotent
+// and resumable. importRowId and entityId are plain ids with NO foreign key:
+// the record must survive retention cleanup of staged rows, and entityId
+// points at different tables depending on entityType.
+model ImportedRecord {
+  id          String             @id @default(uuid())
+  importId    String
+  importRowId String
+  entityType  ImportEntityType
+  entityId    String
+  action      ImportRecordAction
+  createdAt   DateTime           @default(now())
+  import      Import             @relation(fields: [importId], references: [id], onDelete: Cascade)
+
+  @@unique([importId, importRowId, entityType])
+  @@index([entityType, entityId])
+  @@map("imported_records")
 }

@@ -17,6 +17,7 @@
  */
 export const DEV_DB_HOSTS: readonly string[] = [
   "ep-old-firefly-aom5jlqq", // Neon dev branch
+  "ep-wandering-rain-azjspi5o", // Neon import-dev branch (feature/excel-import)
   "localhost",
   "127.0.0.1",
 ];
