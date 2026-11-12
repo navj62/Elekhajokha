@@ -31,6 +31,7 @@ Read this whole file and `CLAUDE.md` before starting any phase. Work on **one ph
 | Uncertainty | Whenever something is ambiguous, ask the user. Never guess. |
 | Review | In-app editable preview. |
 | Rows still broken at import | User can **exclude** rows; excluded rows are dropped. Included rows must have zero errors and zero open questions. |
+| Scope of files | Version 1 can import customers only, from files with no pledge columns. |
 | Status | Defaults to `ACTIVE`. `OVERDUE` is never imported. |
 | Interest | Rate is **percent per year** (`calculateHybridInterest` takes an annual rate). Interest figures in the file are ignored. |
 | Financial terms | Never guessed. Missing rate or compounding → ask once for the whole file. |
@@ -103,7 +104,7 @@ type ImportIssue = {
 **Output** (validated with Zod; one retry with the validation errors; then fall back to manual mapping):
 ```ts
 {
-  layout: "ROW_PER_PLEDGE" | "ROW_PER_ITEM" | "UNSURE",
+  layout: "ROW_PER_PLEDGE" | "ROW_PER_ITEM" | "CUSTOMERS_ONLY" | "UNSURE",
   fields: { [targetField]: { column: string | null; transform?: string; confidence: number } },
   questions: { field: string; message: string; options: string[] }[]
 }
@@ -235,4 +236,5 @@ Vercel functions here get at most 60 seconds, so commit runs as **several reques
 - Which subscription plans get the feature.
 - How undo treats `IMPORTED` audit rows.
 - Whether v1 should import `RELEASED`/`SOLD` rows, or ask the owner to exclude them (only `ACTIVE` is certain).
+- Customers-only files: Phase 3 (grouping and validation) and Phase 6 (commit) each need a customers-only path, since `CUSTOMERS_ONLY` files have no pledges or items to group, validate or write.
 - Anything else not settled in section 3.
