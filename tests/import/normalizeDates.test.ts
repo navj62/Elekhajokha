@@ -55,10 +55,46 @@ describe("normalizeDate", () => {
     }
   });
 
-  it("reads two-digit years as 20yy and says so", () => {
-    const result = normalizeDate("03/04/26", ctx, "DMY");
-    expect(result).toMatchObject({ value: "2026-04-03" });
-    expect("fixed" in result && result.fixed).toContain("2-digit year");
+  describe("two-digit years pivot on the current year", () => {
+    const now = new Date(Date.UTC(2026, 10, 12));
+    const d = (raw: string) => normalizeDate(raw, ctx, "DMY", now);
+
+    it("yy at or below the current yy is 20yy, above it is 19yy", () => {
+      expect(d("03/04/26")).toMatchObject({ value: "2026-04-03" }); // equal to current yy
+      expect(d("03/04/25")).toMatchObject({ value: "2025-04-03" });
+      expect(d("03/04/00")).toMatchObject({ value: "2000-04-03" });
+      expect(d("03/04/27")).toMatchObject({ value: "1927-04-03" }); // just above
+      expect(d("03/04/99")).toMatchObject({ value: "1999-04-03" });
+      expect(d("03/04/90")).toMatchObject({ value: "1990-04-03" });
+    });
+
+    it("moves with the clock", () => {
+      const later = new Date(Date.UTC(2031, 0, 1));
+      expect(normalizeDate("03/04/30", ctx, "DMY", later)).toMatchObject({ value: "2030-04-03" });
+      expect(normalizeDate("03/04/32", ctx, "DMY", later)).toMatchObject({ value: "1932-04-03" });
+      expect(normalizeDate("03/04/31", ctx, "DMY", later)).toMatchObject({ value: "2031-04-03" });
+    });
+
+    it("applies to month-name dates too", () => {
+      expect(d("03-Apr-26")).toMatchObject({ value: "2026-04-03" });
+      expect(d("03-Apr-27")).toMatchObject({ value: "1927-04-03" });
+      expect(d("Apr 3, 99")).toMatchObject({ value: "1999-04-03" });
+    });
+
+    it("says which year it chose", () => {
+      const r = d("03/04/27");
+      expect("fixed" in r && r.fixed).toContain("1927");
+    });
+
+    it("leaves four-digit years alone", () => {
+      expect(d("03/04/1927")).toMatchObject({ value: "1927-04-03" });
+      expect(d("03/04/2099")).toMatchObject({ value: "2099-04-03" });
+    });
+
+    it("still rejects a two-digit year that makes an impossible date", () => {
+      expect(isIssue(d("29/02/27"))).toBe(true); // 1927 is not a leap year
+      expect(d("29/02/24")).toMatchObject({ value: "2024-02-29" });
+    });
   });
 
   it("reads English month names", () => {

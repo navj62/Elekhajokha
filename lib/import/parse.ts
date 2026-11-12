@@ -82,6 +82,13 @@ export class ImportParseError extends Error {
 export type CellValue = string | number | boolean | null;
 export type FileKind = "xlsx" | "csv";
 
+/**
+ * A merged range of cells, 1-based and inclusive, in the sheet's own row and
+ * column numbers. rows[top - 1][left - 1] holds the value; the other cells of
+ * the range are null. Phase 3 uses this to fill values down or across.
+ */
+export type MergedRange = { top: number; left: number; bottom: number; right: number };
+
 // ─── Type detection ──────────────────────────────────────────────────────────
 
 const ZIP_MAGIC = [0x50, 0x4b, 0x03, 0x04];
@@ -321,7 +328,28 @@ function plainValue(value: ExcelJS.CellValue): CellValue {
   return null;
 }
 
-async function loadXlsxSheet(buffer: Buffer, sheetName: string): Promise<CellValue[][]> {
+function columnFromLetters(letters: string): number {
+  let n = 0;
+  for (const ch of letters) n = n * 26 + (ch.charCodeAt(0) - 64);
+  return n;
+}
+
+/** "A1:D3" -> { top: 1, left: 1, bottom: 3, right: 4 }. Anything else is ignored. */
+function parseRange(ref: string): MergedRange | null {
+  const m = /^\$?([A-Z]{1,3})\$?(\d+):\$?([A-Z]{1,3})\$?(\d+)$/.exec(ref);
+  if (!m) return null;
+  return {
+    top: Number(m[2]),
+    left: columnFromLetters(m[1] ?? ""),
+    bottom: Number(m[4]),
+    right: columnFromLetters(m[3] ?? ""),
+  };
+}
+
+async function loadXlsxSheet(
+  buffer: Buffer,
+  sheetName: string,
+): Promise<{ rows: CellValue[][]; merges: MergedRange[] }> {
   const workbook = new ExcelJS.Workbook();
   try {
     await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
@@ -344,7 +372,12 @@ async function loadXlsxSheet(buffer: Buffer, sheetName: string): Promise<CellVal
     }
     rows.push(cells);
   }
-  return rows;
+
+  const refs = (sheet.model as { merges?: string[] }).merges ?? [];
+  const merges = refs
+    .map(parseRange)
+    .filter((m): m is MergedRange => m !== null && m.top <= lastRow && m.left <= lastColumn);
+  return { rows, merges };
 }
 
 // ─── csv ─────────────────────────────────────────────────────────────────────
@@ -429,22 +462,24 @@ export async function listSheets(
  * `rows[N - 1]`, so junk, blank and title rows are included: use
  * findHeaderRow and extractTable to separate them from the data.
  * `sheetName` may be left out for a CSV or a one-sheet workbook.
+ * `merges` lists the sheet's merged ranges (empty for a CSV); the value of a
+ * merged range stays in its top-left cell only.
  */
 export async function readSheet(
   buffer: Buffer,
   fileName: string,
   sheetName?: string,
-): Promise<{ kind: FileKind; sheetName: string; rows: CellValue[][] }> {
+): Promise<{ kind: FileKind; sheetName: string; rows: CellValue[][]; merges: MergedRange[] }> {
   const kind = detectFileKind(buffer, fileName);
   if (kind === "csv") {
-    return { kind, sheetName: CSV_SHEET_NAME, rows: await loadCsv(buffer) };
+    return { kind, sheetName: CSV_SHEET_NAME, rows: await loadCsv(buffer), merges: [] };
   }
   const { sheetNames } = inspectXlsx(buffer);
   const chosen = sheetName ?? (sheetNames.length === 1 ? sheetNames[0] : undefined);
   if (chosen === undefined || !sheetNames.includes(chosen)) {
     throw new ImportParseError("SHEET_NOT_FOUND");
   }
-  return { kind, sheetName: chosen, rows: await loadXlsxSheet(buffer, chosen) };
+  return { kind, sheetName: chosen, ...(await loadXlsxSheet(buffer, chosen)) };
 }
 
 // ─── Header row and table extraction ─────────────────────────────────────────
@@ -505,18 +540,39 @@ export function isTotalRow(row: readonly CellValue[]): boolean {
   return row.some((v) => typeof v === "string" && TOTAL_LABEL.test(cellText(v)));
 }
 
+/** A cell that is a number, a date, or made only of digits and number punctuation. */
+function isNumberOrDate(value: CellValue): boolean {
+  if (typeof value === "number") return true;
+  const text = cellText(value);
+  return /^[\d\s.,₹%/:-]+$/.test(text) || /^\d{4}-\d{2}-\d{2}/.test(text);
+}
+
+/** Narrowest table in which a one-cell row is called a note (below this it could be real data). */
+const NOTE_MIN_COLUMNS = 3;
+
+/**
+ * A footnote or remark: exactly one non-empty cell, and that cell is text,
+ * not a number or a date. Only recognised in tables of 3 or more columns.
+ */
+export function isNoteRow(row: readonly CellValue[], width: number): boolean {
+  if (width < NOTE_MIN_COLUMNS) return false;
+  const cells = row.filter((v) => cellText(v) !== "");
+  const [only] = cells;
+  return cells.length === 1 && only !== undefined && !isNumberOrDate(only);
+}
+
 export type TableRow = { rowNumber: number; cells: CellValue[] };
 export type Table = {
   headerRowNumber: number;
   headers: string[];
   rows: TableRow[];
-  skipped: { blank: number; total: number; repeatedHeader: number };
+  skipped: { blank: number; total: number; note: number; repeatedHeader: number };
 };
 
 /**
  * Cuts the data rows out of a sheet: headers from the header row (empty ones
  * named "Column N", duplicates suffixed), then every row below it except
- * blank rows, total rows and repeated header rows. Row numbers are the
+ * blank rows, total rows, note rows (one text cell) and repeated header rows. Row numbers are the
  * sheet's own, so they can be shown to the owner. Enforces the 2,000 data
  * row limit.
  */
@@ -542,7 +598,7 @@ export function extractTable(
   }
   const headerKey = headers.map((h) => h.toLowerCase()).join("\u0001");
 
-  const skipped = { blank: 0, total: 0, repeatedHeader: 0 };
+  const skipped = { blank: 0, total: 0, note: 0, repeatedHeader: 0 };
   const out: TableRow[] = [];
   for (let i = headerIndex + 1; i < rows.length; i++) {
     const row = rows[i];
@@ -553,6 +609,10 @@ export function extractTable(
     }
     if (isTotalRow(row)) {
       skipped.total++;
+      continue;
+    }
+    if (isNoteRow(row, width)) {
+      skipped.note++;
       continue;
     }
     const cells = Array.from({ length: width }, (_, c) => row[c] ?? null);

@@ -19,7 +19,10 @@ Source: `app/api/customers/[customerId]/pledges/route.ts` (read, not changed).
 - **CSV needs no extra library.** exceljs's default CSV read converts dates (to a `Date` shifted by the timezone: `2026-04-03` came back as `2026-04-02T18:30:00Z` under IST), numbers (`1e3`, `12.50`) and drops leading zeros (`0098765`). Passing `{ map: v => v }` turns all conversion off. Confirmed by tests.
 - **TypeScript target is below ES2020**, so BigInt literals (`10n`) do not compile. `lib/import/normalize/decimal.ts` uses `BigInt()` calls instead. `tsconfig.json` was not touched.
 - Stray NUL bytes (sample 1) are stripped from CSV text: Postgres text cannot store them.
-- A merged range keeps its value only in the top-left cell.
+- A merged range keeps its value only in the top-left cell; `readSheet` also returns the ranges as `merges` (`{ top, left, bottom, right }`, 1-based, inclusive) for Phase 3 to fill down.
+- **Note rows:** `extractTable` skips a row with exactly one non-empty cell that is text, not a number or a date. Only in tables of 3 or more columns (my addition: in a 2-column table a one-cell row could be real data).
+- **Lost-in-export text:** `normalizeText` turns a value made only of `?` / U+FFFD into an error issue. Partial damage (`Ram??`) is not detected.
+- **Two-digit years** pivot on the current UTC year: yy <= current yy is 20yy, otherwise 19yy (in 2026, 26 -> 2026, 27 -> 1927). `normalizeDate` takes an optional `now` so tests are fixed. `targetSchema` rejects dates before 1990, so a 19yy guess below 1990 becomes a visible error, not a silent import.
 
 ## Found, not fixed
 

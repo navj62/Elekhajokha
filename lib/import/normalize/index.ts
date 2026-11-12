@@ -6,3 +6,4 @@ export * from "./purity";
 export * from "./weight";
 export * from "./mobile";
 export * from "./interestRate";
+export * from "./text";

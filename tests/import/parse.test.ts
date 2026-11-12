@@ -162,6 +162,35 @@ describe("xlsx reading", () => {
     expect(rows[0]).toEqual(["Hello", "link text", true, 12.5, "०३४"]);
   });
 
+  it("returns merged ranges as metadata (1-based, inclusive) beside the top-left value", async () => {
+    const book = await xlsx((wb) => {
+      const ws = wb.addWorksheet("S");
+      ws.addRow(["Shop", "Name"]);
+      ws.addRow(["Alpha", "A"]);
+      ws.addRow([null, "B"]);
+      ws.addRow([null, "C"]);
+      ws.mergeCells("A2:A4");
+      ws.mergeCells("C1:E1");
+    });
+    const { rows, merges } = await readSheet(book, "a.xlsx");
+    expect(merges).toEqual(
+      expect.arrayContaining([
+        { top: 2, left: 1, bottom: 4, right: 1 },
+        { top: 1, left: 3, bottom: 1, right: 5 },
+      ]),
+    );
+    expect(merges).toHaveLength(2);
+    expect(rows[1]?.[0]).toBe("Alpha");
+    expect(rows[2]?.[0]).toBeNull();
+    expect(rows[3]?.[0]).toBeNull();
+  });
+
+  it("returns no merges for an unmerged sheet and for a CSV", async () => {
+    const book = await xlsx((wb) => wb.addWorksheet("S").addRow(["a", "b"]));
+    expect((await readSheet(book, "a.xlsx")).merges).toEqual([]);
+    expect((await readSheet(csv("a,b\n1,2\n"), "a.csv")).merges).toEqual([]);
+  });
+
   it("keeps a merged value once, in its first cell", async () => {
     const book = await xlsx((wb) => {
       const ws = wb.addWorksheet("S");
@@ -370,7 +399,48 @@ describe("extractTable", () => {
     ];
     const table = extractTable(rows, 0);
     expect(table.rows.map((r) => r.rowNumber)).toEqual([2, 7]);
-    expect(table.skipped).toEqual({ blank: 1, total: 2, repeatedHeader: 1 });
+    expect(table.skipped).toEqual({ blank: 1, total: 2, note: 0, repeatedHeader: 1 });
+  });
+
+  describe("note rows", () => {
+    const header = row("name", "address", "amount", "date");
+
+    it("skips a row with one text cell, wherever the cell is, and counts it", () => {
+      const rows = [
+        header,
+        row("A", "x", 100, "2026-01-01"),
+        row("Note: some amounts are text", null, null, null),
+        row(null, null, "see page 2", null),
+        row("B", "y", 200, "2026-01-02"),
+      ];
+      const table = extractTable(rows, 0);
+      expect(table.rows.map((r) => r.rowNumber)).toEqual([2, 5]);
+      expect(table.skipped.note).toBe(2);
+    });
+
+    it("keeps a one-cell row whose cell is a number or a date", () => {
+      const rows = [header, row(null, null, 500, null), row(null, null, null, "2026-01-02"), row("12,500", null, null, null), row("03/04/2026", null, null, null)];
+      const table = extractTable(rows, 0);
+      expect(table.rows).toHaveLength(4);
+      expect(table.skipped.note).toBe(0);
+    });
+
+    it("keeps a row with two or more cells, even if both are text", () => {
+      const rows = [header, row("Ramesh", "Bus Stand", null, null)];
+      expect(extractTable(rows, 0).rows).toHaveLength(1);
+    });
+
+    it("does not apply to a table narrower than 3 columns", () => {
+      const rows = [row("name", "amount"), row("Ramesh", null), row("Sita", null)];
+      const table = extractTable(rows, 0);
+      expect(table.rows).toHaveLength(2);
+      expect(table.skipped.note).toBe(0);
+    });
+
+    it("is not confused with a total row or a blank row", () => {
+      const rows = [header, row("Total", null, null, null), row(null, null, null, null), row("a long remark here", null, null, null)];
+      expect(extractTable(rows, 0).skipped).toEqual({ blank: 1, total: 1, note: 1, repeatedHeader: 0 });
+    });
   });
 
   it("does not mistake a name that starts with a total word for a total row", () => {

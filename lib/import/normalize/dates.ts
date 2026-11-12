@@ -56,9 +56,20 @@ function buildIso(year: number, month: number, day: number): string | null {
   return `${String(year).padStart(4, "0")}-${pad(month)}-${pad(day)}`;
 }
 
-function fullYear(text: string): { year: number; twoDigit: boolean } {
+/**
+ * Four-digit years are taken as written. Two-digit years pivot on the current
+ * year: yy at or below the current yy is 20yy, above it is 19yy (in 2026,
+ * "26" is 2026 and "27" is 1927).
+ */
+function fullYear(text: string, now: Date): { year: number; twoDigit: boolean } {
   const n = Number(text);
-  return text.length === 2 ? { year: 2000 + n, twoDigit: true } : { year: n, twoDigit: false };
+  if (text.length !== 2) return { year: n, twoDigit: false };
+  const currentYy = now.getUTCFullYear() % 100;
+  return { year: (n <= currentYy ? 2000 : 1900) + n, twoDigit: true };
+}
+
+function twoDigitNote(year: number, text: string): string {
+  return `Read the 2-digit year ${text} as ${year}`;
 }
 
 /** Excel serial day numbers (1900 system) that are plausible as dates: 1927..2173. */
@@ -114,13 +125,15 @@ export function detectDateOrder(values: readonly unknown[]): DateOrderDetection 
 
 /**
  * Normalizes one date cell. `order` is the column's day/month order from
- * detectDateOrder (or the owner's answer). Blank, "NULL", "-" and the
+ * detectDateOrder (or the owner's answer). `now` is only for the two-digit
+ * year pivot (tests pass a fixed value). Blank, "NULL", "-" and the
  * database zero date "0000-00-00" give { value: null }.
  */
 export function normalizeDate(
   raw: unknown,
   ctx: NormCtx,
   order?: DateOrder,
+  now: Date = new Date(),
 ): NormResult<string | null> {
   if (isEmptyCell(raw)) return ok(null);
 
@@ -146,27 +159,27 @@ export function normalizeDate(
   if (named) {
     const month = monthFromWord(named[2]);
     if (month === null) return errorIssue(ctx, "Month name not recognised");
-    const { year, twoDigit } = fullYear(named[3]);
+    const { year, twoDigit } = fullYear(named[3] ?? "", now);
     const iso = buildIso(year, month, Number(named[1]));
     if (!iso) return errorIssue(ctx, "Not a real calendar date");
-    return fixed(iso, twoDigit ? "Read the 2-digit year as 20" + named[3] : "Rewritten as YYYY-MM-DD");
+    return fixed(iso, twoDigit ? twoDigitNote(year, named[3] ?? "") : "Rewritten as YYYY-MM-DD");
   }
 
   const monthFirstNamed = MONTHNAME_DAY_YEAR.exec(text);
   if (monthFirstNamed) {
     const month = monthFromWord(monthFirstNamed[1]);
     if (month === null) return errorIssue(ctx, "Month name not recognised");
-    const { year, twoDigit } = fullYear(monthFirstNamed[3]);
+    const { year, twoDigit } = fullYear(monthFirstNamed[3] ?? "", now);
     const iso = buildIso(year, month, Number(monthFirstNamed[2]));
     if (!iso) return errorIssue(ctx, "Not a real calendar date");
-    return fixed(iso, twoDigit ? "Read the 2-digit year as 20" + monthFirstNamed[3] : "Rewritten as YYYY-MM-DD");
+    return fixed(iso, twoDigit ? twoDigitNote(year, monthFirstNamed[3] ?? "") : "Rewritten as YYYY-MM-DD");
   }
 
   const numeric = NUMERIC_PARTS.exec(text);
   if (numeric) {
     const a = Number(numeric[1]);
     const b = Number(numeric[2]);
-    const { year, twoDigit } = fullYear(numeric[3]);
+    const { year, twoDigit } = fullYear(numeric[3] ?? "", now);
     let resolved: DateOrder | null = order ?? null;
     if (!resolved) {
       if (a > 12 && b <= 12) resolved = "DMY";
@@ -194,7 +207,7 @@ export function normalizeDate(
       );
     }
     const note = twoDigit
-      ? "Read the 2-digit year as 20" + numeric[3] + " and rewrote as YYYY-MM-DD"
+      ? twoDigitNote(year, numeric[3] ?? "") + " and rewrote as YYYY-MM-DD"
       : "Rewritten as YYYY-MM-DD";
     return fixed(iso, note);
   }
