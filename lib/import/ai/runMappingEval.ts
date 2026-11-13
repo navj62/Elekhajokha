@@ -117,8 +117,17 @@ function toSaved(file: string, result: MappingResult, attempts: number, ms: numb
   };
 }
 
+// Scoring rule: item.itemType and item.itemName are one "item description"
+// slot (the item type is derived from the item-name cell later). If the key
+// maps a column to either one and the model maps that same column to either
+// one, both fields count as correct and neither is a false mapping.
+const ITEM_SLOT: readonly FieldKey[] = ["item.itemType", "item.itemName"];
+
 function score(run: SavedRun, expected: Expected): FileScore {
   const got = (key: FieldKey) => run.fields?.[key].column ?? null;
+  const slotKey = new Set(ITEM_SLOT.map((k) => expected.fields[k]).filter((v): v is string => v !== null));
+  const slotModel = new Set(ITEM_SLOT.map((k) => got(k)).filter((v): v is string => v !== null));
+  const slotMatches = [...slotKey].some((column) => slotModel.has(column));
   const mismatches: Mismatch[] = [];
   let correct = 0;
   let mappedExpected = 0;
@@ -127,6 +136,14 @@ function score(run: SavedRun, expected: Expected): FileScore {
   for (const key of FIELD_KEYS) {
     const e = expected.fields[key];
     const g = got(key);
+    if (slotMatches && ITEM_SLOT.includes(key)) {
+      correct++;
+      if (e !== null) {
+        mappedExpected++;
+        mappedCorrect++;
+      }
+      continue;
+    }
     if (e === g) correct++;
     else mismatches.push({ field: key, expected: e, got: g });
     if (e !== null) {
@@ -179,6 +196,7 @@ function report(saved: SavedResults, all: FileScore[], rescored: boolean): strin
     "Answer keys: `samples/expected/*.json`, written and confirmed by the owner.",
     "Real run: `npx tsx lib/import/ai/runMappingEval.ts` · Re-score without the model: `npx tsx lib/import/ai/runMappingEval.ts --rescore`.",
     "This report contains headers, field keys and scores only; no cell values.",
+    "Scoring rule: `item.itemType` and `item.itemName` count as one \"item description\" slot. If the key maps a column to either one and the model maps that same column to either one, both fields count as correct and neither is a false mapping.",
     `Files scored: ${scores.length} of ${all.length}. A file that ended in manual mapping (provider error) is listed but not scored.`,
     "",
     "## Overall",
