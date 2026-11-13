@@ -32,7 +32,7 @@ Read this whole file and `CLAUDE.md` before starting any phase. Work on **one ph
 | Review | In-app editable preview. |
 | Rows still broken at import | User can **exclude** rows; excluded rows are dropped. Included rows must have zero errors and zero open questions. |
 | Scope of files | Version 1 can import customers only, from files with no pledge columns. |
-| Status | Defaults to `ACTIVE`. `OVERDUE` is never imported. |
+| Status | Defaults to `ACTIVE`. `OVERDUE` is never imported. Phase 3 rule per row: use the status column when the row has a value; otherwise `RELEASED` if the release date is present, else `ACTIVE`. |
 | Interest | Rate is **percent per year** (`calculateHybridInterest` takes an annual rate). Interest figures in the file are ignored. |
 | Financial terms | Never guessed. Missing rate or compounding → ask once for the whole file. |
 | Customer matching | By normalized name (`normalizeNameKey`), ignoring deleted customers. Same name + same region in the file = same customer. Same name, different region → ask. Name matches an existing customer → **always ask** (link or create new). No match → create. |
@@ -133,7 +133,7 @@ Each returns `{ value }`, `{ value, fixed }`, or an issue.
 
 ## 8. Questions to the user
 
-**File-wide:** sheet; layout if `UNSURE`; how to group item rows into pledges when there is no pledge number; missing rate; missing compounding; rate unit; ambiguous date order; unknown weight unit; each unknown item type (asked once per type, not per row).
+**File-wide:** sheet; layout if `UNSURE`; how to group item rows into pledges when there is no pledge number; missing rate; missing compounding; rate unit; ambiguous date order; unknown weight unit; each unknown item type (asked once per type, not per row). No region column → ask once: one region for all customers (typed by the owner), take it from each address (suggest the last part of the address, editable in the preview), or use the full address as the region.
 
 **Row-level:** same name different region; name matches an existing customer; ambiguous purity; heavy gold item; anything the schema rejects that has a plausible fix (suggestion pre-selected).
 
