@@ -11,12 +11,12 @@
     "Last Deal Date",
     "Active"
   ],
-  "layout": null,
+  "layout": "CUSTOMERS_ONLY",
   "fields": {
-    "customer.name": null,
-    "customer.region": null,
+    "customer.name": "Contact Person",
+    "customer.region": "City",
     "customer.address": null,
-    "customer.mobile": null,
+    "customer.mobile": "Phone (masked)",
     "customer.gender": null,
     "customer.aadharNo": null,
     "customer.remark": null,
