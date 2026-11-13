@@ -42,10 +42,10 @@
     "pledge.durationMonths": null,
     "pledge.releaseDate": "releasedate",
     "pledge.salePrice": null,
-    "item.itemType": "itemname",
+    "item.itemType": null,
     "item.metalType": "type",
     "item.grossWeight": "weight",
-    "item.netWeight": "weight",
+    "item.netWeight": null,
     "item.purity": null,
     "item.itemName": "itemname",
     "item.quantity": null

@@ -1,0 +1,518 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "host": "api.groq.com",
+  "ranAt": "2026-11-13T11:13:06.294Z",
+  "runs": [
+    {
+      "file": "1_php_ledger_export.csv",
+      "outcome": {
+        "status": "ok",
+        "mode": "json_schema"
+      },
+      "layout": "ROW_PER_PLEDGE",
+      "fields": {
+        "customer.name": {
+          "column": "customername",
+          "confidence": 0.99
+        },
+        "customer.region": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.address": {
+          "column": "address",
+          "confidence": 0.99
+        },
+        "customer.mobile": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.gender": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.aadharNo": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.remark": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.idProofImg": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.customerImg": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.pledgeRef": {
+          "column": "cid",
+          "confidence": 0.9
+        },
+        "pledge.pledgeDate": {
+          "column": "pledgedate",
+          "confidence": 0.99
+        },
+        "pledge.loanAmount": {
+          "column": "loanamount",
+          "confidence": 0.99
+        },
+        "pledge.interestRate": {
+          "column": "interestrate",
+          "confidence": 0.99
+        },
+        "pledge.compoundingDuration": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.status": {
+          "column": "status",
+          "confidence": 0.99
+        },
+        "pledge.allowCompounding": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.itemPhoto": {
+          "column": "image",
+          "confidence": 0.95
+        },
+        "pledge.remark": {
+          "column": "image_text",
+          "confidence": 0.9
+        },
+        "pledge.durationMonths": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.releaseDate": {
+          "column": "releasedate",
+          "confidence": 0.99
+        },
+        "pledge.salePrice": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.itemType": {
+          "column": "itemname",
+          "confidence": 0.99
+        },
+        "item.metalType": {
+          "column": "type",
+          "confidence": 0.95
+        },
+        "item.grossWeight": {
+          "column": "weight",
+          "confidence": 0.9
+        },
+        "item.netWeight": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.purity": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.itemName": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.quantity": {
+          "column": null,
+          "confidence": 0
+        }
+      },
+      "questionFields": [
+        "pledge.pledgeRef"
+      ],
+      "attempts": 1,
+      "ms": 5360
+    },
+    {
+      "file": "2_jeweller_contacts_masked.xlsx",
+      "outcome": {
+        "status": "ok",
+        "mode": "json_schema"
+      },
+      "layout": "CUSTOMERS_ONLY",
+      "fields": {
+        "customer.name": {
+          "column": "Contact Person",
+          "confidence": 0.9
+        },
+        "customer.region": {
+          "column": "City",
+          "confidence": 0.9
+        },
+        "customer.address": {
+          "column": null,
+          "confidence": 0.2
+        },
+        "customer.mobile": {
+          "column": "Phone (masked)",
+          "confidence": 0.95
+        },
+        "customer.gender": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "customer.aadharNo": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "customer.remark": {
+          "column": "Speciality",
+          "confidence": 0.6
+        },
+        "customer.idProofImg": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "customer.customerImg": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "pledge.pledgeRef": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "pledge.pledgeDate": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "pledge.loanAmount": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "pledge.interestRate": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "pledge.compoundingDuration": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "pledge.status": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "pledge.allowCompounding": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "pledge.itemPhoto": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "pledge.remark": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "pledge.durationMonths": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "pledge.releaseDate": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "pledge.salePrice": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "item.itemType": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "item.metalType": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "item.grossWeight": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "item.netWeight": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "item.purity": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "item.itemName": {
+          "column": null,
+          "confidence": 0.1
+        },
+        "item.quantity": {
+          "column": null,
+          "confidence": 0.1
+        }
+      },
+      "questionFields": [
+        "customer.address",
+        "customer.region",
+        "customer.remark"
+      ],
+      "attempts": 2,
+      "ms": 3068
+    },
+    {
+      "file": "3_jeweller_contacts_dirty.csv",
+      "outcome": {
+        "status": "ok",
+        "mode": "json_schema"
+      },
+      "layout": "CUSTOMERS_ONLY",
+      "fields": {
+        "customer.name": {
+          "column": "owner / contact",
+          "confidence": 0.99
+        },
+        "customer.region": {
+          "column": "town",
+          "confidence": 0.99
+        },
+        "customer.address": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.mobile": {
+          "column": "mobile",
+          "confidence": 0.99
+        },
+        "customer.gender": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.aadharNo": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.remark": {
+          "column": "remarks",
+          "confidence": 0.99
+        },
+        "customer.idProofImg": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.customerImg": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.pledgeRef": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.pledgeDate": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.loanAmount": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.interestRate": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.compoundingDuration": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.status": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.allowCompounding": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.itemPhoto": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.remark": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.durationMonths": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.releaseDate": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.salePrice": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.itemType": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.metalType": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.grossWeight": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.netWeight": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.purity": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.itemName": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.quantity": {
+          "column": null,
+          "confidence": 0
+        }
+      },
+      "questionFields": [
+        "customer.address"
+      ],
+      "attempts": 1,
+      "ms": 3107
+    },
+    {
+      "file": "4_messy_ledger_hindi.xlsx",
+      "outcome": {
+        "status": "ok",
+        "mode": "json_schema"
+      },
+      "layout": "ROW_PER_PLEDGE",
+      "fields": {
+        "customer.name": {
+          "column": "ग्राहक का नाम",
+          "confidence": 0.99
+        },
+        "customer.region": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.address": {
+          "column": "पता",
+          "confidence": 0.99
+        },
+        "customer.mobile": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.gender": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.aadharNo": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.remark": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.idProofImg": {
+          "column": null,
+          "confidence": 0
+        },
+        "customer.customerImg": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.pledgeRef": {
+          "column": "क्र.सं.",
+          "confidence": 0.95
+        },
+        "pledge.pledgeDate": {
+          "column": "गिरवी दिनांक",
+          "confidence": 0.99
+        },
+        "pledge.loanAmount": {
+          "column": "ऋण राशि (₹)",
+          "confidence": 0.99
+        },
+        "pledge.interestRate": {
+          "column": "ब्याज दर (%)",
+          "confidence": 0.99
+        },
+        "pledge.compoundingDuration": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.status": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.allowCompounding": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.itemPhoto": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.remark": {
+          "column": null,
+          "confidence": 0
+        },
+        "pledge.durationMonths": {
+          "column": "अवधि (१५ दिन)",
+          "confidence": 0.7
+        },
+        "pledge.releaseDate": {
+          "column": "छुड़ाने का दिनांक",
+          "confidence": 0.95
+        },
+        "pledge.salePrice": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.itemType": {
+          "column": "वस्तु",
+          "confidence": 0.95
+        },
+        "item.metalType": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.grossWeight": {
+          "column": "वज़न",
+          "confidence": 0.9
+        },
+        "item.netWeight": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.purity": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.itemName": {
+          "column": null,
+          "confidence": 0
+        },
+        "item.quantity": {
+          "column": null,
+          "confidence": 0
+        }
+      },
+      "questionFields": [
+        "item.metalType",
+        "pledge.durationMonths"
+      ],
+      "attempts": 2,
+      "ms": 4879
+    }
+  ]
+}
