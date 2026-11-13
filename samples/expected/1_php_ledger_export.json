@@ -22,7 +22,7 @@
   "layout": "ROW_PER_PLEDGE",
   "fields": {
     "customer.name": "customername",
-    "customer.region": "address",
+    "customer.region": null,
     "customer.address": "address",
     "customer.mobile": null,
     "customer.gender": null,

@@ -17,7 +17,7 @@
   "layout": "ROW_PER_PLEDGE",
   "fields": {
     "customer.name": "ग्राहक का नाम",
-    "customer.region": "पता",
+    "customer.region": null,
     "customer.address": "पता",
     "customer.mobile": null,
     "customer.gender": null,
